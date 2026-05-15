@@ -1,0 +1,91 @@
+[project]
+name = "efactory"
+version = "0.1.0"
+description = "Система сквозного проектирования РЭА с использованием ИИ"
+readme = "README.md"
+authors = [
+    {name = "Vladimir Kirievskiy", email = "vlakir1234@gmail.com"},
+]
+requires-python = ">=3.14"
+dependencies = []
+[dependency-groups]
+dev = [
+    "ruff>=0.12.10",
+    "mypy>=1.17.1",
+    "pytest>=8.4",
+    "pytest-cov>=7.0",
+    "pytest-asyncio>=1.0",
+]
+
+
+[tool.ruff]
+unsafe-fixes = true
+line-length = 88
+indent-width = 4
+target-version = "py314"
+exclude = [
+    ".git",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".venv",
+    "venv",
+    "__pypackages__",
+    "build",
+    "dist",
+    "tests",
+]
+
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D1", "D203", "D212",
+    "BLE001", "ANN002", "ANN204",
+    "RUF001", "COM812", "RUF002",
+    "RUF003", "G004", "PLR0912",
+    "PLR0913", "D401", "PLR0915",
+    "C901", "D205", "N802",
+]
+fixable = ["ALL"]
+unfixable = []
+
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"
+
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 72
+quote-style = "single"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+
+[tool.mypy]
+explicit_package_bases = true
+ignore_missing_imports = true
+mypy_path = "src"
+
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["src"]
+addopts = "-q --tb=short --cov=src --cov-report=term-missing --cov-fail-under=80"
+testpaths = ["tests"]
+
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+show_missing = true
+skip_covered = false

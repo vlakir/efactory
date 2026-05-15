@@ -1,0 +1,48 @@
+# IDE / Editors
+.idea/
+.zencoder/
+~*
+~*.*
+.~*
+*.kate-swp
+
+# Claude Code — служебные runtime-файлы (не для шаринга)
+.claude/*.lock
+.claude/settings.local.json
+
+# Python
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+dist/
+build/
+*.egg-info/
+.coverage
+
+# Logs
+*.log
+*.log.*
+log/
+
+# Secrets / config
+.env
+.secrets
+.secrets.*
+.secrets.toml
+secrets.env
+
+# Local utilities
+copy_to_remote.sh
+vanilla_docker.sh
+
+# Caches
+.cache/
+
+# Local SQLite
+*.sqlite
+
+# Temp / docs builds
+temp/
+doc/

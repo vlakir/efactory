@@ -1,0 +1,8 @@
+_commit: 1.5.1
+_src_path: /home/vlakir/.cache/uv/archive-v0/_O5wBeSeAKGNXw7j/lib/python3.14/site-packages/dreamteam/template/.bundle
+language: ru
+package_manager: uv
+project_name: efactory
+project_description: Система сквозного проектирования РЭА с использованием ИИ
+author_name: Vladimir Kirievskiy
+author_email: vlakir1234@gmail.com
