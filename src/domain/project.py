@@ -10,6 +10,8 @@ from uuid import UUID, uuid4
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, computed_field
 
+from domain._name import validate_name as _validate_name_shared
+from domain.decision import DecisionRef
 from domain.phase import Phase, PhaseName, PhaseStatus
 
 
@@ -25,20 +27,7 @@ class ProjectStatus(StrEnum):
     PRODUCTION_READY = 'production_ready'
 
 
-def _validate_name(value: str) -> str:
-    if not value.strip():
-        msg = 'Project name must not be empty or whitespace-only'
-        raise ValueError(msg)
-    if value in {'.', '..'}:
-        msg = 'Project name must not be "." or ".."'
-        raise ValueError(msg)
-    if '/' in value or '\\' in value:
-        msg = 'Project name must not contain path separators ("/" or "\\")'
-        raise ValueError(msg)
-    return value
-
-
-ProjectName = Annotated[str, AfterValidator(_validate_name)]
+ProjectName = Annotated[str, AfterValidator(_validate_name_shared)]
 
 
 _PHASE_ORDER: tuple[PhaseName, ...] = (
@@ -98,6 +87,7 @@ class Project(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     phases: PhasesTuple = Field(default_factory=_default_phases)
+    decisions: tuple[DecisionRef, ...] = ()
 
     # `@computed_field` + `@property` — канонический Pydantic v2 паттерн
     # для derived-полей, попадающих в `model_dump` (нужно для T098 YAML

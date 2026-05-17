@@ -1,5 +1,5 @@
 """
-ReindexProjects — пересборка SQL индекса по manifest'ам (T098).
+ReindexProjects — пересборка SQL индекса по manifest'ам + sync decisions (T098, T099).
 
 Работает в две стороны (Resolved #3 (B)):
 - **Primary mode** (manifest → SQL): сканирует `storage_root`,
@@ -11,6 +11,12 @@ ReindexProjects — пересборка SQL индекса по manifest'ам (
 
 `remove_orphans=True` отменяет bootstrap: SQL-only записи удаляются
 из индекса и попадают в `orphans` summary как «удалённые».
+
+T099 расширение: если передан `decision_repo`, для каждого
+индексируемого/bootstrapped проекта `Project.decisions` пересобирается
+из реальных markdown файлов в `<path>/decisions/` (markdown = truth,
+manifest reference — index). Без `decision_repo` поведение идентично
+T098 phase 2.
 
 Best-effort (Resolved #6): первая ошибка не блокирует остальные.
 Любые errors собираются в `failed: [(path, message)]` — CLI Phase 3
@@ -24,6 +30,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from domain.decision import DecisionRef
 from ports.outbound.project_manifest_repository import (
     ManifestInvalidError,
     ManifestNotFoundError,
@@ -32,6 +39,8 @@ from ports.outbound.project_manifest_repository import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from domain.project import Project
+    from ports.outbound.decision_repository import DecisionRepository
     from ports.outbound.metadata_repository import MetadataRepository
     from ports.outbound.project_manifest_repository import (
         ProjectManifestRepository,
@@ -46,11 +55,24 @@ class ReindexSummary:
     failed: list[tuple[Path, str]] = field(default_factory=list)
 
 
+async def _sync_decisions(
+    project: Project,
+    decision_repo: DecisionRepository | None,
+) -> Project:
+    """Подтянуть `project.decisions` из markdown файлов (T099). No-op без repo."""
+    if decision_repo is None:
+        return project
+    decisions = await decision_repo.list_all(project.path)
+    refs = tuple(DecisionRef.from_decision(d) for d in decisions)
+    return project.model_copy(update={'decisions': refs})
+
+
 async def reindex_projects(
     *,
     storage_root: Path,
     repo: MetadataRepository,
     manifest_repo: ProjectManifestRepository,
+    decision_repo: DecisionRepository | None = None,
     remove_orphans: bool = False,
 ) -> ReindexSummary:
     indexed = 0
@@ -67,6 +89,14 @@ async def reindex_projects(
         except (ManifestNotFoundError, ManifestInvalidError) as exc:
             failed.append((manifest_path, str(exc)))
             continue
+        project = await _sync_decisions(project, decision_repo)
+        # Если decisions поменялись — пере-сохранить manifest до SQL upsert.
+        if decision_repo is not None:
+            try:
+                await manifest_repo.save(project)
+            except OSError as exc:
+                failed.append((manifest_path, str(exc)))
+                continue
         try:
             await repo.save(project)
         except SQLAlchemyError as exc:
@@ -86,11 +116,10 @@ async def reindex_projects(
                 continue
             orphans.append(sql_row.name)
             continue
-        # Bootstrap mode: SQL-only → создать manifest из SQL-данных
-        # с updated_at = created_at (Clarify #10).
         bootstrap_project = sql_row.model_copy(
             update={'updated_at': sql_row.created_at},
         )
+        bootstrap_project = await _sync_decisions(bootstrap_project, decision_repo)
         try:
             await manifest_repo.save(bootstrap_project)
         except OSError as exc:

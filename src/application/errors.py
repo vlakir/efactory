@@ -42,3 +42,17 @@ class ProjectManifestMissingError(Exception):
         )
         self.project_name = project_name
         self.project_path = project_path
+
+
+class DecisionPersistenceError(Exception):
+    """Decision markdown сохранён, manifest sync упал (T099 N3)."""
+
+    def __init__(self, project_name: str, decision_id: str, cause: Exception) -> None:
+        super().__init__(
+            f'Decision {decision_id} saved to markdown for project '
+            f"'{project_name}'; failed to sync manifest: {cause}. "
+            f'Run `efactory project reindex` to recover.',
+        )
+        self.project_name = project_name
+        self.decision_id = decision_id
+        self.__cause__ = cause
