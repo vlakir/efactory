@@ -8,11 +8,15 @@ from pathlib import Path
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
+from datetime import date
+
 from application.reindex_projects import (
     ReindexSummary,
     reindex_projects,
 )
+from domain.decision import Decision, DecisionStatus
 from domain.project import Project
+from ports.outbound.decision_repository import DecisionNotFoundError
 from ports.outbound.project_manifest_repository import (
     ManifestInvalidError,
     ManifestNotFoundError,
@@ -277,6 +281,86 @@ async def test_reindex_bootstrap_save_failure_marks_orphan_and_failed() -> None:
     assert summary.orphans == ['legacy']
     assert len(summary.failed) == 1
     assert summary.failed[0][0] == legacy.path
+
+
+class FakeDecisionRepository:
+    """T099: in-memory decisions keyed by project_path → list[Decision]."""
+
+    def __init__(
+        self,
+        decisions_by_path: dict[Path, list[Decision]] | None = None,
+    ) -> None:
+        self._by_path: dict[Path, list[Decision]] = decisions_by_path or {}
+        self.saved: list[tuple[Path, Decision]] = []
+
+    async def save(self, project_path: Path, decision: Decision) -> Path:
+        self._by_path.setdefault(project_path, []).append(decision)
+        self.saved.append((project_path, decision))
+        return project_path / 'decisions' / f'{decision.id}.md'
+
+    async def load(self, project_path: Path, decision_id: str) -> Decision:
+        for d in self._by_path.get(project_path, []):
+            if d.id == decision_id:
+                return d
+        raise DecisionNotFoundError(decision_id)
+
+    async def list_all(self, project_path: Path) -> list[Decision]:
+        return list(self._by_path.get(project_path, []))
+
+    async def next_id(self, project_path: Path) -> str:  # pragma: no cover
+        existing = self._by_path.get(project_path, [])
+        nums = [int(d.id[1:]) for d in existing]
+        return f'D{max(nums) + 1 if nums else 1:03d}'
+
+
+def _make_decision(decision_id: str = 'D001') -> Decision:
+    return Decision(
+        id=decision_id,
+        title='choose',
+        date=date(2026, 5, 17),
+        status=DecisionStatus.ACCEPTED,
+        summary='s',
+        rationale='r',
+    )
+
+
+async def test_reindex_syncs_decisions_from_markdown_into_manifest() -> None:
+    """T099: Project.decisions пересобирается из markdown при reindex."""
+    project = Project(name='p', path=Path('/storage/p'))
+    repo = FakeMetadataRepository()
+    manifest_repo = FakeManifestRepository(project)
+    decision_repo = FakeDecisionRepository(
+        {project.path: [_make_decision('D001'), _make_decision('D002')]},
+    )
+
+    summary = await reindex_projects(
+        storage_root=Path('/storage'),
+        repo=repo,
+        manifest_repo=manifest_repo,
+        decision_repo=decision_repo,
+    )
+
+    assert summary.indexed == 1
+    reloaded = await manifest_repo.load(project.path)
+    assert len(reloaded.decisions) == 2
+    assert [r.id for r in reloaded.decisions] == ['D001', 'D002']
+
+
+async def test_reindex_without_decision_repo_preserves_t098_behavior() -> None:
+    """Backward compat: decision_repo=None — поведение как до T099."""
+    project = Project(name='p', path=Path('/storage/p'))
+    repo = FakeMetadataRepository()
+    manifest_repo = FakeManifestRepository(project)
+
+    summary = await reindex_projects(
+        storage_root=Path('/storage'),
+        repo=repo,
+        manifest_repo=manifest_repo,
+    )
+
+    assert summary.indexed == 1
+    reloaded = await manifest_repo.load(project.path)
+    assert reloaded.decisions == ()
 
 
 @pytest.mark.parametrize('remove_orphans', [False, True])

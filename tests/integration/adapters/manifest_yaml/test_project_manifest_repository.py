@@ -184,7 +184,7 @@ async def test_load_ignores_extra_fields(tmp_path: Path) -> None:
     manifest = tmp_path / 'demo' / 'project.yaml'
     data = yaml.safe_load(manifest.read_text())
     data['description'] = 'manually added comment'
-    data['decisions'] = [{'id': 'foo', 'rationale': 'bar'}]
+    data['future_field'] = {'foo': 'bar'}
     manifest.write_text(yaml.safe_dump(data), encoding='utf-8')
 
     loaded = await repo.load(tmp_path / 'demo')

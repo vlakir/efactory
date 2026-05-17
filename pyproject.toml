@@ -200,4 +200,5 @@ modules = [
     "adapters.outbound.persistence_sql",
     "adapters.outbound.file_store",
     "adapters.outbound.manifest_yaml",
+    "adapters.outbound.decision_markdown",
 ]
