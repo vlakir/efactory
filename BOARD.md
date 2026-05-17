@@ -72,16 +72,16 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
   с `EFACTORY_PROJECTS_ROOT` / `EFACTORY_DATABASE_URL`). Запаркован
   follow-up T087 на нормальные default'ы Settings. Уточнена ошибочная
   запись в Retrospective `[0.1.0]` про Kùzu ADR (статус был снят
-  ещё в T085). Запись о изменениях — в `CHANGELOG.md` `[Unreleased]`.
+  ещё в T085). Запись об изменениях — в `CHANGELOG.md` `[Unreleased]`.
 - **T087** — [closed 2026-05-17, PR #8] Дать `Settings`
   (`composition/settings.py`) разумные default'ы для `projects_root`
   / `database_url` (XDG-стиль). Composition root автоматически
   создаёт storage-каталоги до запуска Alembic-миграций. README
   «Быстрый старт» упрощён обратно до двух строчек. По TDD: 3 unit-теста
   Settings (default / XDG override / env override) + integration-тест
-  composition без env. Запись о изменениях — в `CHANGELOG.md`
+  composition без env. Запись об изменениях — в `CHANGELOG.md`
   `[Unreleased]`.
-- **T088** — [closed 2026-05-17, PR current] Second use case
+- **T088** — [closed 2026-05-17, PR #9] Second use case
   `ListProjects` — проверка hexagonal-фундамента на втором сквозном
   срезе. Расширение `MetadataRepository.list_all() -> list[Project]`,
   `application.list_projects`, SQLAlchemy-реализация (сортировка
@@ -89,4 +89,13 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
   «No projects found.» на пустом). По TDD outside-in: 2 e2e + 3 unit
   с fake-портом + 2 integration. 23 passed, coverage 98.84%. Запись
   о изменениях — в `CHANGELOG.md` `[Unreleased]`.
+- **T089** — [closed 2026-05-17, PR #10] Third use case
+  `GetProject` (по имени). Расширение
+  `MetadataRepository.get_by_name(name) -> Project | None`,
+  `application.get_project` + `ProjectNotFoundError`, SQLAlchemy
+  `select().where(name).limit(1)`, CLI `efactory project show
+  --name <name>` (multi-line вывод метаданных; при отсутствии —
+  stderr + `exit_code=1`). По TDD outside-in: 2 e2e (happy + unknown)
+  + 2 unit (found / raises) + 2 integration. 29 passed, coverage
+  99.02%. Запись об изменениях — в `CHANGELOG.md` `[Unreleased]`.
 

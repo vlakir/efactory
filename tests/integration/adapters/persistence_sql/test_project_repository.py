@@ -105,3 +105,48 @@ async def test_list_all_returns_empty_when_no_projects(tmp_path: Path) -> None:
         await engine.dispose()
 
     assert result == []
+
+
+async def test_get_by_name_returns_project_when_present(tmp_path: Path) -> None:
+    db_file = tmp_path / 'test_get.sqlite'
+    database_url = f'sqlite+aiosqlite:///{db_file}'
+
+    await run_migrations(database_url)
+
+    engine = create_async_engine(database_url)
+    try:
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        repo = SqlAlchemyMetadataRepository(session_factory)
+
+        wanted = Project(name='target', path=Path('/p/target'))
+        await repo.save(Project(name='other', path=Path('/p/other')))
+        await repo.save(wanted)
+
+        result = await repo.get_by_name('target')
+    finally:
+        await engine.dispose()
+
+    assert result is not None
+    assert result.id == wanted.id
+    assert result.name == 'target'
+    assert result.path == Path('/p/target')
+
+
+async def test_get_by_name_returns_none_when_absent(tmp_path: Path) -> None:
+    db_file = tmp_path / 'test_missing.sqlite'
+    database_url = f'sqlite+aiosqlite:///{db_file}'
+
+    await run_migrations(database_url)
+
+    engine = create_async_engine(database_url)
+    try:
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        repo = SqlAlchemyMetadataRepository(session_factory)
+
+        await repo.save(Project(name='present', path=Path('/p/present')))
+
+        result = await repo.get_by_name('ghost')
+    finally:
+        await engine.dispose()
+
+    assert result is None

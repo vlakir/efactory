@@ -26,6 +26,23 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 ## [Unreleased]
 
 ### Added
+- Третий use case `GetProject` (по имени) — продолжение обкатки
+  hexagonal-фундамента после T088.
+  - `ports/outbound/metadata_repository.py`: `MetadataRepository`
+    Protocol расширен методом `get_by_name(name) -> Project | None`.
+  - `application/get_project.py`: use case + `ProjectNotFoundError`
+    (явное application-исключение, чтобы CLI / API могли отличить
+    «нет такого» от «БД упала»).
+  - `adapters/outbound/persistence_sql/repository.py`: реализация
+    `get_by_name` через `select(...).where(name == ...).limit(1)`.
+  - `adapters/inbound/cli/app.py`: команда
+    `efactory project show --name <name>` — построчный вывод
+    метаданных проекта; при отсутствии печатает
+    `Project '<name>' not found` в stderr и выходит с `exit_code=1`.
+  - Тесты (TDD outside-in): 2 e2e (happy + unknown name),
+    2 unit с fake-портом (found / raises), 2 integration
+    (get returns row / get returns None). Coverage 99.02%
+    (29 passed; +6 новых). (T089)
 - Второй use case `ListProjects` — проверка hexagonal-фундамента на
   втором сквозном срезе (CLI → application → SQL-adapter → domain).
   - `ports/outbound/metadata_repository.py`: `MetadataRepository`

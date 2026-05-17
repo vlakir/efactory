@@ -8,6 +8,12 @@ from typing import TYPE_CHECKING
 import typer
 
 from application.create_project import create_project as create_project_use_case
+from application.get_project import (
+    ProjectNotFoundError,
+)
+from application.get_project import (
+    get_project as get_project_use_case,
+)
 from application.list_projects import list_projects as list_projects_use_case
 
 if TYPE_CHECKING:
@@ -55,5 +61,22 @@ def build_app(
             typer.echo(
                 f'{project.name}\t{project.created_at.isoformat()}\t{project.path}',
             )
+
+    @project_app.command('show')
+    def show(
+        name: str = typer.Option(..., '--name', help='Имя искомого проекта'),
+    ) -> None:
+        try:
+            project = asyncio.run(
+                get_project_use_case(name=name, repo=metadata_repository),
+            )
+        except ProjectNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(f'name: {project.name}')
+        typer.echo(f'id: {project.id}')
+        typer.echo(f'status: {project.status.value}')
+        typer.echo(f'created_at: {project.created_at.isoformat()}')
+        typer.echo(f'path: {project.path}')
 
     return app

@@ -36,3 +36,11 @@ class SqlAlchemyMetadataRepository:
                 select(ProjectModel).order_by(ProjectModel.created_at.desc()),
             )
             return [model_to_project(row) for row in result.scalars().all()]
+
+    async def get_by_name(self, name: str) -> Project | None:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ProjectModel).where(ProjectModel.name == name).limit(1),
+            )
+            model = result.scalars().first()
+            return model_to_project(model) if model is not None else None
