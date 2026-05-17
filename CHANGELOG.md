@@ -59,6 +59,12 @@ T-ID между релизами — `CHANGELOG.md` единственное per
   follow-up'ы Walking Skeleton») — pre-commit hook на 5-проверочный
   гейт (`pre-commit` framework + `.pre-commit-config.yaml`). Сейчас
   гейт прогоняется вручную; автоматизировать через `pre-commit`. (T090)
+- В `BACKLOG.md` новая задача **T092** (там же) — валидация
+  `Project.name` против path-traversal. Выявлено при self-review T090:
+  имя «../../etc» проходит текущую domain-валидацию и попадает
+  в `projects_root / name` (критично для `delete_project` →
+  `shutil.rmtree`). Текущий вход — только локальный CLI, поэтому не
+  CVE-уровень; станет критично при появлении MCP / HTTP. (T090)
 - Третий use case `GetProject` (по имени) — продолжение обкатки
   hexagonal-фундамента после T088.
   - `ports/outbound/metadata_repository.py`: `MetadataRepository`
