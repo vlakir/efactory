@@ -112,6 +112,36 @@ fail незаметно проскочит в `git commit`.
   читать, анализировать, обсуждать с Разработчиком; фиксировать
   решение (учесть / отбросить / отложить).
 
+### Closing-правка `BOARD: Doing → Done` — отдельным commit'ом ПОСЛЕ `gh pr create`
+
+Глобальное правило (закрытие задачи **в задачном PR**, без парного
+chore-PR) сохраняется. Здесь — проектное уточнение порядка шагов на
+ветке, чтобы в записи Done стоял реальный `[closed YYYY-MM-DD,
+PR #N]`, а не placeholder `PR current`.
+
+Алгоритм для task-PR (`T<NNN>-<slug>`):
+
+1. Реализация задачи коммитится на ветке.
+2. `git push -u origin T<NNN>-<slug>`.
+3. `gh pr create` → получили `#N`.
+4. В `BOARD.md` запись задачи переезжает из `## Doing` в `## Done`
+   с пометкой `[closed YYYY-MM-DD, PR #N]`.
+5. `git commit -m "chore(board): close T<NNN>"` + `git push`.
+6. Self-review, squash-merge — оба commit'а в `main` схлопнутся в
+   один (правило «один PR — один коммит»).
+
+**Не применяется к:**
+
+- Методическим PR без T-ID (`rules/<slug>`, `fixes/<slug>`) — у
+  них нет BOARD-записи.
+- Release-PR (`release: cut <ver>`) — они переносят задачи из
+  `## Done` в `CHANGELOG.md`; closing-правка Done уже сделана в
+  task-PR, которые в этот milestone вошли.
+
+Принято в efactory после повторной (×6 в `[0.2.0]`) помарки
+`PR current` → fix-up в следующем PR. См. ретро `[0.2.0]` в
+`CHANGELOG.md` и задачу T093.
+
 ## Дисциплина планирования
 
 Без Scrum-церемоний (sprints, story points, velocity, burndown).
