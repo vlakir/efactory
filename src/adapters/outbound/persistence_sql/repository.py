@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
 from adapters.outbound.persistence_sql.mapping import (
+    _phase_to_model,
     model_to_project,
     project_to_model,
 )
@@ -32,18 +33,26 @@ class SqlAlchemyMetadataRepository:
 
     async def update(self, project: Project) -> None:
         """
-        Заглушка для фазы 1 T097. Реальный UPDATE — фаза 2.
+        Обновить name и набор phases существующего проекта.
 
-        Use case UpdateProject из фазы 1 не вызывается из CLI до
-        фазы 3, так что эта ветка не активна в e2e. Фаза 2 добавит
-        Alembic-миграцию (drop status / create phases table) и
-        реализацию через session.merge + sync phase-rows.
+        Загружает ORM-инстанс по id (selectin подтянет phases-relation),
+        заменяет name и пересоздаёт список PhaseModel — `delete-orphan`
+        каскад чистит старые строки. Use case вызывает `update` только
+        после успешного `get_by_name`, поэтому отсутствие в БД — это
+        нарушение инварианта (race / неверный id) → ValueError.
         """
-        msg = (
-            'SqlAlchemyMetadataRepository.update is implemented in T097 phase 2 '
-            '(SQL persistence). Phase 1 use case is tested with fake repo.'
-        )
-        raise NotImplementedError(msg)
+        async with self._session_factory() as session, session.begin():
+            existing = await session.get(ProjectModel, project.id)
+            if existing is None:
+                msg = (
+                    f'Project {project.id} not found for update '
+                    '(concurrent deletion or invalid id)'
+                )
+                raise ValueError(msg)
+            existing.name = project.name
+            existing.phases = [
+                _phase_to_model(project.id, phase) for phase in project.phases
+            ]
 
     async def list_all(self) -> list[Project]:
         async with self._session_factory() as session:
@@ -61,7 +70,19 @@ class SqlAlchemyMetadataRepository:
             return model_to_project(model) if model is not None else None
 
     async def delete_by_name(self, name: str) -> None:
+        """
+        Через ORM-delete, чтобы `delete-orphan` cascade почистил phases.
+
+        Bulk-`DELETE FROM projects` оставил бы orphan phase-rows, т.к.
+        FK `ondelete=CASCADE` требует включённого `PRAGMA foreign_keys`
+        на SQLite (по умолчанию выключен). ORM-cascade срабатывает в
+        Python, независимо от SQLite-настроек, поэтому надёжнее.
+        Идемпотентность сохраняется: отсутствующий проект — no-op.
+        """
         async with self._session_factory() as session, session.begin():
-            await session.execute(
-                delete(ProjectModel).where(ProjectModel.name == name),
+            result = await session.execute(
+                select(ProjectModel).where(ProjectModel.name == name).limit(1),
             )
+            model = result.scalars().first()
+            if model is not None:
+                await session.delete(model)
