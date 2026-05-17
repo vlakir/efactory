@@ -11,6 +11,9 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from adapters.inbound.cli.app import build_app
+from adapters.outbound.decision_markdown.decision_repository import (
+    FilesystemDecisionRepository,
+)
 from adapters.outbound.file_store.project_file_repository import (
     FilesystemProjectFileRepository,
 )
@@ -63,6 +66,7 @@ def build_cli_app() -> typer.Typer:
         metadata_repository=SqlAlchemyMetadataRepository(session_factory),
         file_repository=FilesystemProjectFileRepository(),
         manifest_repository=FilesystemProjectManifestRepository(),
+        decision_repository=FilesystemDecisionRepository(),
     )
 
 

@@ -3,24 +3,29 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 import typer
 from pydantic import ValidationError
 
+from application.add_decision import add_decision as add_decision_use_case
 from application.create_project import create_project as create_project_use_case
 from application.delete_project import delete_project as delete_project_use_case
 from application.errors import (
+    DecisionPersistenceError,
     IndexPersistenceError,
     ProjectManifestMissingError,
 )
+from application.get_decision import get_decision as get_decision_use_case
 from application.get_project import (
     ProjectNotFoundError,
 )
 from application.get_project import (
     get_project as get_project_use_case,
 )
+from application.list_decisions import list_decisions as list_decisions_use_case
 from application.list_projects import list_projects as list_projects_use_case
 from application.reindex_projects import (
     reindex_projects as reindex_projects_use_case,
@@ -32,10 +37,13 @@ from application.update_project import (
 from application.update_project import (
     update_project as update_project_use_case,
 )
+from domain.decision import DecisionStatus
 from domain.phase import PhaseName, PhaseStatus
+from ports.outbound.decision_repository import DecisionNotFoundError
 
 if TYPE_CHECKING:
     from domain.project import Project
+    from ports.outbound.decision_repository import DecisionRepository
     from ports.outbound.metadata_repository import MetadataRepository
     from ports.outbound.project_file_repository import ProjectFileRepository
     from ports.outbound.project_manifest_repository import (
@@ -49,6 +57,7 @@ def build_app(
     metadata_repository: MetadataRepository,
     file_repository: ProjectFileRepository,
     manifest_repository: ProjectManifestRepository,
+    decision_repository: DecisionRepository,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -291,13 +300,14 @@ def build_app(
             ),
         ] = False,
     ) -> None:
-        """Пересобрать SQL индекс по manifest'ам (T098)."""
+        """Пересобрать SQL индекс по manifest'ам (T098); sync decisions (T099)."""
         root: Path = Path(storage_root) if storage_root is not None else projects_root
         summary = asyncio.run(
             reindex_projects_use_case(
                 storage_root=root,
                 repo=metadata_repository,
                 manifest_repo=manifest_repository,
+                decision_repo=decision_repository,
                 remove_orphans=remove_orphans,
             ),
         )
@@ -319,5 +329,165 @@ def build_app(
             for failed_path, message in summary.failed:
                 typer.echo(f'  {failed_path}: {message}', err=True)
             raise typer.Exit(code=1)
+
+    decision_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    app.add_typer(decision_app, name='decision')
+
+    @decision_app.command('add')
+    def decision_add(
+        *,
+        project: Annotated[
+            str,
+            typer.Option('--project', help='Имя проекта'),
+        ],
+        title: Annotated[
+            str,
+            typer.Option('--title', help='Заголовок решения'),
+        ],
+        summary: Annotated[
+            str,
+            typer.Option('--summary', help='Краткое описание (1-2 строки)'),
+        ],
+        rationale: Annotated[
+            str,
+            typer.Option('--rationale', help='Обоснование выбора'),
+        ],
+        status: Annotated[
+            DecisionStatus,
+            typer.Option('--status', help='proposed | accepted | rejected'),
+        ] = DecisionStatus.ACCEPTED,
+        decision_date: Annotated[
+            datetime | None,
+            typer.Option(
+                '--date',
+                help='Дата решения (YYYY-MM-DD); по умолчанию сегодня UTC',
+                formats=['%Y-%m-%d'],
+            ),
+        ] = None,
+        evidence: Annotated[
+            str | None,
+            typer.Option(
+                '--evidence',
+                help='Путь к данным-подтверждению, относительный к проекту',
+            ),
+        ] = None,
+        session: Annotated[
+            str | None,
+            typer.Option(
+                '--session',
+                help='Путь к файлу сессии, относительный к проекту',
+            ),
+        ] = None,
+    ) -> None:
+        date_value = (
+            decision_date.date()
+            if decision_date is not None
+            else datetime.now(UTC).date()
+        )
+        try:
+            decision = asyncio.run(
+                add_decision_use_case(
+                    project_name=project,
+                    title=title,
+                    decision_date=date_value,
+                    status=status,
+                    summary=summary,
+                    rationale=rationale,
+                    evidence=Path(evidence) if evidence is not None else None,
+                    session=Path(session) if session is not None else None,
+                    repo=metadata_repository,
+                    manifest_repo=manifest_repository,
+                    decision_repo=decision_repository,
+                ),
+            )
+        except ProjectNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        except ProjectManifestMissingError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        except DecisionPersistenceError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        except IndexPersistenceError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        except ValidationError as exc:
+            messages = '; '.join(error['msg'] for error in exc.errors())
+            typer.echo(f'Invalid decision: {messages}', err=True)
+            raise typer.Exit(code=2) from exc
+        typer.echo(f'Added {decision.id}: {decision.title}')
+
+    @decision_app.command('list')
+    def decision_list(
+        *,
+        project: Annotated[
+            str,
+            typer.Option('--project', help='Имя проекта'),
+        ],
+    ) -> None:
+        try:
+            decisions = asyncio.run(
+                list_decisions_use_case(
+                    project_name=project,
+                    repo=metadata_repository,
+                    manifest_repo=manifest_repository,
+                    decision_repo=decision_repository,
+                ),
+            )
+        except ProjectNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        except ProjectManifestMissingError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        if not decisions:
+            typer.echo('No decisions found.')
+            return
+        for d in decisions:
+            typer.echo(
+                f'{d.id}\t{d.date.isoformat()}\t{d.status.value}\t{d.summary}',
+            )
+
+    @decision_app.command('show')
+    def decision_show(
+        *,
+        project: Annotated[
+            str,
+            typer.Option('--project', help='Имя проекта'),
+        ],
+        decision_id: Annotated[
+            str,
+            typer.Option('--id', help='ID решения (D001)'),
+        ],
+    ) -> None:
+        try:
+            decision = asyncio.run(
+                get_decision_use_case(
+                    project_name=project,
+                    decision_id=decision_id,
+                    repo=metadata_repository,
+                    manifest_repo=manifest_repository,
+                    decision_repo=decision_repository,
+                ),
+            )
+        except ProjectNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        except ProjectManifestMissingError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        except DecisionNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(f'# {decision.id}: {decision.title}')
+        typer.echo(f'Дата: {decision.date.isoformat()}')
+        typer.echo(f'Статус: {decision.status.value}')
+        if decision.session is not None:
+            typer.echo(f'Сессия: {decision.session}')
+        typer.echo(f'\nSummary:\n{decision.summary}')
+        typer.echo(f'\nRationale:\n{decision.rationale}')
+        if decision.evidence is not None:
+            typer.echo(f'\nEvidence: {decision.evidence}')
 
     return app
