@@ -19,6 +19,15 @@ def test_project_creates_with_required_fields() -> None:
     assert project.path == Path('/projects/my-amp')
     assert isinstance(project.id, UUID)
     assert project.created_at.tzinfo is not None
+    assert project.updated_at.tzinfo is not None
+
+
+def test_project_updated_at_close_to_created_at_on_fresh_create() -> None:
+    """On fresh create оба timestamp'а — `now()`; разница в микросекунды."""
+    project = Project(name='p', path=Path('/p'))
+
+    delta = abs((project.updated_at - project.created_at).total_seconds())
+    assert delta < 1.0
 
 
 def test_project_uuid_unique_per_instance() -> None:

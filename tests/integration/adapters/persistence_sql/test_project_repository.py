@@ -227,6 +227,43 @@ async def test_update_persists_rename_and_phase_transitions(
     assert loaded.status is ProjectStatus.SCHEMATIC
 
 
+async def test_save_is_idempotent_upsert_on_existing_id(tmp_path: Path) -> None:
+    """T098 C1: `save` = insert-or-update by id, без IntegrityError.
+
+    Reindex/CreateProject в T098 не знают заранее, есть ли запись —
+    `save` должен покрывать оба случая. Проверяем: повторный save
+    с тем же id и обновлёнными name/phases приземляет новые значения.
+    """
+    db_file = tmp_path / 'test_upsert.sqlite'
+    database_url = f'sqlite+aiosqlite:///{db_file}'
+
+    await run_migrations(database_url)
+
+    engine = create_async_engine(database_url)
+    try:
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        repo = SqlAlchemyMetadataRepository(session_factory)
+
+        project = Project(name='before', path=Path('/p/before'))
+        await repo.save(project)
+
+        project.rename('after')
+        project.transition_phase(PhaseName.SCHEMATIC, PhaseStatus.IN_PROGRESS)
+        await repo.save(project)  # повторный save = update, не падает
+
+        loaded = await repo.get_by_name('after')
+        old = await repo.get_by_name('before')
+        rows_count = await repo.list_all()
+    finally:
+        await engine.dispose()
+
+    assert old is None
+    assert loaded is not None
+    assert loaded.id == project.id
+    assert loaded.phases[0].status is PhaseStatus.IN_PROGRESS
+    assert len(rows_count) == 1
+
+
 async def test_update_unknown_id_raises_value_error(tmp_path: Path) -> None:
     db_file = tmp_path / 'test_update_404.sqlite'
     database_url = f'sqlite+aiosqlite:///{db_file}'

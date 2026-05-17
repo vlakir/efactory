@@ -14,6 +14,9 @@ from adapters.inbound.cli.app import build_app
 from adapters.outbound.file_store.project_file_repository import (
     FilesystemProjectFileRepository,
 )
+from adapters.outbound.manifest_yaml.project_manifest_repository import (
+    FilesystemProjectManifestRepository,
+)
 from adapters.outbound.persistence_sql.migrations_runner import run_migrations
 from adapters.outbound.persistence_sql.repository import (
     SqlAlchemyMetadataRepository,
@@ -59,6 +62,7 @@ def build_cli_app() -> typer.Typer:
         projects_root=settings.projects_root,
         metadata_repository=SqlAlchemyMetadataRepository(session_factory),
         file_repository=FilesystemProjectFileRepository(),
+        manifest_repository=FilesystemProjectManifestRepository(),
     )
 
 

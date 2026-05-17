@@ -15,6 +15,7 @@ def project_to_model(project: Project) -> ProjectModel:
         name=project.name,
         path=str(project.path),
         created_at=project.created_at,
+        updated_at=project.updated_at,
         phases=[_phase_to_model(project.id, phase) for phase in project.phases],
     )
 
@@ -35,6 +36,7 @@ def model_to_project(model: ProjectModel) -> Project:
         name=model.name,
         path=Path(model.path),
         created_at=model.created_at,
+        updated_at=model.updated_at,
         phases=canonical,
     )
 

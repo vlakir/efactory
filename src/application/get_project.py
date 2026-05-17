@@ -1,18 +1,30 @@
 """
-GetProject — use case: получить проект по имени или сигналить ошибку.
+GetProject — use case manifest-first (T098).
 
-При отсутствии записи в repo поднимается `ProjectNotFoundError`. Это
-явное application-исключение, чтобы CLI / API могли отличить «нет
-такого» от «БД упала» и вернуть пользователю осмысленный exit-code.
+SQL `metadata_repo.get_by_name` нужен только чтобы (a) убедиться, что
+проект известен системе, (b) получить `path`. Все остальные данные
+проекта (имя, фазы, updated_at) берутся из YAML manifest'а — он
+источник истины (CONCEPT §4.1).
+
+Ошибки:
+- `ProjectNotFoundError` — нет SQL-строки (значит проекта нет вовсе).
+- `ProjectManifestMissingError` — SQL знает, manifest на диске нет
+  (desync; пользователь зовёт `reindex` или восстанавливает файл).
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from application.errors import ProjectManifestMissingError
+from ports.outbound.project_manifest_repository import ManifestNotFoundError
+
 if TYPE_CHECKING:
     from domain.project import Project
     from ports.outbound.metadata_repository import MetadataRepository
+    from ports.outbound.project_manifest_repository import (
+        ProjectManifestRepository,
+    )
 
 
 class ProjectNotFoundError(Exception):
@@ -27,8 +39,12 @@ async def get_project(
     *,
     name: str,
     repo: MetadataRepository,
+    manifest_repo: ProjectManifestRepository,
 ) -> Project:
-    project = await repo.get_by_name(name)
-    if project is None:
+    sql_row = await repo.get_by_name(name)
+    if sql_row is None:
         raise ProjectNotFoundError(name)
-    return project
+    try:
+        return await manifest_repo.load(sql_row.path)
+    except ManifestNotFoundError as exc:
+        raise ProjectManifestMissingError(name, sql_row.path) from exc

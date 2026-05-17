@@ -13,6 +13,7 @@ dependencies = [
     "kuzu>=0.11.3",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.1",
+    "pyyaml>=6.0.3",
     "sqlalchemy[asyncio]>=2.0.49",
     "typer>=0.25.1",
 ]
@@ -29,6 +30,7 @@ dev = [
     "pytest-asyncio>=1.0",
     "import-linter>=2.11",
     "pre-commit>=4.6.0",
+    "types-pyyaml>=6.0.12.20260510",
 ]
 
 
@@ -197,4 +199,5 @@ modules = [
     "adapters.inbound.cli",
     "adapters.outbound.persistence_sql",
     "adapters.outbound.file_store",
+    "adapters.outbound.manifest_yaml",
 ]

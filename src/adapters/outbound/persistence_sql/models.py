@@ -19,6 +19,7 @@ class ProjectModel(Base):
     name: Mapped[str] = mapped_column(String(100), unique=True)
     path: Mapped[str] = mapped_column(String(1024))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     phases: Mapped[list['PhaseModel']] = relationship(
         cascade='all, delete-orphan',

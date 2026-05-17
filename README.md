@@ -100,19 +100,42 @@ open-source решений.**
 ```bash
 uv sync                                       # поставить зависимости
 uv run efactory project create --name myprj   # создать новый проект
+uv run efactory project list                  # все проекты
+uv run efactory project show --name myprj     # подробности
+uv run efactory project update myprj --phase schematic --status in_progress
+uv run efactory project delete --name myprj
 ```
 
 По умолчанию данные кладутся в `$XDG_DATA_HOME/efactory/`
 (или `$HOME/.local/share/efactory/`, если переменная не задана):
-SQLite-метаданные — `efactory.db`, каталоги проектов — `projects/`.
-Переопределить пути можно через env-переменные `EFACTORY_PROJECTS_ROOT`
-и `EFACTORY_DATABASE_URL` либо через файл `.secrets` в директории
-запуска (уже в `.gitignore`).
+каталоги проектов — `projects/<name>/`, SQLite-индекс —
+`efactory.db`. Переопределить пути можно через env-переменные
+`EFACTORY_PROJECTS_ROOT` / `EFACTORY_DATABASE_URL` либо через файл
+`.secrets` в директории запуска (уже в `.gitignore`).
 
-Текущий объём функциональности — **Walking Skeleton T085**: сквозной
-use case `CreateProject` (CLI → application → SQLite-метаданные +
-filesystem-каталог проекта → domain). По мере добавления функциональности
-будут появляться новые команды — `efactory --help`.
+### Manifest как источник истины (T098)
+
+В каталоге каждого проекта лежит `project.yaml` — это **источник
+истины**: имя, фазы, временные метки. SQLite — быстрый индекс для
+`list`; всё остальное (`show`, `update`) читает manifest напрямую.
+
+Практические следствия:
+
+- **Портативность.** Папку проекта (`<storage_root>/<name>/`) можно
+  целиком архивировать, переносить на другую машину, распаковывать,
+  запускать `efactory project reindex` — индекс восстановится.
+- **Ручная правка.** `project.yaml` можно редактировать руками
+  (например, пометить фазу как `done`); `show` сразу покажет
+  изменения, `list` подтянет их после `reindex`.
+
+```bash
+uv run efactory project reindex                    # пересобрать SQL индекс
+uv run efactory project reindex --remove-orphans   # + удалить SQL-only записи
+```
+
+`reindex` идемпотентен и работает в обе стороны: manifest → SQL
+(основной режим) и SQL → manifest (bootstrap для проектов,
+созданных до T098).
 
 ## Зависимости
 

@@ -27,9 +27,26 @@ class SqlAlchemyMetadataRepository:
         self._session_factory = session_factory
 
     async def save(self, project: Project) -> None:
-        model = project_to_model(project)
+        """
+        Idempotent upsert by id (T098 C1).
+
+        Если строки с таким id нет — `session.add` (INSERT); если есть —
+        копируем поля и перезаписываем коллекцию phases (delete-orphan
+        каскад почистит старые). Один путь для CreateProject и
+        ReindexProjects.
+        """
         async with self._session_factory() as session, session.begin():
-            session.add(model)
+            existing = await session.get(ProjectModel, project.id)
+            if existing is None:
+                session.add(project_to_model(project))
+                return
+            existing.name = project.name
+            existing.path = str(project.path)
+            existing.created_at = project.created_at
+            existing.updated_at = project.updated_at
+            existing.phases = [
+                _phase_to_model(project.id, phase) for phase in project.phases
+            ]
 
     async def update(self, project: Project) -> None:
         """

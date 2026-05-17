@@ -1,0 +1,110 @@
+"""
+ReindexProjects — пересборка SQL индекса по manifest'ам (T098).
+
+Работает в две стороны (Resolved #3 (B)):
+- **Primary mode** (manifest → SQL): сканирует `storage_root`,
+  upsert'ит каждый найденный manifest в SQL. Это штатный путь после
+  переноса проектов или потери `index.db`.
+- **Bootstrap mode** (SQL → manifest): для SQL-строк, у которых нет
+  manifest на диске (pre-T098 проекты), генерирует `project.yaml`
+  из SQL-данных. `updated_at = created_at` (Clarify #10).
+
+`remove_orphans=True` отменяет bootstrap: SQL-only записи удаляются
+из индекса и попадают в `orphans` summary как «удалённые».
+
+Best-effort (Resolved #6): первая ошибка не блокирует остальные.
+Любые errors собираются в `failed: [(path, message)]` — CLI Phase 3
+читает их и выставляет exit_code = 1 при non-empty failed.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+from sqlalchemy.exc import SQLAlchemyError
+
+from ports.outbound.project_manifest_repository import (
+    ManifestInvalidError,
+    ManifestNotFoundError,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ports.outbound.metadata_repository import MetadataRepository
+    from ports.outbound.project_manifest_repository import (
+        ProjectManifestRepository,
+    )
+
+
+@dataclass(frozen=True)
+class ReindexSummary:
+    indexed: int = 0
+    bootstrapped: int = 0
+    orphans: list[str] = field(default_factory=list)
+    failed: list[tuple[Path, str]] = field(default_factory=list)
+
+
+async def reindex_projects(
+    *,
+    storage_root: Path,
+    repo: MetadataRepository,
+    manifest_repo: ProjectManifestRepository,
+    remove_orphans: bool = False,
+) -> ReindexSummary:
+    indexed = 0
+    bootstrapped = 0
+    orphans: list[str] = []
+    failed: list[tuple[Path, str]] = []
+
+    discovered = await manifest_repo.discover_all(storage_root)
+    discovered_set = set(discovered)
+
+    for manifest_path in discovered:
+        try:
+            project = await manifest_repo.load(manifest_path)
+        except (ManifestNotFoundError, ManifestInvalidError) as exc:
+            failed.append((manifest_path, str(exc)))
+            continue
+        try:
+            await repo.save(project)
+        except SQLAlchemyError as exc:
+            failed.append((manifest_path, str(exc)))
+            continue
+        indexed += 1
+
+    sql_rows = await repo.list_all()
+    for sql_row in sql_rows:
+        if sql_row.path in discovered_set:
+            continue
+        if remove_orphans:
+            try:
+                await repo.delete_by_name(sql_row.name)
+            except SQLAlchemyError as exc:
+                failed.append((sql_row.path, str(exc)))
+                continue
+            orphans.append(sql_row.name)
+            continue
+        # Bootstrap mode: SQL-only → создать manifest из SQL-данных
+        # с updated_at = created_at (Clarify #10).
+        bootstrap_project = sql_row.model_copy(
+            update={'updated_at': sql_row.created_at},
+        )
+        try:
+            await manifest_repo.save(bootstrap_project)
+        except OSError as exc:
+            orphans.append(sql_row.name)
+            failed.append((sql_row.path, str(exc)))
+            continue
+        bootstrapped += 1
+
+    return ReindexSummary(
+        indexed=indexed,
+        bootstrapped=bootstrapped,
+        orphans=orphans,
+        failed=failed,
+    )
+
+
+__all__ = ['ReindexSummary', 'reindex_projects']
