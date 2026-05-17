@@ -61,22 +61,29 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T098** — [taken 2026-05-17] Manifest (`project.yaml`) как primary
-  storage; SQL = индекс / cache. Реализация фазы C направления D
-  (ADR T096). Новый outbound port `ProjectManifestRepository` и
-  filesystem adapter (YAML по схеме CONCEPT §4.3). Write pattern:
-  manifest first → SQL reindex after. Read pattern: `show` из
-  manifest (truth), `list` из SQL (быстро). Новая CLI команда
-  `efactory project reindex`. Backward compat: миграция «существующие
-  SQL-only проекты получают manifest». Спека —
-  `specs/T098-manifest-primary/spec.md`. Ветка
-  `T098-manifest-primary`. Depends on T097 ✓.
-
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
 
+- **T098** — [closed 2026-05-17, PR #19] Manifest (`project.yaml`)
+  как primary storage; SQL = индекс / cache. Реализация фазы C
+  направления D (ADR T096). Outbound port
+  `ProjectManifestRepository` + filesystem YAML adapter (PyYAML
+  safe_load, atomic os.replace, exclude path для портативности,
+  schema_version=1). Write pattern: manifest first → SQL upsert
+  (idempotent save C1). Read pattern: `show` из manifest, `list`
+  из SQL. Новые application errors: `IndexPersistenceError` (C2
+  partial failure), `ProjectManifestMissingError` (desync).
+  `ReindexProjects` use case + `ReindexSummary {indexed,
+  bootstrapped, orphans, failed}` работает в обе стороны
+  (manifest→SQL primary + SQL→manifest bootstrap для pre-T098).
+  CLI `efactory project reindex [--storage-root]
+  [--remove-orphans]`. SQL миграция `cc78f2ee52bb`
+  (projects.updated_at + backfill = created_at). 176 passed,
+  coverage 96.92%. Spec Analyzed
+  (`specs/T098-manifest-primary/spec.md`). Portability и
+  partial-failure acceptance — e2e на tmp_path.
 - **T097** — [closed 2026-05-17, PR #18] Phase VO + derived
   `Project.status` + Update use case. Реализация фазы B направления
   D из ADR T096. Domain: `Phase` frozen-VO (6 фаз × методы
