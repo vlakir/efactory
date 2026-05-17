@@ -87,12 +87,16 @@ PhasesTuple = Annotated[tuple[Phase, ...], AfterValidator(_validate_phases)]
 class Project(BaseModel):
     """Aggregate root: один проект РЭА (схема, плата, корпус, документация)."""
 
-    model_config = ConfigDict(validate_assignment=True)
+    # `extra='ignore'` — страховка для T098 YAML manifest load:
+    # ручные правки могут содержать поля будущих фич (description,
+    # decisions, etc.); v1 их молча игнорирует, документировано в спеке.
+    model_config = ConfigDict(validate_assignment=True, extra='ignore')
 
     id: UUID = Field(default_factory=uuid4)
     name: ProjectName
     path: Path
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     phases: PhasesTuple = Field(default_factory=_default_phases)
 
     # `@computed_field` + `@property` — канонический Pydantic v2 паттерн
