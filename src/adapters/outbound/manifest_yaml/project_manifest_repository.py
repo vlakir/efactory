@@ -9,6 +9,10 @@ import yaml
 from pydantic import ValidationError
 
 from domain.project import Project
+from ports.outbound.project_manifest_repository import (
+    ManifestInvalidError,
+    ManifestNotFoundError,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -18,12 +22,13 @@ MANIFEST_FILENAME: Final = 'project.yaml'
 SCHEMA_VERSION: Final = 1
 
 
-class ManifestNotFoundError(Exception):
-    """`project.yaml` отсутствует в каталоге проекта."""
-
-
-class ManifestInvalidError(Exception):
-    """`project.yaml` повреждён или не проходит Pydantic-валидацию."""
+__all__ = [
+    'MANIFEST_FILENAME',
+    'SCHEMA_VERSION',
+    'FilesystemProjectManifestRepository',
+    'ManifestInvalidError',
+    'ManifestNotFoundError',
+]
 
 
 class FilesystemProjectManifestRepository:

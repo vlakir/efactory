@@ -10,6 +10,26 @@ if TYPE_CHECKING:
     from domain.project import Project
 
 
+class ManifestNotFoundError(Exception):
+    """
+    `project.yaml` отсутствует в каталоге проекта.
+
+    Контрактное исключение порта: бросается реализацией `load()` /
+    `exists()`-paired операций. Объявлено здесь (а не в adapter'е),
+    чтобы application-слой мог ловить его без нарушения layered
+    contract `application > ports > domain`.
+    """
+
+
+class ManifestInvalidError(Exception):
+    """
+    `project.yaml` повреждён или не проходит Pydantic-валидацию.
+
+    Контрактное исключение порта: бросается реализацией `load()`
+    при YAML-syntax / schema-error.
+    """
+
+
 class ProjectManifestRepository(Protocol):
     """
     YAML manifest как primary storage проекта (T098).

@@ -1,22 +1,26 @@
 """
 DeleteProject — use case: удалить проект из метаданных и из FS.
 
-Порядок операций: get → delete DB → delete FS. Если адаптер БД упадёт,
-проект остаётся в системе целиком — пользователь может повторить
-вызов. Если упадёт FS-операция, метаданных уже нет (можно проверить
-через `project show`), а каталог остался как orphan — это
-относительно безопасное состояние, его легко вычистить вручную или
-будущей `cleanup`-командой.
+Порядок операций: SQL lookup (для path) → delete DB → delete FS.
+Если adapter БД упадёт, проект остаётся в системе целиком — повтор
+вызова безопасен. Если упадёт FS-операция, метаданных уже нет, а
+каталог остался как orphan — безопасное состояние, чистится
+вручную / будущим `cleanup`.
 
-При отсутствии проекта поднимается `ProjectNotFoundError` (тот же
-класс, что у `GetProject` T089 — общий для read-and-act use cases).
+В отличие от Get/Update use case'ов, delete НЕ читает manifest:
+нам нужна только `path` для `remove_project_directory`, а сам
+manifest исчезнет вместе с папкой. Это и аккуратно работает в
+случае отсутствующего manifest'а (desync до T098 → delete всё равно
+очистит SQL-строку и пустую папку).
+
+При отсутствии проекта поднимается `ProjectNotFoundError`.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from application.get_project import ProjectNotFoundError, get_project
+from application.get_project import ProjectNotFoundError
 
 if TYPE_CHECKING:
     from ports.outbound.metadata_repository import MetadataRepository
@@ -29,9 +33,11 @@ async def delete_project(
     repo: MetadataRepository,
     file_repo: ProjectFileRepository,
 ) -> None:
-    project = await get_project(name=name, repo=repo)
+    sql_row = await repo.get_by_name(name)
+    if sql_row is None:
+        raise ProjectNotFoundError(name)
     await repo.delete_by_name(name)
-    await file_repo.remove_project_directory(project.path)
+    await file_repo.remove_project_directory(sql_row.path)
 
 
 __all__ = ['ProjectNotFoundError', 'delete_project']
