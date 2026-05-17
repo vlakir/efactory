@@ -47,32 +47,6 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   если (а) — оплачено, проверено хотя бы на одном PR без rate-limit.
   Источник: ретро `[0.2.0]`.
 
-- **T097** — [2026-05-17] **Phase VO + derived Project.status +
-  Update use case.** Реализация фазы B направления D
-  (`DECISIONS.md` → ADR 2026-05-17 «Domain expansion direction:
-  D»). Domain получает embedded value object `Phase` (`name:
-  PhaseName enum [schematic, simulation, pcb, magnetics,
-  enclosure, documentation]`, `status: PhaseStatus enum [pending,
-  in_progress, done, skipped]`, `started_at`, `completed_at`,
-  методы `start() / complete() / skip()` с инвариантами).
-  `Project` теперь содержит collection of 6 Phase (default — все
-  `pending`). `Project.status` становится **derived computed
-  property** от phases (mapping: все pending → `idea`; schematic
-  done → `schematic`; +simulation done → `simulated`; +pcb →
-  `pcb_designed`; +magnetics → `magnetics_done`; +enclosure →
-  `enclosure_done`; +documentation → `production_ready`. Phase
-  со status=`skipped` считается «закрытой» для derivation).
-  ProjectStatus enum расширяется до 7 значений из CONCEPT §4.3.
-  Update use case `efactory project update --name X --phase Y
-  --status Z` + `add-phase` / `skip-phase` (из CONCEPT §4.1).
-  Acceptance: TDD outside-in для всех новых use cases (e2e →
-  unit с fake-портами → integration); SQL миграция (drop stored
-  `status`, добавить таблицу `phases`); 5-step gate зелёный;
-  `domain/project.py` с инвариантами Phase покрыт unit-тестами
-  (включая отказы: `complete()` non-started, `start()` уже
-  started, и т.д.). Ветка `T097-phase-vo`. Спека —
-  `specs/T097-phase-vo/spec.md` при взятии в работу.
-
 - **T098** — [2026-05-17] **Manifest (`project.yaml`) как primary
   storage; SQL = индекс / cache.** Реализация фазы C направления
   D. Новый outbound port `ProjectManifestRepository`

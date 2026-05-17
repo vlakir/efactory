@@ -61,6 +61,11 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T097** — Phase VO + derived `Project.status` + Update use case.
+  Реализация фазы B направления D (`DECISIONS.md` → ADR 2026-05-17
+  «Domain expansion direction: D»). Ветка `T097-phase-vo`, спека
+  `specs/T097-phase-vo/spec.md`.
+
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
