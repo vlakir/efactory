@@ -61,21 +61,18 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T095** — [2026-05-17] Auto-install pre-commit hook через
-  `uv sync` (post-install). Реализовано через hatchling custom
-  build hook (`hatch_build.py`); делегирует на `uv run --no-sync
-  pre-commit install --hook-type pre-push` при editable build.
-  Guard'ы: skip при отсутствии `.git/` или `uv` на PATH.
-  Acceptance: после `uv sync` хук установлен автоматически ✓;
-  README обновлён ✓; e2e на чистом hook'е проверен ✓; ADR в
-  `DECISIONS.md` записан ✓; spec в `specs/T095-auto-install-hook/
-  spec.md` (Done) ✓. Ветка `T095-auto-install-hook`.
-
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
 
+- **T095** — [closed 2026-05-17, PR #16] Auto-install pre-commit
+  pre-push hook через hatchling custom build hook (`hatch_build.py`).
+  После `git clone && uv sync` хук установлен автоматически.
+  Acceptance: ✓ (auto-install после `uv sync`, README обновлён,
+  e2e восстановления hook'а из ничего, ADR в `DECISIONS.md`,
+  spec Done). Сайд-эффект: S603 в общий `ruff.lint.ignore`
+  (первый subprocess в проекте, false-positive).
 - **T093** — [closed 2026-05-17, PR #15] BOARD-запись закрытия
   задачи: выбран подход (а) — closing-правка BOARD отдельным
   финальным commit'ом **после** `gh pr create`, в том же PR.
