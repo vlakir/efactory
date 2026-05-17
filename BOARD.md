@@ -66,16 +66,6 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
 
-- **T001** — [closed 2026-05-15, PR #1] Разложить `CONCEPT.md` по
-  живой проектной документации (`README.md` + `DECISIONS.md` +
-  `BACKLOG.md`). Запись о изменениях — в `CHANGELOG.md` `[Unreleased]`.
-- **T050** — [closed 2026-05-15, PR #3] Декомпозировать фазы 5–8
-  дорожной карты CONCEPT.md §13 в BACKLOG.md (T051–T084). Запись
-  о изменениях — в `CHANGELOG.md` `[Unreleased]`.
-- **T085** — [closed 2026-05-17, PR #5] Архитектурный
-  фундамент: hexagonal layout, Pydantic domain, SQLAlchemy 2.0
-  + SQLite (метаданные) + Kùzu (граф топологий, smoke-тест),
-  async-первичность, ручная DI-композиция, Walking Skeleton
-  CreateProject end-to-end по TDD outside-in. 9 ADR в
-  `DECISIONS.md`, изоляция слоёв через import-linter. Запись
-  о изменениях — в `CHANGELOG.md` `[Unreleased]`.
+<!-- Пусто после cut milestone 0.1.0 (2026-05-17): T001 / T050 / T085
+     перенесены в CHANGELOG.md → ## [0.1.0]. -->
+
