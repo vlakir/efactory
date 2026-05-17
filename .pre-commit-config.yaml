@@ -1,0 +1,53 @@
+# 5-проверочный гейт перед каждым git push (T091).
+#
+# Установка (один раз после клонирования / uv sync):
+#     uv run pre-commit install --hook-type pre-push
+#
+# Запуск вручную (без push):
+#     uv run pre-commit run --all-files
+#
+# Скип hook'а (только если знаешь зачем):
+#     SKIP=pytest git push
+#     git push --no-verify
+#
+# Hook'и — local, запускают наши `uv run`-команды, чтобы версия
+# инструмента совпадала с той, что фиксирована в uv.lock (без
+# дублирующего pinning через mirror-репозитории pre-commit).
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check .
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: ruff-format
+        name: ruff format --check
+        entry: uv run ruff format --check .
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: mypy
+        name: mypy src
+        entry: uv run mypy src
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: lint-imports
+        name: lint-imports
+        entry: uv run lint-imports
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: pytest
+        name: pytest
+        entry: uv run pytest
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

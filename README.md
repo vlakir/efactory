@@ -123,14 +123,44 @@ uv add --dev <pkg>            # dev
 
 ## Проверки перед push
 
+Гейт из 5 проверок (все должны проходить с 0 ошибок):
+
 ```bash
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy <путь к коду>
+uv run mypy src
+uv run lint-imports
+uv run pytest
 ```
 
-Все три должны проходить с 0 ошибок. Обходные манёвры (`# noqa`,
-`# type: ignore`, расширение `ignore`-секции) — только по согласованию.
+Гейт автоматизирован через [pre-commit](https://pre-commit.com) на
+stage `pre-push`. Установка — один раз после клонирования:
+
+```bash
+uv sync
+uv run pre-commit install --hook-type pre-push
+```
+
+После этого `git push` сам прогонит все 5 проверок и заблокирует
+push, если что-то не зелёное. Существующий `.git/hooks/pre-push`
+(защита `main` от прямого push) сохраняется в `pre-push.legacy`
+и запускается первым.
+
+Запустить проверки без push:
+
+```bash
+uv run pre-commit run --all-files --hook-stage pre-push
+```
+
+Если нужно скипнуть конкретный hook (только если знаешь зачем):
+
+```bash
+SKIP=pytest git push
+git push --no-verify   # пропускает все pre-push hooks
+```
+
+Обходные манёвры (`# noqa`, `# type: ignore`, расширение
+`ignore`-секции) — только по согласованию.
 
 ## Структура проекта
 

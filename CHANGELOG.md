@@ -26,6 +26,21 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 ## [Unreleased]
 
 ### Added
+- Pre-commit hook на 5-проверочный гейт через
+  [pre-commit](https://pre-commit.com) framework на stage `pre-push`.
+  - `.pre-commit-config.yaml` с пятью local hooks (`ruff check` /
+    `ruff format --check` / `mypy src` / `lint-imports` / `pytest`).
+    Local-стиль (без mirror-репозиториев) — версии инструментов
+    те же, что фиксированы в `uv.lock`, без отдельного pinning.
+  - `pre-commit` добавлен в dev-deps (`pyproject.toml` / `uv.lock`).
+  - Однократная установка после клонирования —
+    `uv run pre-commit install --hook-type pre-push`. Документировано
+    в README → «Проверки перед push».
+  - Существующий `.git/hooks/pre-push` (защита `main` от прямого push)
+    сохраняется как `.git/hooks/pre-push.legacy` и запускается первым
+    в migration mode pre-commit.
+  - `git push` теперь автоматически прогоняет гейт; способы скипа
+    (`SKIP=pytest git push`, `git push --no-verify`) документированы. (T091)
 - Четвёртый use case `DeleteProject` — завершает базовый набор
   CRUD (Create, Read-Many, Read-One, Delete) для домена `Project`.
   - `ports/outbound/metadata_repository.py`: + `delete_by_name(name) -> None`.
