@@ -61,25 +61,29 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T099** — [taken 2026-05-17] Decision как новый aggregate root
-  (CONCEPT §4.4). Реализация фазы D направления D из ADR T096.
-  `Decision` frozen-VO + `DecisionRef` (компактный для manifest) +
-  `DecisionId` (Annotated D###) + `DecisionStatus` enum. Dual-
-  storage: markdown `decisions/D###_<slug>.md` (truth) + reference
-  в `project.yaml → decisions:` (index). Outbound port
-  `DecisionRepository` + filesystem markdown adapter. Use cases
-  `AddDecision / ListDecisions / GetDecision`. Расширение
-  `ReindexProjects`: sync `Project.decisions` с реальными markdown
-  файлами. CLI `efactory decision add / list / show`. ID auto-
-  increment per project. Спека —
-  `specs/T099-decision-aggregate/spec.md` (Analyzed). Ветка
-  `T099-decision-aggregate`. Depends on T097 ✓ + T098 ✓.
-
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
 
+- **T099** — [closed 2026-05-17, PR #20] Decision как новый
+  aggregate root (CONCEPT §4.4). Реализация фазы D направления D
+  из ADR T096. `Decision` frozen-VO + `DecisionRef` + `DecisionId`
+  (Annotated D### / D1000+) + `DecisionStatus` enum
+  (proposed | accepted | rejected). Dual-storage: markdown
+  `decisions/D###_<slug>.md` (truth, CONCEPT §4.4 шаблон) +
+  reference в `project.yaml → decisions:` (index). Outbound port
+  `DecisionRepository` + filesystem markdown adapter (atomic
+  write, anchor-парсинг, NFKD slugify). Use cases
+  `AddDecision / ListDecisions / GetDecision` + новый
+  `DecisionPersistenceError` (N3). Расширение `ReindexProjects`:
+  optional `decision_repo` пересобирает `Project.decisions`
+  из реальных markdown файлов. CLI subapp `efactory decision
+  add / list / show`. ID auto-increment per project. 238 passed,
+  coverage 94.18%. Spec Analyzed
+  (`specs/T099-decision-aggregate/spec.md`). Manual-edit
+  acceptance (ручной `D001_*.md` → reindex → list) — e2e
+  тест.
 - **T098** — [closed 2026-05-17, PR #19] Manifest (`project.yaml`)
   как primary storage; SQL = индекс / cache. Реализация фазы C
   направления D (ADR T096). Outbound port
