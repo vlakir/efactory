@@ -47,27 +47,6 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   если (а) — оплачено, проверено хотя бы на одном PR без rate-limit.
   Источник: ретро `[0.2.0]`.
 
-- **T098** — [2026-05-17] **Manifest (`project.yaml`) как primary
-  storage; SQL = индекс / cache.** Реализация фазы C направления
-  D. Новый outbound port `ProjectManifestRepository`
-  (`load(path) -> Project`, `save(project) -> None`) и adapter
-  `FilesystemProjectManifestRepository` (YAML по схеме CONCEPT §4.3).
-  Write pattern: `create / update / delete` — manifest first, SQL
-  reindexed после. Read pattern: `show` — из manifest (truth);
-  `list` — из SQL (быстро). Новая CLI команда `efactory project
-  reindex` — пересобирает SQL индекс из всех manifest'ов.
-  Backward compat: миграция «существующие SQL-only проекты
-  получают manifest» (одноразовая команда или auto-on-first-read).
-  Acceptance: TDD outside-in; e2e на `create / show / update`
-  через manifest; `reindex` integration; миграция SQL-only →
-  manifest проверена; 5-step gate зелёный; CONCEPT §4.1
-  «Портативность» подтверждается: tar.gz папки проекта,
-  распаковка на другой машине → `efactory project show` работает
-  (после `reindex` если SQL индекс отсутствует). Ветка
-  `T098-manifest-primary`. Спека —
-  `specs/T098-manifest-primary/spec.md` при взятии в работу.
-  Depends on T097.
-
 - **T099** — [2026-05-17] **Decision как новый aggregate root
   (CONCEPT §4.4).** Реализация фазы A направления D. Domain.Decision
   с полями {`id: D###` formatted, `title`, `date`, `status:

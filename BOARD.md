@@ -61,6 +61,17 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T098** — [taken 2026-05-17] Manifest (`project.yaml`) как primary
+  storage; SQL = индекс / cache. Реализация фазы C направления D
+  (ADR T096). Новый outbound port `ProjectManifestRepository` и
+  filesystem adapter (YAML по схеме CONCEPT §4.3). Write pattern:
+  manifest first → SQL reindex after. Read pattern: `show` из
+  manifest (truth), `list` из SQL (быстро). Новая CLI команда
+  `efactory project reindex`. Backward compat: миграция «существующие
+  SQL-only проекты получают manifest». Спека —
+  `specs/T098-manifest-primary/spec.md`. Ветка
+  `T098-manifest-primary`. Depends on T097 ✓.
+
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
