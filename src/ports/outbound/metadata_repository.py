@@ -12,9 +12,11 @@ class MetadataRepository(Protocol):
     """
     Persistence для метаданных проектов и сущностей предметной области.
 
-    На старте Walking Skeleton реализован только `save(Project)`.
-    Расширяется методами `get_by_id`, `list`, `delete` по мере появления
-    соответствующих use cases.
+    На старте Walking Skeleton реализован `save(Project)` (T085).
+    Расширяется методами `list_all` (T088), `get_by_name` / `get_by_id`,
+    `delete` по мере появления соответствующих use cases.
     """
 
     async def save(self, project: Project) -> None: ...
+
+    async def list_all(self) -> list[Project]: ...

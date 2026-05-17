@@ -26,6 +26,22 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 ## [Unreleased]
 
 ### Added
+- Второй use case `ListProjects` — проверка hexagonal-фундамента на
+  втором сквозном срезе (CLI → application → SQL-adapter → domain).
+  - `ports/outbound/metadata_repository.py`: `MetadataRepository`
+    Protocol расширен методом `list_all(self) -> list[Project]`.
+  - `application/list_projects.py`: тонкий use case, делегирует
+    выборку и сортировку adapter'у.
+  - `adapters/outbound/persistence_sql/repository.py`: реализация
+    `list_all` через `select(...).order_by(created_at DESC)`,
+    `model_to_project` mapping.
+  - `adapters/inbound/cli/app.py`: команда
+    `efactory project list` — TSV-вывод
+    `name<TAB>created_at_iso<TAB>path`, пустой список выводит
+    «No projects found.».
+  - Тесты (TDD outside-in): 2 e2e (newest-first + empty), 3 unit
+    с fake-портом (empty / returns / delegates ordering), 2 integration
+    (sort DESC + empty). Coverage 98.84% (23 passed; +7 новых тестов). (T088)
 - `composition/settings.py`: XDG-style default'ы для `projects_root`
   и `database_url` через `Field(default_factory=...)` —
   `$XDG_DATA_HOME/efactory/{projects,efactory.db}` или

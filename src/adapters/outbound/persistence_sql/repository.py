@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from adapters.outbound.persistence_sql.mapping import project_to_model
+from sqlalchemy import select
+
+from adapters.outbound.persistence_sql.mapping import (
+    model_to_project,
+    project_to_model,
+)
+from adapters.outbound.persistence_sql.models import ProjectModel
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -23,3 +29,10 @@ class SqlAlchemyMetadataRepository:
         model = project_to_model(project)
         async with self._session_factory() as session, session.begin():
             session.add(model)
+
+    async def list_all(self) -> list[Project]:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ProjectModel).order_by(ProjectModel.created_at.desc()),
+            )
+            return [model_to_project(row) for row in result.scalars().all()]
