@@ -31,7 +31,18 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
 ### Архитектурные follow-up'ы Walking Skeleton
 
-<!-- Пусто: T087 (Settings defaults) переехал в BOARD/Doing. -->
+- **T091** — [2026-05-17] Pre-commit hook на 5-проверочный гейт
+  (`ruff check` / `ruff format --check` / `mypy src` / `lint-imports`
+  / `pytest`). Сейчас гейт прогоняется вручную перед каждым commit/
+  push — высока вероятность забыть. Подключить
+  [pre-commit](https://pre-commit.com) framework: `.pre-commit-config.yaml`
+  с 5 hook'ами (можно как `pre-commit` либо `pre-push`-stage,
+  чтобы локальные WIP-коммиты не блокировались), добавить
+  `pre-commit` в dev-deps, обновить README с однократным шагом
+  `uv run pre-commit install`. Acceptance: после установки попытка
+  закоммитить/запушить код с ошибкой ruff/mypy/тестом — блокируется
+  автоматически; способ временно скипнуть hook документирован
+  (`SKIP=pytest git commit -m "wip"`).
 
 ### Фаза 1a — MVP-ядро (3–4 недели)
 

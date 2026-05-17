@@ -150,3 +150,54 @@ async def test_get_by_name_returns_none_when_absent(tmp_path: Path) -> None:
         await engine.dispose()
 
     assert result is None
+
+
+async def test_delete_by_name_removes_row(tmp_path: Path) -> None:
+    db_file = tmp_path / 'test_delete.sqlite'
+    database_url = f'sqlite+aiosqlite:///{db_file}'
+
+    await run_migrations(database_url)
+
+    engine = create_async_engine(database_url)
+    try:
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        repo = SqlAlchemyMetadataRepository(session_factory)
+
+        await repo.save(Project(name='doomed', path=Path('/p/doomed')))
+        await repo.save(Project(name='alive', path=Path('/p/alive')))
+
+        await repo.delete_by_name('doomed')
+
+        remaining = await repo.list_all()
+    finally:
+        await engine.dispose()
+
+    assert [p.name for p in remaining] == ['alive']
+
+
+async def test_delete_by_name_is_noop_when_absent(tmp_path: Path) -> None:
+    """Удаление несуществующего ряда не падает.
+
+    Use case сам проверяет существование через get_by_name перед
+    delete_by_name, так что adapter-уровень тут защищать незачем —
+    но должен быть идемпотентен на повторных вызовах.
+    """
+    db_file = tmp_path / 'test_delete_noop.sqlite'
+    database_url = f'sqlite+aiosqlite:///{db_file}'
+
+    await run_migrations(database_url)
+
+    engine = create_async_engine(database_url)
+    try:
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        repo = SqlAlchemyMetadataRepository(session_factory)
+
+        await repo.save(Project(name='kept', path=Path('/p/kept')))
+
+        await repo.delete_by_name('never-existed')
+
+        remaining = await repo.list_all()
+    finally:
+        await engine.dispose()
+
+    assert [p.name for p in remaining] == ['kept']

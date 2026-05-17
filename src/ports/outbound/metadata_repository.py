@@ -14,7 +14,8 @@ class MetadataRepository(Protocol):
 
     На старте Walking Skeleton реализован `save(Project)` (T085).
     Расширяется методами `list_all` (T088), `get_by_name` (T089),
-    `get_by_id`, `delete` по мере появления соответствующих use cases.
+    `delete_by_name` (T090), `get_by_id` и т.д. по мере появления
+    соответствующих use cases.
     """
 
     async def save(self, project: Project) -> None: ...
@@ -22,3 +23,5 @@ class MetadataRepository(Protocol):
     async def list_all(self) -> list[Project]: ...
 
     async def get_by_name(self, name: str) -> Project | None: ...
+
+    async def delete_by_name(self, name: str) -> None: ...

@@ -26,6 +26,39 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 ## [Unreleased]
 
 ### Added
+- Четвёртый use case `DeleteProject` — завершает базовый набор
+  CRUD (Create, Read-Many, Read-One, Delete) для домена `Project`.
+  - `ports/outbound/metadata_repository.py`: + `delete_by_name(name) -> None`.
+  - `ports/outbound/project_file_repository.py`: +
+    `remove_project_directory(path) -> None`.
+  - `application/delete_project.py`: новый use case (порядок:
+    `get_by_name` → `delete_by_name` → `remove_project_directory`)
+    и re-export `ProjectNotFoundError` из `application.get_project`
+    (общее исключение для read-and-act use cases).
+  - `adapters/outbound/persistence_sql/repository.py`: реализация
+    `delete_by_name` через `delete(...).where(name == ...)`. Noop
+    при отсутствии строки (идемпотентно).
+  - `adapters/outbound/file_store/project_file_repository.py`:
+    реализация `remove_project_directory` через `shutil.rmtree`
+    в `asyncio.to_thread`. Idempotent: если каталога нет — тихо
+    возвращается (orphan-row страшнее orphan-папки, поэтому FS-
+    операция последняя и не блокирует общий success).
+  - `adapters/inbound/cli/app.py`: команда
+    `efactory project delete --name <name>` — выводит
+    «Deleted project <name>» при успехе; при отсутствии печатает
+    `Project '<name>' not found` в stderr + `exit_code=1`.
+  - Тесты (TDD outside-in): 2 e2e (happy path + unknown name; happy
+    проверяет, что `show` после delete → exit 1, `list` пуст),
+    2 unit с fake-портами (happy + raises; косвенно подтверждает
+    порядок `get → delete`), 2 integration SQL (`delete_by_name`
+    удаляет / noop на отсутствующее имя), 2 integration FS
+    (`remove_project_directory` удаляет дерево / idempotent на
+    отсутствующий путь). 37 passed, coverage 99.14% (+8 новых
+    тестов). (T090)
+- В `BACKLOG.md` новая задача **T091** (раздел «Архитектурные
+  follow-up'ы Walking Skeleton») — pre-commit hook на 5-проверочный
+  гейт (`pre-commit` framework + `.pre-commit-config.yaml`). Сейчас
+  гейт прогоняется вручную; автоматизировать через `pre-commit`. (T090)
 - Третий use case `GetProject` (по имени) — продолжение обкатки
   hexagonal-фундамента после T088.
   - `ports/outbound/metadata_repository.py`: `MetadataRepository`

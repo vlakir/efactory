@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -22,3 +23,11 @@ class FilesystemProjectFileRepository:
             path.mkdir(parents=True)
 
         await asyncio.to_thread(_mkdir)
+
+    async def remove_project_directory(self, path: Path) -> None:
+        def _rmtree() -> None:
+            if not path.exists():
+                return
+            shutil.rmtree(path)
+
+        await asyncio.to_thread(_rmtree)
