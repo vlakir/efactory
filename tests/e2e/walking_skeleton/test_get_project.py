@@ -44,9 +44,11 @@ def test_project_show_returns_metadata_of_existing_project(
     result = runner.invoke(app, ['project', 'show', '--name', 'shown-amp'])
 
     assert result.exit_code == 0, result.output
-    assert 'shown-amp' in result.output
-    assert 'created' in result.output
-    assert 'shown-amp' in result.output
+    assert 'name: shown-amp' in result.output
+    assert 'id:' in result.output
+    assert 'status: created' in result.output
+    assert 'created_at:' in result.output
+    assert 'path:' in result.output
 
 
 def test_project_show_unknown_name_exits_with_error(
@@ -59,5 +61,5 @@ def test_project_show_unknown_name_exits_with_error(
 
     result = runner.invoke(app, ['project', 'show', '--name', 'ghost-amp'])
 
-    assert result.exit_code != 0
+    assert result.exit_code == 1
     assert "Project 'ghost-amp' not found" in result.output
