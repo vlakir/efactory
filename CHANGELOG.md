@@ -25,6 +25,27 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ## [Unreleased]
 
+### Security
+- Валидация `Project.name` против path-traversal в `domain/project.py`.
+  До T092 имя вида `../../etc` проходило domain-валидацию (которая
+  проверяла только non-empty/non-whitespace) и попадало в
+  `projects_root / name`. Для `delete_project` T090 это означало
+  `shutil.rmtree` за пределами `projects_root` — потенциальное
+  разрушение хост-FS. Сейчас вход — только локальный CLI (низкая
+  реальная эксплуатируемость), но защита проактивная: при появлении
+  MCP / HTTP-API имя может прийти из недоверенного источника.
+  - `_validate_name` дополнен правилами: запрет имён `.` и `..`,
+    запрет символов `/` и `\`.
+  - CLI `efactory project create` ловит `pydantic.ValidationError`
+    и выводит «Invalid project name: ...» в stderr с
+    `exit_code=2` (вместо безобразного Rich-traceback с pydantic
+    internals).
+  - 14 параметризованных unit-тестов на отказ опасных имён (`..`,
+    `.`, `../etc`, `..\\etc`, `/absolute`, `a/b`, `a\\b`,
+    `trailing/`, `\\leading`, `./rel` и т.д.) + 7 на человеческие
+    имена (включая юникод `тёплый-усилитель`) + 1 e2e на UX при
+    bad name. 59 passed, coverage 99.20%. (T092)
+
 ### Added
 - Pre-commit hook на 5-проверочный гейт через
   [pre-commit](https://pre-commit.com) framework на stage `pre-push`.

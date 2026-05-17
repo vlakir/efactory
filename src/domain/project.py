@@ -17,6 +17,12 @@ def _validate_name(value: str) -> str:
     if not value.strip():
         msg = 'Project name must not be empty or whitespace-only'
         raise ValueError(msg)
+    if value in {'.', '..'}:
+        msg = 'Project name must not be "." or ".."'
+        raise ValueError(msg)
+    if '/' in value or '\\' in value:
+        msg = 'Project name must not contain path separators ("/" or "\\")'
+        raise ValueError(msg)
     return value
 
 
