@@ -31,36 +31,9 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
 ### Архитектурные follow-up'ы Walking Skeleton
 
-- **T092** — [2026-05-17] Валидация `Project.name` против path-traversal.
-  Сейчас `_validate_name` в `domain/project.py` проверяет только
-  non-empty / non-whitespace. Имя «../../etc» пройдёт валидацию и
-  попадёт в `projects_root / name` — это критично для `create_project`
-  (можно создать каталог где угодно при правильных правах) и
-  особенно для `delete_project` T090 (вызов `shutil.rmtree` за
-  пределами `projects_root`). Сейчас CLI принимает имя только от
-  локального пользователя, поэтому реальная эксплуатация требует
-  явного злого намерения пользователя на свой же диск — не CVE-
-  уровень. Но при появлении MCP-сервера / HTTP-API имя может прийти
-  из недоверенного источника. Запретить компоненты `..`, абсолютные
-  пути, разделители (`/`, `\\`); ограничить regex
-  `^[A-Za-z0-9._-]+$` или подобным. Acceptance: набор unit-тестов
-  domain ловит все известные path-traversal-варианты (`../`,
-  `..\\`, `/etc/passwd`, `..`, `.`, пустые сегменты); существующие
-  тесты не падают; реальные «человеческие» имена (`my-amp`, `se_amp`,
-  `pre.amp.v2`) проходят. Выявлено при self-review T090.
-
-- **T091** — [2026-05-17] Pre-commit hook на 5-проверочный гейт
-  (`ruff check` / `ruff format --check` / `mypy src` / `lint-imports`
-  / `pytest`). Сейчас гейт прогоняется вручную перед каждым commit/
-  push — высока вероятность забыть. Подключить
-  [pre-commit](https://pre-commit.com) framework: `.pre-commit-config.yaml`
-  с 5 hook'ами (можно как `pre-commit` либо `pre-push`-stage,
-  чтобы локальные WIP-коммиты не блокировались), добавить
-  `pre-commit` в dev-deps, обновить README с однократным шагом
-  `uv run pre-commit install`. Acceptance: после установки попытка
-  закоммитить/запушить код с ошибкой ruff/mypy/тестом — блокируется
-  автоматически; способ временно скипнуть hook документирован
-  (`SKIP=pytest git commit -m "wip"`).
+<!-- Пусто: T091 (pre-commit hook) и T092 (path-traversal в
+     Project.name) закрыты и ждут переноса в CHANGELOG при
+     следующем cut-милстоуне. -->
 
 ### Фаза 1a — MVP-ядро (3–4 недели)
 

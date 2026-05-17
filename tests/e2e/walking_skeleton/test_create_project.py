@@ -48,3 +48,24 @@ def test_create_project_end_to_end(
     with sqlite3.connect(db_file) as cx:
         rows = cx.execute('SELECT name FROM projects').fetchall()
     assert rows == [('my-amp',)]
+
+
+def test_create_with_path_traversal_name_exits_cleanly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bad name → понятная ошибка вместо python-traceback (T092)."""
+    monkeypatch.setenv('EFACTORY_PROJECTS_ROOT', str(tmp_path / 'projects'))
+    monkeypatch.setenv(
+        'EFACTORY_DATABASE_URL',
+        f'sqlite+aiosqlite:///{tmp_path / "efactory.sqlite"}',
+    )
+
+    runner = CliRunner()
+    app = build_cli_app()
+
+    result = runner.invoke(app, ['project', 'create', '--name', '../../etc'])
+
+    assert result.exit_code == 2
+    assert 'Invalid project name' in result.output
+    assert 'Traceback' not in result.output

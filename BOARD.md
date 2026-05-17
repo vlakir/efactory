@@ -109,7 +109,7 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
   coverage 99.14%. Заодно запаркованы T091 (pre-commit hook) и T092
   (path-traversal в Project.name) в BACKLOG. Запись об изменениях —
   в `CHANGELOG.md` `[Unreleased]`.
-- **T091** — [closed 2026-05-17, PR current] Pre-commit hook на
+- **T091** — [closed 2026-05-17, PR #12] Pre-commit hook на
   5-проверочный гейт через [pre-commit](https://pre-commit.com)
   на stage `pre-push`. `pre-commit` в dev-deps,
   `.pre-commit-config.yaml` с пятью local hooks (`ruff check` /
@@ -119,4 +119,14 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
   обновлён: однократная установка `uv run pre-commit install
   --hook-type pre-push`. Запись об изменениях — в `CHANGELOG.md`
   `[Unreleased]`.
+- **T092** — [closed 2026-05-17, PR current] Валидация
+  `Project.name` против path-traversal. `_validate_name` в
+  `domain/project.py` расширен: запрет на `.`, `..`, разделители
+  `/` и `\\`. CLI команда `project create` ловит
+  `pydantic.ValidationError` и выводит «Invalid project name: ...»
+  в stderr + `exit_code=2` (вместо безобразного Rich-traceback).
+  14 параметризованных unit-тестов на отказ опасных имён +
+  7 на человеческие имена (включая юникод) + 1 e2e на UX при
+  bad name. 59 passed, coverage 99.20%. Запись об изменениях —
+  в `CHANGELOG.md` `[Unreleased]`.
 

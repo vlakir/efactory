@@ -6,6 +6,7 @@ import asyncio
 from typing import TYPE_CHECKING
 
 import typer
+from pydantic import ValidationError
 
 from application.create_project import create_project as create_project_use_case
 from application.delete_project import delete_project as delete_project_use_case
@@ -38,14 +39,19 @@ def build_app(
     def create(
         name: str = typer.Option(..., '--name', help='Имя нового проекта'),
     ) -> None:
-        project = asyncio.run(
-            create_project_use_case(
-                name=name,
-                projects_root=projects_root,
-                repo=metadata_repository,
-                file_repo=file_repository,
-            ),
-        )
+        try:
+            project = asyncio.run(
+                create_project_use_case(
+                    name=name,
+                    projects_root=projects_root,
+                    repo=metadata_repository,
+                    file_repo=file_repository,
+                ),
+            )
+        except ValidationError as exc:
+            messages = '; '.join(error['msg'] for error in exc.errors())
+            typer.echo(f'Invalid project name: {messages}', err=True)
+            raise typer.Exit(code=2) from exc
         typer.echo(
             f'Created project {project.name} at {project.path} (id={project.id})',
         )
