@@ -47,26 +47,6 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   если (а) — оплачено, проверено хотя бы на одном PR без rate-limit.
   Источник: ретро `[0.2.0]`.
 
-- **T099** — [2026-05-17] **Decision как новый aggregate root
-  (CONCEPT §4.4).** Реализация фазы A направления D. Domain.Decision
-  с полями {`id: D###` formatted, `title`, `date`, `status:
-  proposed | accepted | rejected`, `summary`, `rationale`,
-  `evidence: Path | None`, `session: Path | None`}. Dual-storage:
-  markdown файл `decisions/D###_<slug>.md` (детали) +
-  reference в `project.yaml → decisions:` (summary). Outbound
-  ports: `DecisionRepository` (read/write markdown +
-  manifest reference); adapter — filesystem.
-  CLI: `efactory decision add --project X --title "..."`,
-  `efactory decision list --project X`,
-  `efactory decision show --project X --id D001`. ID auto-
-  increment per project. Acceptance: TDD outside-in; e2e на
-  CRUD; markdown шаблон совпадает с CONCEPT §4.4; manifest
-  обновляется атомарно с markdown; 5-step gate зелёный; growth
-  тест: добавить 50 decisions без падения list-performance.
-  Ветка `T099-decision-aggregate`. Спека —
-  `specs/T099-decision-aggregate/spec.md` при взятии в работу.
-  Depends on T097 + T098.
-
 ### Фаза 1a — MVP-ядро (3–4 недели)
 
 - **T002** — [2026-05-15] bootstrap.sh для Linux: установка KiCad,
