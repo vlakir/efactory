@@ -30,6 +30,18 @@ T-ID между релизами — `CHANGELOG.md` единственное per
      в очередную версию, ниже создаётся новая пустая `[Unreleased]`. -->
 
 ### Added
+- Дизайн-направление расширения domain'а зафиксировано: **D**
+  (`Phase VO + derived status + Update` → `Manifest = primary
+  storage` → `Decision aggregate`). ADR в `DECISIONS.md`
+  (`2026-05-17 — Domain expansion direction: D`); рассмотрены
+  6 альтернатив (A первым, B одним, C первым, SQL=primary,
+  Phase=scalar, PhaseName=whitelist) с обоснованием отвержения.
+  Декомпозиция в `BACKLOG.md`: T097 (Phase VO + derived status +
+  Update), T098 (Manifest primary), T099 (Decision aggregate) —
+  с acceptance criteria каждой. Spec —
+  `specs/T096-domain-expansion/spec.md` (Done). Реализации в
+  scope T096 нет. (T096)
+
 - Auto-install pre-commit pre-push hook через hatchling custom build
   hook. После `git clone && uv sync` хук установлен автоматически,
   отдельная команда `uv run pre-commit install --hook-type pre-push`

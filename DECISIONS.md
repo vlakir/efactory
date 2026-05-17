@@ -25,6 +25,94 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-05-17 — Domain expansion direction: D (Phase VO → Manifest primary → Decision aggregate)
+
+- **Контекст:** после 0.2.0 у нас закрыт минимальный CRUD по
+  `domain.Project` (Create / List / Show / Delete), но фундамент
+  не проверен на: (1) Update use case (единственный stored field
+  `status` имел ровно одно значение `CREATED`), (2) множественные
+  агрегаты в одном domain'е, (3) портативность Project (CONCEPT
+  §4.1) — сейчас Project живёт только в SQL, без YAML-манифеста.
+  Запаркован как T096 в ретро `[0.2.0]`.
+- **Решение:** **направление D — гибрид в порядке B → C → A**:
+  - **B (T097):** `Phase` как embedded value object внутри
+    `Project` aggregate. Полноценный VO (`name: PhaseName enum`,
+    `status: PhaseStatus enum`, `started_at`, `completed_at`,
+    методы `start() / complete() / skip()` с инвариантами).
+    Project содержит collection of 6 фаз (schematic, simulation,
+    pcb, magnetics, enclosure, documentation) — все со
+    status=`pending` по умолчанию. **`Project.status` становится
+    derived computed property** от phases (mapping в спеке
+    T096 → Resolved #6); stored поле снимается. Update use case
+    `efactory project update --name X --phase Y --status Z` плюс
+    `add-phase` / `skip-phase` (из CONCEPT §4.1).
+  - **C (T098):** `project.yaml` (`Manifest`) становится
+    **primary storage** Project'а; SQL переводится в роль **индекса
+    / cache** для быстрого `list` / `search`. Полная реиндексация
+    SQL возможна перечитыванием всех manifest'ов
+    (`efactory project reindex`). Новый outbound port
+    `ProjectManifestRepository` + adapter
+    `FilesystemProjectManifestRepository` (YAML). Read pattern:
+    `show` — из manifest (truth); `list` — из SQL (быстро).
+    Write pattern: `create / update / delete` — manifest first,
+    SQL reindexed после.
+  - **A (T099):** `Decision` как новый aggregate root (CONCEPT
+    §4.4). Domain.Decision с полями {`id: D###`, `title`,
+    `date`, `status: proposed | accepted | rejected`,
+    `summary`, `rationale`, `evidence`, `session`}. Dual-storage
+    (раскрыто в Analyze спеки): markdown в `decisions/D###_*.md`
+    (детали) + reference в manifest (summary). CLI: `efactory
+    decision add / list / show`.
+- **Альтернативы:**
+  - **A первым (изолированный Decision aggregate)** — отвергли:
+    Decision без Phase / Manifest workflow выглядит как «голый
+    CRUD», изолированная фича не на главном пути жизненного
+    цикла Project'а. Сначала закрываем основные gaps.
+  - **B одним** (Phase + Update, без C/A) — отвергли как
+    недостаточный: portable-project (§4.1) — фундаментальный
+    принцип, без C проект остаётся прибит к SQL машины.
+  - **C первым (Manifest без Phase)** — отвергли: без phases
+    manifest содержит мало полезного state'а (только id, name,
+    created_at). Phase даёт первый реальный writable-content
+    для манифеста.
+  - **SQL = primary, manifest = export** — отвергли в пользу
+    «manifest = primary, SQL = индекс». Concept §4.1 явно
+    позиционирует папку проекта как самодостаточный
+    портативный контейнер; SQL — локальный кэш окружения.
+    Если SQL = primary, то отправка папки на другую машину
+    теряет историю / decisions / status.
+  - **Phase как scalar enum + status вместо полноценного VO** —
+    отвергли: `started_at` / `completed_at` уже в CONCEPT §4.3,
+    методы `start() / complete() / skip()` с инвариантами
+    делают domain богаче без перерасхода кода (~30 строк).
+  - **PhaseName как whitelist в Settings вместо enum** —
+    отвергли: фазы стабильные (6 штук в концепте), не
+    open-ended; enum даёт автокомплит и проверку типов
+    бесплатно.
+- **Последствия:**
+  - Domain заметно растёт: +VO `Phase`, +aggregate `Decision`,
+    +1 outbound port (manifest), +1 outbound adapter
+    (filesystem-yaml), +Update use case на `Project`, +команды
+    `update / add-phase / skip-phase / reindex / decision *`.
+  - SQL миграция: колонка `status` удаляется (либо сохраняется
+    как denormalized cache — уточняется в T098).
+  - Backward compatibility: T098 acceptance включает миграцию
+    «существующие SQL-only проекты получают manifest».
+  - Тестовое покрытие растёт линейно с domain'ом
+    (`Phase.start() / complete() / skip()` — изолированные
+    domain-тесты; manifest adapter — integration с реальным
+    `tmp_path`; Decision aggregate — отдельный набор).
+  - Положительная нагрузка на архитектуру: проверим, как
+    hexagonal-фундамент держит (а) рост одного агрегата
+    (Project с phases), (б) второй адаптер на тот же агрегат
+    (manifest рядом с SQL), (в) второй aggregate root
+    (Decision). Если что-то скрипит — это сигнал ревизии
+    фундамента (отдельный ADR).
+  - Decomposition в `BACKLOG.md`: T097 (Phase + derived
+    status + Update), T098 (Manifest primary), T099 (Decision).
+    Реализуются последовательно. Spec'и крупных задач —
+    отдельные `specs/T0XX-*/spec.md` при взятии в работу.
+
 ### 2026-05-17 — Auto-install pre-push hook через hatchling custom build hook
 
 - **Контекст:** T091 ввёл `.pre-commit-config.yaml` на 5-step gate,

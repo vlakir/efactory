@@ -47,17 +47,72 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   если (а) — оплачено, проверено хотя бы на одном PR без rate-limit.
   Источник: ретро `[0.2.0]`.
 
-- **T096** — [2026-05-17] Расширение домена: выбрать следующий
-  шаг — новый агрегат (Component? Schematic? Library?) ИЛИ Update
-  use case для `Project` (когда появится реальное writable-поле).
-  Сейчас CRUD `Project` закрыт без Update — нет полей для
-  обновления; чтобы продвинуть архитектуру дальше, нужен второй
-  агрегат либо реальная writable-цель.
-  Acceptance: выбран и обоснован один из вариантов (новый агрегат
-  / Update use case / гибрид); решение записано в `DECISIONS.md`
-  (ADR); декомпозиция — отдельные T-задачи в `BACKLOG.md`. Сама
-  реализация выходит за scope T096 (T096 — только дизайн-выбор).
-  Источник: ретро `[0.2.0]`.
+- **T097** — [2026-05-17] **Phase VO + derived Project.status +
+  Update use case.** Реализация фазы B направления D
+  (`DECISIONS.md` → ADR 2026-05-17 «Domain expansion direction:
+  D»). Domain получает embedded value object `Phase` (`name:
+  PhaseName enum [schematic, simulation, pcb, magnetics,
+  enclosure, documentation]`, `status: PhaseStatus enum [pending,
+  in_progress, done, skipped]`, `started_at`, `completed_at`,
+  методы `start() / complete() / skip()` с инвариантами).
+  `Project` теперь содержит collection of 6 Phase (default — все
+  `pending`). `Project.status` становится **derived computed
+  property** от phases (mapping: все pending → `idea`; schematic
+  done → `schematic`; +simulation done → `simulated`; +pcb →
+  `pcb_designed`; +magnetics → `magnetics_done`; +enclosure →
+  `enclosure_done`; +documentation → `production_ready`. Phase
+  со status=`skipped` считается «закрытой» для derivation).
+  ProjectStatus enum расширяется до 7 значений из CONCEPT §4.3.
+  Update use case `efactory project update --name X --phase Y
+  --status Z` + `add-phase` / `skip-phase` (из CONCEPT §4.1).
+  Acceptance: TDD outside-in для всех новых use cases (e2e →
+  unit с fake-портами → integration); SQL миграция (drop stored
+  `status`, добавить таблицу `phases`); 5-step gate зелёный;
+  `domain/project.py` с инвариантами Phase покрыт unit-тестами
+  (включая отказы: `complete()` non-started, `start()` уже
+  started, и т.д.). Ветка `T097-phase-vo`. Спека —
+  `specs/T097-phase-vo/spec.md` при взятии в работу.
+
+- **T098** — [2026-05-17] **Manifest (`project.yaml`) как primary
+  storage; SQL = индекс / cache.** Реализация фазы C направления
+  D. Новый outbound port `ProjectManifestRepository`
+  (`load(path) -> Project`, `save(project) -> None`) и adapter
+  `FilesystemProjectManifestRepository` (YAML по схеме CONCEPT §4.3).
+  Write pattern: `create / update / delete` — manifest first, SQL
+  reindexed после. Read pattern: `show` — из manifest (truth);
+  `list` — из SQL (быстро). Новая CLI команда `efactory project
+  reindex` — пересобирает SQL индекс из всех manifest'ов.
+  Backward compat: миграция «существующие SQL-only проекты
+  получают manifest» (одноразовая команда или auto-on-first-read).
+  Acceptance: TDD outside-in; e2e на `create / show / update`
+  через manifest; `reindex` integration; миграция SQL-only →
+  manifest проверена; 5-step gate зелёный; CONCEPT §4.1
+  «Портативность» подтверждается: tar.gz папки проекта,
+  распаковка на другой машине → `efactory project show` работает
+  (после `reindex` если SQL индекс отсутствует). Ветка
+  `T098-manifest-primary`. Спека —
+  `specs/T098-manifest-primary/spec.md` при взятии в работу.
+  Depends on T097.
+
+- **T099** — [2026-05-17] **Decision как новый aggregate root
+  (CONCEPT §4.4).** Реализация фазы A направления D. Domain.Decision
+  с полями {`id: D###` formatted, `title`, `date`, `status:
+  proposed | accepted | rejected`, `summary`, `rationale`,
+  `evidence: Path | None`, `session: Path | None`}. Dual-storage:
+  markdown файл `decisions/D###_<slug>.md` (детали) +
+  reference в `project.yaml → decisions:` (summary). Outbound
+  ports: `DecisionRepository` (read/write markdown +
+  manifest reference); adapter — filesystem.
+  CLI: `efactory decision add --project X --title "..."`,
+  `efactory decision list --project X`,
+  `efactory decision show --project X --id D001`. ID auto-
+  increment per project. Acceptance: TDD outside-in; e2e на
+  CRUD; markdown шаблон совпадает с CONCEPT §4.4; manifest
+  обновляется атомарно с markdown; 5-step gate зелёный; growth
+  тест: добавить 50 decisions без падения list-performance.
+  Ветка `T099-decision-aggregate`. Спека —
+  `specs/T099-decision-aggregate/spec.md` при взятии в работу.
+  Depends on T097 + T098.
 
 ### Фаза 1a — MVP-ядро (3–4 недели)
 

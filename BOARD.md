@@ -61,6 +61,13 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T096** — [2026-05-17] Расширение domain'а: дизайн-выбор +
+  декомпозиция. Принято направление D (B → C → A): Phase VO +
+  derived status + Update (T097) → Manifest primary (T098) →
+  Decision aggregate (T099). ADR в `DECISIONS.md`. Spec
+  `specs/T096-domain-expansion/spec.md` (Done). Ветка
+  `T096-domain-expansion`.
+
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
