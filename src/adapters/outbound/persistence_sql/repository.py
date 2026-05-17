@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from adapters.outbound.persistence_sql.mapping import (
     model_to_project,
@@ -44,3 +44,9 @@ class SqlAlchemyMetadataRepository:
             )
             model = result.scalars().first()
             return model_to_project(model) if model is not None else None
+
+    async def delete_by_name(self, name: str) -> None:
+        async with self._session_factory() as session, session.begin():
+            await session.execute(
+                delete(ProjectModel).where(ProjectModel.name == name),
+            )

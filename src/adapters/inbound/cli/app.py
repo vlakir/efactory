@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import typer
 
 from application.create_project import create_project as create_project_use_case
+from application.delete_project import delete_project as delete_project_use_case
 from application.get_project import (
     ProjectNotFoundError,
 )
@@ -78,5 +79,22 @@ def build_app(
         typer.echo(f'status: {project.status.value}')
         typer.echo(f'created_at: {project.created_at.isoformat()}')
         typer.echo(f'path: {project.path}')
+
+    @project_app.command('delete')
+    def delete(
+        name: str = typer.Option(..., '--name', help='Имя удаляемого проекта'),
+    ) -> None:
+        try:
+            asyncio.run(
+                delete_project_use_case(
+                    name=name,
+                    repo=metadata_repository,
+                    file_repo=file_repository,
+                ),
+            )
+        except ProjectNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(f'Deleted project {name}')
 
     return app

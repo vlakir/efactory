@@ -98,4 +98,14 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
   stderr + `exit_code=1`). По TDD outside-in: 2 e2e (happy + unknown)
   + 2 unit (found / raises) + 2 integration. 29 passed, coverage
   99.02%. Запись об изменениях — в `CHANGELOG.md` `[Unreleased]`.
+- **T090** — [closed 2026-05-17, PR current] Fourth use case
+  `DeleteProject` — завершает базовый CRUD-набор. Расширение
+  `MetadataRepository.delete_by_name`, `ProjectFileRepository.
+  remove_project_directory` (idempotent), `application.delete_project`
+  (порядок get → DB → FS, переиспользует `ProjectNotFoundError`),
+  SQLA `delete().where(name)`, FS `shutil.rmtree` в `asyncio.to_thread`,
+  CLI `efactory project delete --name <name>`. По TDD outside-in:
+  2 e2e + 2 unit + 2 integration SQL + 2 integration FS. 37 passed,
+  coverage 99.14%. Заодно запаркован T091 (pre-commit hook) в
+  BACKLOG. Запись об изменениях — в `CHANGELOG.md` `[Unreleased]`.
 
