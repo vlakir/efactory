@@ -30,6 +30,21 @@ class SqlAlchemyMetadataRepository:
         async with self._session_factory() as session, session.begin():
             session.add(model)
 
+    async def update(self, project: Project) -> None:
+        """
+        Заглушка для фазы 1 T097. Реальный UPDATE — фаза 2.
+
+        Use case UpdateProject из фазы 1 не вызывается из CLI до
+        фазы 3, так что эта ветка не активна в e2e. Фаза 2 добавит
+        Alembic-миграцию (drop status / create phases table) и
+        реализацию через session.merge + sync phase-rows.
+        """
+        msg = (
+            'SqlAlchemyMetadataRepository.update is implemented in T097 phase 2 '
+            '(SQL persistence). Phase 1 use case is tested with fake repo.'
+        )
+        raise NotImplementedError(msg)
+
     async def list_all(self) -> list[Project]:
         async with self._session_factory() as session:
             result = await session.execute(

@@ -46,7 +46,7 @@ def test_project_show_returns_metadata_of_existing_project(
     assert result.exit_code == 0, result.output
     assert 'name: shown-amp' in result.output
     assert 'id:' in result.output
-    assert 'status: created' in result.output
+    assert 'status: idea' in result.output
     assert 'created_at:' in result.output
     assert 'path:' in result.output
 

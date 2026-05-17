@@ -46,7 +46,7 @@ async def test_save_persists_project_row(tmp_path: Path) -> None:
     saved_id, saved_name, saved_path, saved_status = rows[0]
     assert saved_name == 'test-amp'
     assert saved_path == str(project.path)
-    assert saved_status == 'created'
+    assert saved_status == 'idea'
     assert str(saved_id).replace('-', '') == project.id.hex
 
 
@@ -86,7 +86,7 @@ async def test_list_all_returns_projects_sorted_by_created_at_desc(
         await engine.dispose()
 
     assert [p.name for p in result] == ['new', 'middle', 'old']
-    assert all(p.status.value == 'created' for p in result)
+    assert all(p.status.value == 'idea' for p in result)
 
 
 async def test_list_all_returns_empty_when_no_projects(tmp_path: Path) -> None:
