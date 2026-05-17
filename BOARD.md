@@ -66,67 +66,7 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
 
-- **T086** — [closed 2026-05-17, PR #7] Обновить `README.md`
-  «Быстрый старт» под Walking Skeleton CLI
-  (`uv run efactory project create --name <name>` + `.secrets`-блок
-  с `EFACTORY_PROJECTS_ROOT` / `EFACTORY_DATABASE_URL`). Запаркован
-  follow-up T087 на нормальные default'ы Settings. Уточнена ошибочная
-  запись в Retrospective `[0.1.0]` про Kùzu ADR (статус был снят
-  ещё в T085). Запись об изменениях — в `CHANGELOG.md` `[Unreleased]`.
-- **T087** — [closed 2026-05-17, PR #8] Дать `Settings`
-  (`composition/settings.py`) разумные default'ы для `projects_root`
-  / `database_url` (XDG-стиль). Composition root автоматически
-  создаёт storage-каталоги до запуска Alembic-миграций. README
-  «Быстрый старт» упрощён обратно до двух строчек. По TDD: 3 unit-теста
-  Settings (default / XDG override / env override) + integration-тест
-  composition без env. Запись об изменениях — в `CHANGELOG.md`
-  `[Unreleased]`.
-- **T088** — [closed 2026-05-17, PR #9] Second use case
-  `ListProjects` — проверка hexagonal-фундамента на втором сквозном
-  срезе. Расширение `MetadataRepository.list_all() -> list[Project]`,
-  `application.list_projects`, SQLAlchemy-реализация (сортировка
-  `created_at DESC`), CLI `efactory project list` (TSV-вывод,
-  «No projects found.» на пустом). По TDD outside-in: 2 e2e + 3 unit
-  с fake-портом + 2 integration. 23 passed, coverage 98.84%. Запись
-  о изменениях — в `CHANGELOG.md` `[Unreleased]`.
-- **T089** — [closed 2026-05-17, PR #10] Third use case
-  `GetProject` (по имени). Расширение
-  `MetadataRepository.get_by_name(name) -> Project | None`,
-  `application.get_project` + `ProjectNotFoundError`, SQLAlchemy
-  `select().where(name).limit(1)`, CLI `efactory project show
-  --name <name>` (multi-line вывод метаданных; при отсутствии —
-  stderr + `exit_code=1`). По TDD outside-in: 2 e2e (happy + unknown)
-  + 2 unit (found / raises) + 2 integration. 29 passed, coverage
-  99.02%. Запись об изменениях — в `CHANGELOG.md` `[Unreleased]`.
-- **T090** — [closed 2026-05-17, PR #11] Fourth use case
-  `DeleteProject` — завершает базовый CRUD-набор. Расширение
-  `MetadataRepository.delete_by_name`, `ProjectFileRepository.
-  remove_project_directory` (idempotent), `application.delete_project`
-  (порядок get → DB → FS, переиспользует `ProjectNotFoundError`),
-  SQLA `delete().where(name)`, FS `shutil.rmtree` в `asyncio.to_thread`,
-  CLI `efactory project delete --name <name>`. По TDD outside-in:
-  2 e2e + 2 unit + 2 integration SQL + 2 integration FS. 37 passed,
-  coverage 99.14%. Заодно запаркованы T091 (pre-commit hook) и T092
-  (path-traversal в Project.name) в BACKLOG. Запись об изменениях —
-  в `CHANGELOG.md` `[Unreleased]`.
-- **T091** — [closed 2026-05-17, PR #12] Pre-commit hook на
-  5-проверочный гейт через [pre-commit](https://pre-commit.com)
-  на stage `pre-push`. `pre-commit` в dev-deps,
-  `.pre-commit-config.yaml` с пятью local hooks (`ruff check` /
-  `ruff format --check` / `mypy src` / `lint-imports` / `pytest`).
-  Существующий `.git/hooks/pre-push` (защита main) сохраняется как
-  `.git/hooks/pre-push.legacy` (migration mode pre-commit). README
-  обновлён: однократная установка `uv run pre-commit install
-  --hook-type pre-push`. Запись об изменениях — в `CHANGELOG.md`
-  `[Unreleased]`.
-- **T092** — [closed 2026-05-17, PR current] Валидация
-  `Project.name` против path-traversal. `_validate_name` в
-  `domain/project.py` расширен: запрет на `.`, `..`, разделители
-  `/` и `\\`. CLI команда `project create` ловит
-  `pydantic.ValidationError` и выводит «Invalid project name: ...»
-  в stderr + `exit_code=2` (вместо безобразного Rich-traceback).
-  14 параметризованных unit-тестов на отказ опасных имён +
-  7 на человеческие имена (включая юникод) + 1 e2e на UX при
-  bad name. 59 passed, coverage 99.20%. Запись об изменениях —
-  в `CHANGELOG.md` `[Unreleased]`.
+<!-- Пусто после cut milestone 0.2.0 (2026-05-17): T086 / T087 /
+     T088 / T089 / T090 / T091 / T092 перенесены в CHANGELOG.md →
+     ## [0.2.0]. -->
 
