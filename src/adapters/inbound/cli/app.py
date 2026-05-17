@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import typer
 
 from application.create_project import create_project as create_project_use_case
+from application.list_projects import list_projects as list_projects_use_case
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -41,5 +42,18 @@ def build_app(
         typer.echo(
             f'Created project {project.name} at {project.path} (id={project.id})',
         )
+
+    @project_app.command('list')
+    def list_() -> None:
+        projects = asyncio.run(
+            list_projects_use_case(repo=metadata_repository),
+        )
+        if not projects:
+            typer.echo('No projects found.')
+            return
+        for project in projects:
+            typer.echo(
+                f'{project.name}\t{project.created_at.isoformat()}\t{project.path}',
+            )
 
     return app

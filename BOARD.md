@@ -73,7 +73,7 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
   follow-up T087 на нормальные default'ы Settings. Уточнена ошибочная
   запись в Retrospective `[0.1.0]` про Kùzu ADR (статус был снят
   ещё в T085). Запись о изменениях — в `CHANGELOG.md` `[Unreleased]`.
-- **T087** — [closed 2026-05-17, PR current] Дать `Settings`
+- **T087** — [closed 2026-05-17, PR #8] Дать `Settings`
   (`composition/settings.py`) разумные default'ы для `projects_root`
   / `database_url` (XDG-стиль). Composition root автоматически
   создаёт storage-каталоги до запуска Alembic-миграций. README
@@ -81,4 +81,12 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
   Settings (default / XDG override / env override) + integration-тест
   composition без env. Запись о изменениях — в `CHANGELOG.md`
   `[Unreleased]`.
+- **T088** — [closed 2026-05-17, PR current] Second use case
+  `ListProjects` — проверка hexagonal-фундамента на втором сквозном
+  срезе. Расширение `MetadataRepository.list_all() -> list[Project]`,
+  `application.list_projects`, SQLAlchemy-реализация (сортировка
+  `created_at DESC`), CLI `efactory project list` (TSV-вывод,
+  «No projects found.» на пустом). По TDD outside-in: 2 e2e + 3 unit
+  с fake-портом + 2 integration. 23 passed, coverage 98.84%. Запись
+  о изменениях — в `CHANGELOG.md` `[Unreleased]`.
 
