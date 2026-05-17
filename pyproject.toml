@@ -7,7 +7,19 @@ authors = [
     {name = "Vladimir Kirievskiy", email = "vlakir1234@gmail.com"},
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "alembic>=1.18.4",
+    "kuzu>=0.11.3",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.1",
+    "sqlalchemy[asyncio]>=2.0.49",
+    "typer>=0.25.1",
+]
+
+[project.scripts]
+efactory = "composition.main:run"
+
 [dependency-groups]
 dev = [
     "ruff>=0.12.10",
@@ -15,6 +27,22 @@ dev = [
     "pytest>=8.4",
     "pytest-cov>=7.0",
     "pytest-asyncio>=1.0",
+    "import-linter>=2.11",
+]
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "src/domain",
+    "src/application",
+    "src/ports",
+    "src/adapters",
+    "src/composition",
 ]
 
 
@@ -33,6 +61,7 @@ exclude = [
     "build",
     "dist",
     "tests",
+    "src/adapters/outbound/persistence_sql/migrations",
 ]
 
 
@@ -54,6 +83,14 @@ unfixable = []
 inline-quotes = "single"
 
 
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = [
+    "pydantic.BaseModel",
+    "pydantic_settings.BaseSettings",
+    "sqlalchemy.orm.DeclarativeBase",
+]
+
+
 [tool.ruff.format]
 docstring-code-format = true
 docstring-code-line-length = 72
@@ -67,18 +104,24 @@ line-ending = "auto"
 explicit_package_bases = true
 ignore_missing_imports = true
 mypy_path = "src"
+plugins = ["pydantic.mypy"]
+exclude = ["src/adapters/outbound/persistence_sql/migrations/"]
 
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["src"]
-addopts = "-q --tb=short --cov=src --cov-report=term-missing --cov-fail-under=80"
+addopts = "-q --tb=short --cov=src --cov-report=term-missing --cov-fail-under=80 --import-mode=importlib"
 testpaths = ["tests"]
 
 
 [tool.coverage.run]
 source = ["src"]
 branch = true
+omit = [
+    "src/adapters/outbound/persistence_sql/migrations/*",
+    "src/ports/**/*",
+]
 
 
 [tool.coverage.report]
@@ -86,6 +129,52 @@ exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",
     "raise NotImplementedError",
+    "if TYPE_CHECKING:",
 ]
 show_missing = true
 skip_covered = false
+
+
+[tool.importlinter]
+root_packages = [
+    "domain",
+    "application",
+    "ports",
+    "adapters",
+    "composition",
+]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Hexagonal layers: composition > adapters > application > ports > domain"
+type = "layers"
+layers = [
+    "composition",
+    "adapters",
+    "application",
+    "ports",
+    "domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "domain depends only on pydantic and stdlib"
+type = "forbidden"
+source_modules = ["domain"]
+forbidden_modules = [
+    "sqlalchemy",
+    "aiosqlite",
+    "alembic",
+    "kuzu",
+    "mcp",
+    "anthropic",
+    "typer",
+]
+
+[[tool.importlinter.contracts]]
+name = "Adapters don't import each other"
+type = "independence"
+modules = [
+    "adapters.inbound.cli",
+    "adapters.outbound.persistence_sql",
+    "adapters.outbound.file_store",
+]

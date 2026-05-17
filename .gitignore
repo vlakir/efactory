@@ -40,8 +40,10 @@ vanilla_docker.sh
 # Caches
 .cache/
 
-# Local SQLite
+# Local SQLite / Kùzu / SQLAlchemy
 *.sqlite
+*.db
+*.kuzu
 
 # Temp / docs builds
 temp/
