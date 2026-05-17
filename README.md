@@ -98,9 +98,24 @@ open-source решений.**
 `dreamteam init`).
 
 ```bash
-uv sync                       # поставить зависимости
-uv run python src/main.py     # запустить
+uv sync                                       # поставить зависимости
+
+# Один раз — задать пути для каталога проектов и SQLite-метаданных.
+# Файл .secrets уже в .gitignore (альтернатива — env-переменные с
+# префиксом EFACTORY_):
+cat > .secrets <<EOF
+EFACTORY_PROJECTS_ROOT=$HOME/efactory-projects
+EFACTORY_DATABASE_URL=sqlite+aiosqlite:///$HOME/efactory.db
+EOF
+
+uv run efactory project create --name myprj   # создать новый проект
 ```
+
+Текущий объём функциональности — **Walking Skeleton T085**: сквозной
+use case `CreateProject` (CLI → application → SQLite-метаданные +
+filesystem-каталог проекта → domain). `.secrets` подхватывается
+из текущей директории запуска. По мере добавления функциональности
+будут появляться новые команды — `efactory --help`.
 
 ## Зависимости
 

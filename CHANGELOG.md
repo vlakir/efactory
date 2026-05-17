@@ -25,9 +25,31 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ## [Unreleased]
 
-<!-- Здесь накапливаются изменения, которые войдут в следующую
-     версию `[N.M.0]`. При закрытии milestone — переименовывается
-     в очередную версию, ниже создаётся новая пустая `[Unreleased]`. -->
+### Changed
+- `README.md` «Быстрый старт»: устаревшая команда
+  `uv run python src/main.py` заменена на Walking Skeleton CLI
+  `uv run efactory project create --name <name>`. В блок добавлено
+  создание `.secrets` с `EFACTORY_PROJECTS_ROOT` и
+  `EFACTORY_DATABASE_URL` — без этих переменных `Settings()`
+  падает с `ValidationError` (см. T087 — следующим шагом
+  даём разумные default'ы и убираем `.secrets`-шаг из quickstart). (T086)
+
+### Fixed
+- Уточнение к Retrospective `[0.1.0]`: пункт «снять
+  "провизорный" статус с ADR про Kùzu в `DECISIONS.md`»
+  был ошибочным — статус снят финальным squash-коммитом T085
+  (см. `DECISIONS.md` ADR «Kùzu как embedded граф-БД для
+  топологий», раздел Последствия → Статус). Попал в ретро
+  по неточной session-memory: запись «сделаем при следующей
+  правке DECISIONS» не была сверена с актуальным состоянием
+  ADR. Сам блок Retrospective как часть milestone-snapshot
+  `[0.1.0]` не редактируется. (T086)
+
+### Added
+- В `BACKLOG.md` новый раздел «Архитектурные follow-up'ы Walking
+  Skeleton» с задачей **T087** — дать `Settings` разумные default'ы
+  для `projects_root` / `database_url`, чтобы Walking Skeleton CLI
+  работал из коробки. Выявлено при работе над T086. (T086)
 
 ---
 
