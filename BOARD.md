@@ -66,6 +66,11 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
 
-<!-- Пусто после cut milestone 0.1.0 (2026-05-17): T001 / T050 / T085
-     перенесены в CHANGELOG.md → ## [0.1.0]. -->
+- **T086** — [closed 2026-05-17, PR current] Обновить `README.md`
+  «Быстрый старт» под Walking Skeleton CLI
+  (`uv run efactory project create --name <name>` + `.secrets`-блок
+  с `EFACTORY_PROJECTS_ROOT` / `EFACTORY_DATABASE_URL`). Запаркован
+  follow-up T087 на нормальные default'ы Settings. Уточнена ошибочная
+  запись в Retrospective `[0.1.0]` про Kùzu ADR (статус был снят
+  ещё в T085). Запись о изменениях — в `CHANGELOG.md` `[Unreleased]`.
 
