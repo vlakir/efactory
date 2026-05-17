@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 from pydantic import ValidationError
@@ -21,6 +22,9 @@ from application.get_project import (
     get_project as get_project_use_case,
 )
 from application.list_projects import list_projects as list_projects_use_case
+from application.reindex_projects import (
+    reindex_projects as reindex_projects_use_case,
+)
 from application.update_project import (
     PhaseUpdate,
     UpdateProjectCommand,
@@ -31,8 +35,6 @@ from application.update_project import (
 from domain.phase import PhaseName, PhaseStatus
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from domain.project import Project
     from ports.outbound.metadata_repository import MetadataRepository
     from ports.outbound.project_file_repository import ProjectFileRepository
@@ -264,5 +266,58 @@ def build_app(
         typer.echo(
             f'Phase {phase.value} -> skipped in project {project.name}',
         )
+
+    @project_app.command('reindex')
+    def reindex(
+        *,
+        storage_root: Annotated[
+            str | None,
+            typer.Option(
+                '--storage-root',
+                help=(
+                    'Каталог со всеми проектами для сканирования. '
+                    'По умолчанию — projects_root из Settings.'
+                ),
+            ),
+        ] = None,
+        remove_orphans: Annotated[
+            bool,
+            typer.Option(
+                '--remove-orphans',
+                help=(
+                    'Удалить из SQL индекса записи без manifest на диске. '
+                    'По умолчанию — оставить и попытаться bootstrap из SQL.'
+                ),
+            ),
+        ] = False,
+    ) -> None:
+        """Пересобрать SQL индекс по manifest'ам (T098)."""
+        root: Path = Path(storage_root) if storage_root is not None else projects_root
+        summary = asyncio.run(
+            reindex_projects_use_case(
+                storage_root=root,
+                repo=metadata_repository,
+                manifest_repo=manifest_repository,
+                remove_orphans=remove_orphans,
+            ),
+        )
+        typer.echo(f'Reindexed {summary.indexed} projects.')
+        if summary.bootstrapped:
+            typer.echo(
+                f'Bootstrapped {summary.bootstrapped} manifests for pre-T098 projects.',
+            )
+        if summary.orphans:
+            action = 'removed' if remove_orphans else 'kept'
+            typer.echo(
+                f'Orphans ({len(summary.orphans)}, {action}): '
+                f'{", ".join(summary.orphans)}',
+            )
+            if not remove_orphans:
+                typer.echo('  (Use --remove-orphans to clean.)')
+        if summary.failed:
+            typer.echo(f'Failed ({len(summary.failed)}):', err=True)
+            for failed_path, message in summary.failed:
+                typer.echo(f'  {failed_path}: {message}', err=True)
+            raise typer.Exit(code=1)
 
     return app
