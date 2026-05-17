@@ -66,6 +66,13 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
 
+- **T095** — [closed 2026-05-17, PR #16] Auto-install pre-commit
+  pre-push hook через hatchling custom build hook (`hatch_build.py`).
+  После `git clone && uv sync` хук установлен автоматически.
+  Acceptance: ✓ (auto-install после `uv sync`, README обновлён,
+  e2e восстановления hook'а из ничего, ADR в `DECISIONS.md`,
+  spec Done). Сайд-эффект: S603 в общий `ruff.lint.ignore`
+  (первый subprocess в проекте, false-positive).
 - **T093** — [closed 2026-05-17, PR #15] BOARD-запись закрытия
   задачи: выбран подход (а) — closing-правка BOARD отдельным
   финальным commit'ом **после** `gh pr create`, в том же PR.

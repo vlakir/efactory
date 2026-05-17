@@ -134,17 +134,28 @@ uv run pytest
 ```
 
 Гейт автоматизирован через [pre-commit](https://pre-commit.com) на
-stage `pre-push`. Установка — один раз после клонирования:
+stage `pre-push`. После клонирования достаточно:
 
 ```bash
 uv sync
+```
+
+Hook ставится автоматически — `uv sync` дёргает hatchling custom
+build hook (`hatch_build.py`), который запускает `pre-commit install
+--hook-type pre-push` в проектном `.venv/`. ADR — `DECISIONS.md`
+(T095). Существующий `.git/hooks/pre-push` (защита `main` от прямого
+push) сохраняется в `pre-push.legacy` и запускается первым.
+
+Если автоустановка по какой-то причине не сработала (например, `.git/`
+отсутствует или `uv` не на PATH в момент build'а) — ручной запуск
+работает как fallback:
+
+```bash
 uv run pre-commit install --hook-type pre-push
 ```
 
 После этого `git push` сам прогонит все 5 проверок и заблокирует
-push, если что-то не зелёное. Существующий `.git/hooks/pre-push`
-(защита `main` от прямого push) сохраняется в `pre-push.legacy`
-и запускается первым.
+push, если что-то не зелёное.
 
 Запустить проверки без push:
 

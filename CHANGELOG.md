@@ -29,7 +29,34 @@ T-ID между релизами — `CHANGELOG.md` единственное per
      версию `[N.M.0]`. При закрытии milestone — переименовывается
      в очередную версию, ниже создаётся новая пустая `[Unreleased]`. -->
 
+### Added
+- Auto-install pre-commit pre-push hook через hatchling custom build
+  hook. После `git clone && uv sync` хук установлен автоматически,
+  отдельная команда `uv run pre-commit install --hook-type pre-push`
+  больше не нужна (остаётся как fallback).
+  - `hatch_build.py` в корне реализует `BuildHookInterface.initialize`,
+    делегирует на `uv run --no-sync pre-commit install --hook-type
+    pre-push`. Использует `shutil.which('uv')` для resolved path
+    (избегаем `S607`), очищает `VIRTUAL_ENV` из build venv
+    (иначе uv warning'ует и игнорирует проектный `.venv/`).
+  - Регистрация через `[tool.hatch.build.hooks.custom]` в
+    `pyproject.toml`.
+  - Guard'ы: skip при отсутствии `.git/` (tarball/non-VCS checkout)
+    и при отсутствии `uv` на PATH — exit 0, warning в stderr.
+  - Идемпотентность бесплатно: без `--reinstall` uv кеширует
+    editable wheel, hook не дёргается на повторных `uv sync`.
+  - ADR — `DECISIONS.md` (`2026-05-17 — Auto-install pre-push hook
+    через hatchling custom build hook`), spec —
+    `specs/T095-auto-install-hook/spec.md`.
+  - README → «Проверки перед push» обновлён: ручная команда
+    помечена fallback. (T095)
+
 ### Changed
+- `[tool.ruff.lint.ignore]` дополнен `S603` (subprocess call without
+  shell=True и без user-input — известный false-positive). Введено
+  по ходу T095 (`hatch_build.py` — первый subprocess в проекте);
+  обоснование в самой ignore-секции `pyproject.toml`. (T095)
+- Closing-правка `BOARD.md`: запись `Doing → Done` оформляется
 - Closing-правка `BOARD.md`: запись `Doing → Done` оформляется
   отдельным commit'ом **после** `gh pr create`, чтобы пометка
   содержала реальный `[closed YYYY-MM-DD, PR #N]` вместо

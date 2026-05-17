@@ -47,6 +47,10 @@ packages = [
 ]
 
 
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
+
+
 [tool.ruff]
 unsafe-fixes = true
 line-length = 88
@@ -75,6 +79,11 @@ ignore = [
     "RUF003", "G004", "PLR0912",
     "PLR0913", "D401", "PLR0915",
     "C901", "D205", "N802",
+    # S603 — subprocess call without shell=True and with argv-list/resolved
+    # paths is the safe form; this rule flags it nonetheless. Suppressed
+    # project-wide (introduced in T095 hatch_build.py). User-supplied
+    # subprocess input is still expected to be validated at call site.
+    "S603",
 ]
 fixable = ["ALL"]
 unfixable = []
