@@ -57,4 +57,4 @@ async def test_create_project_returns_domain_aggregate() -> None:
 
     assert project.id is not None
     assert project.created_at is not None
-    assert project.status.value == 'created'
+    assert project.status.value == 'idea'

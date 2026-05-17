@@ -3,8 +3,8 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, String
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
 
 
@@ -19,4 +19,28 @@ class ProjectModel(Base):
     name: Mapped[str] = mapped_column(String(100), unique=True)
     path: Mapped[str] = mapped_column(String(1024))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    phases: Mapped[list['PhaseModel']] = relationship(
+        cascade='all, delete-orphan',
+        lazy='selectin',
+    )
+
+
+class PhaseModel(Base):
+    __tablename__ = 'phases'
+
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid,
+        ForeignKey('projects.id', ondelete='CASCADE'),
+        primary_key=True,
+    )
+    name: Mapped[str] = mapped_column(String(32), primary_key=True)
     status: Mapped[str] = mapped_column(String(32))
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )

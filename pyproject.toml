@@ -93,6 +93,16 @@ unfixable = []
 inline-quotes = "single"
 
 
+[tool.ruff.lint.flake8-bugbear]
+# typer.Option / typer.Argument возвращают immutable OptionInfo/ArgumentInfo,
+# Typer перехватывает их по типу — это идиоматический Typer-паттерн.
+# По умолчанию bugbear считает их "function call default" (B008) только
+# для не-builtin типов (для `str` промалчивает). Декларируем явно — это
+# не подавление ошибок, а корректное описание immutable-возвращающих
+# вызовов. Рекомендация Typer/ruff docs для CLI-проектов на Typer.
+extend-immutable-calls = ["typer.Option", "typer.Argument"]
+
+
 [tool.ruff.lint.flake8-type-checking]
 runtime-evaluated-base-classes = [
     "pydantic.BaseModel",

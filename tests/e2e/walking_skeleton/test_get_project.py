@@ -46,9 +46,20 @@ def test_project_show_returns_metadata_of_existing_project(
     assert result.exit_code == 0, result.output
     assert 'name: shown-amp' in result.output
     assert 'id:' in result.output
-    assert 'status: created' in result.output
+    assert 'status: idea' in result.output
     assert 'created_at:' in result.output
     assert 'path:' in result.output
+    assert 'phases:' in result.output
+    # таблица фаз: все 6 фаз присутствуют, все pending по умолчанию
+    for phase_name in (
+        'schematic',
+        'simulation',
+        'pcb',
+        'magnetics',
+        'enclosure',
+        'documentation',
+    ):
+        assert f'  {phase_name}\tpending\t-\t-' in result.output
 
 
 def test_project_show_unknown_name_exits_with_error(

@@ -66,6 +66,20 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
 
+- **T097** — [closed 2026-05-17, PR #18] Phase VO + derived
+  `Project.status` + Update use case. Реализация фазы B направления
+  D из ADR T096. Domain: `Phase` frozen-VO (6 фаз × методы
+  start/complete/skip/unskip + transitioned_to dispatcher); `Project.
+  status` = `@computed_field` derived от phases; `ProjectStatus` ×7
+  CONCEPT §4.3. Application: `UpdateProject` use case + `Metadata
+  Repository.update`. Persistence: SQL `phases` table + Alembic
+  миграция с backfill для existing проектов. CLI: `efactory project
+  update / add-phase / skip-phase` + `show` с таблицей фаз. 130
+  passed, coverage 99.58%. Спека Analyzed
+  (`specs/T097-phase-vo/spec.md`). Соглашения по pyproject (typer
+  immutable-calls) и type-ignore (computed_field + property)
+  согласованы в процессе PR — оба зафиксированы в auto-memory как
+  reusable feedback для T098/T099.
 - **T096** — [closed 2026-05-17, PR #17] Расширение domain'а:
   выбрано направление **D** (Phase VO + derived status + Update
   → Manifest primary → Decision aggregate). ADR в `DECISIONS.md`
