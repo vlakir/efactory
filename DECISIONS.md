@@ -25,6 +25,52 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-05-17 — Auto-install pre-push hook через hatchling custom build hook
+
+- **Контекст:** T091 ввёл `.pre-commit-config.yaml` на 5-step gate,
+  но установка hook'а — ручной шаг (`uv run pre-commit install
+  --hook-type pre-push`) после клонирования. Если новый разработчик
+  забудет — `git push` пройдёт без локального гейта, кривой код
+  попадёт на платформу. В ретро `[0.2.0]` запаркован тех-долг T095:
+  hook должен ставиться автоматически по `uv sync`, без отдельной
+  команды.
+- **Решение:** custom build hook hatchling (`hatch_build.py` в корне,
+  регистрация `[tool.hatch.build.hooks.custom]` в `pyproject.toml`).
+  В методе `initialize()` (срабатывает при сборке editable wheel
+  по `uv sync`) делегируем на `uv run --no-sync pre-commit install
+  --hook-type pre-push`. Guard'ы: skip при отсутствии `.git/`, skip
+  при отсутствии `uv` на PATH (warning в stderr, exit 0 — не
+  ломаем build). Идемпотентность достигается естественно: без
+  `--reinstall` editable wheel кешируется, hook не вызывается.
+- **Альтернативы:**
+  - **Скрипт-обёртка `scripts/dev-setup.sh`** (вместо `uv sync`) —
+    отвергли: формально не отвечает acceptance «после `uv sync`
+    автоматически», требует от разработчика помнить отдельную
+    команду — ровно та же проблема, что у `pre-commit install`.
+  - **Auto-инициализация в entry-point CLI / `conftest.py`** —
+    отвергли: hook ставится только когда пользователь запустит
+    приложение/тесты; если сразу делает `git push` — поздно.
+    Плюс смешивание слоёв (CLI знает про dev-workflow).
+  - **Собственный shell-wrapper в `.git/hooks/pre-push`** без
+    pre-commit's `install` — отвергли: дублируем то, что
+    pre-commit делает сам, повторно решая
+    `INSTALL_PYTHON`/`uv run` логику. Хуже maintainability.
+  - **Глобальные git templates** (`git config --global
+    init.templateDir`) — отвергли: требует global git config,
+    лежит вне репозитория, не воспроизводится между машинами.
+- **Последствия:** новый разработчик после `git clone` && `uv sync`
+  сразу получает работающий гейт на `git push`. CI без `.git/`
+  (artifact checkouts) — silently skip. Smoke-тесты подтвердили:
+  hook активируется в editable mode (`version='editable'`,
+  `target='wheel'`), `.venv/bin/pre-commit` доступен к моменту
+  `initialize()`, `uv run --no-sync` направляет на проектный
+  `.venv/`. Цена — введён первый `subprocess.run` в проекте, что
+  спровоцировало добавление **`S603`** (subprocess untrusted input)
+  в общий `[tool.ruff.lint.ignore]` шаблона: argv-list без
+  `shell=True` и без user-input — безопасная форма, false-positive.
+  Решение принято по варианту (в) обсуждения T095 — обоснование
+  в самой ignore-секции `pyproject.toml`.
+
 ### 2026-05-17 — Hexagonal Architecture (Ports & Adapters) как базовый layout
 
 - **Контекст:** долгоживущий проект (~5200 строк собственного кода
