@@ -29,55 +29,298 @@ T-ID между релизами — `CHANGELOG.md` единственное per
      версию `[N.M.0]`. При закрытии milestone — переименовывается
      в очередную версию, ниже создаётся новая пустая `[Unreleased]`. -->
 
+---
+
+## [0.3.0] — 2026-05-17
+
+Третий milestone: цикл «расширение domain'а до самодостаточной
+manifest-first модели проекта». Hexagonal-фундамент 0.2.0 расширен
+тремя направлениями (Phase VO + derived status, Manifest YAML
+primary, Decision aggregate), что закрыло полное направление D из
+ADR T096 (зафиксировано в 0.2.0 retrospective как tech-debt) и
+подготовило ядро для Фазы 1a дорожной карты CONCEPT §13.
+
+После 0.3.0:
+- проект самодостаточен и портативен (manifest = truth, SQL = index);
+- проектная история фиксируется в `decisions/*.md` (DDR);
+- domain-модель готова принимать реальные bridge'и (KiCad, ngspice,
+  FreeCAD, FEMM) — это работа Фазы 1a.
+
 ### Added
-- Дизайн-направление расширения domain'а зафиксировано: **D**
+
+- **Decision aggregate (журнал проектных решений; CONCEPT §4.4).**
+  Каждое значимое решение фиксируется как markdown файл
+  `<project>/decisions/D###_<slug>.md` (truth) + краткая запись в
+  `project.yaml → decisions:` (index).
+  - `domain.Decision` frozen-VO: id (`D###` / `D1000+`), title,
+    date, status (`proposed | accepted | rejected`), summary,
+    rationale, evidence (relative Path | None), session
+    (relative Path | None).
+  - `domain.DecisionRef` — компактная запись для manifest YAML.
+  - `Project.decisions: tuple[DecisionRef, ...] = ()` — новое
+    поле, default empty (forward-compat с pre-T099 manifest'ами).
+  - Outbound port `DecisionRepository` (Protocol: save / load /
+    list_all / next_id) + контрактные `DecisionNotFoundError`,
+    `DecisionInvalidError`.
+  - Filesystem markdown adapter
+    (`adapters/outbound/decision_markdown/`): atomic write
+    (tmp + os.replace), парсинг по anchor-секциям (`# `,
+    `**Дата:** `, `**Статус:** `, `## Summary`, `## Rationale`,
+    опционально `## Evidence`, `**Сессия:**`). Unknown секции
+    (`## Context` / `## Variants` / etc.) игнорируются — пользователь
+    может расширять файл руками. Слаг через NFKD + ASCII drop +
+    dash-collapse, max 50 chars, fallback `untitled`.
+  - Application use cases: `AddDecision`, `ListDecisions`,
+    `GetDecision`. Новый error `DecisionPersistenceError`
+    (markdown saved, manifest sync failed → подсказка `reindex`).
+  - CLI subapp: `efactory decision add --project --title --summary
+    --rationale [--status] [--date] [--evidence] [--session]`,
+    `efactory decision list --project`, `efactory decision show
+    --project --id D001`. ID auto-increment per project.
+  - `ReindexProjects` расширен optional `decision_repo`:
+    `Project.decisions` пересобирается из реальных markdown файлов
+    (markdown = truth). Без `decision_repo` поведение идентично
+    T098. CLI `efactory project reindex` пробрасывает adapter
+    автоматически.
+  - +37 тестов (12 domain Decision, 23 markdown adapter с tmp_path,
+    8 use cases с fake-портами, 6 e2e CLI включая manual-edit
+    acceptance). Spec — `specs/T099-decision-aggregate/spec.md`
+    (Analyzed: 10 Clarify resolved + 3 Critical + 3 Warning +
+    8 Note). (T099)
+
+- **Manifest YAML primary, SQL = index (T098).** Главное обещание
+  efactory: проект самодостаточен и портативен. `project.yaml`
+  в корне папки проекта становится источником истины; SQLite —
+  быстрый индекс для `list`.
+  - Outbound port `ProjectManifestRepository` (Protocol: save /
+    load / exists / discover_all) + контрактные
+    `ManifestNotFoundError`, `ManifestInvalidError` (объявлены
+    в port, adapter переэкспортирует — чтобы application мог
+    ловить без нарушения layered contract).
+  - Filesystem YAML adapter
+    (`adapters/outbound/manifest_yaml/`): PyYAML safe_load/dump,
+    atomic os.replace, exclude path для портативности (W1),
+    `schema_version: 1`, `sort_keys=False`, `allow_unicode=True`.
+  - `Project.updated_at: datetime` — новое domain поле, default
+    factory now(UTC); SQL миграция `cc78f2ee52bb` добавляет
+    column + backfill = created_at для existing rows.
+  - SQL `save` → idempotent upsert (C1): insert-or-update by id.
+    Один путь для CreateProject и ReindexProjects.
+  - Application errors: `IndexPersistenceError(project_name,
+    cause)` — partial-failure (manifest saved, SQL upsert failed;
+    подсказка `reindex`); `ProjectManifestMissingError` — SQL
+    знает, manifest на диске нет (desync).
+  - Use cases переработаны на manifest-first:
+    - `CreateProject`: dir → manifest.save → SQL upsert.
+    - `UpdateProject`: SQL.get_by_name (path) → manifest.load →
+      mutate → updated_at=now() → manifest.save → SQL.update.
+    - `GetProject`: SQL только для path, всё остальное — manifest.
+    - `DeleteProject`: отвязан от `get_project`; работает даже
+      без manifest на диске.
+  - Новый `ReindexProjects` use case + `ReindexSummary{indexed,
+    bootstrapped, orphans, failed}`:
+    - Primary mode: manifest → SQL upsert.
+    - Bootstrap mode: SQL-only записи → создать manifest из SQL
+      (для проектов созданных до T098); `updated_at = created_at`
+      (Clarify #10).
+    - `--remove-orphans` (default False): удалить SQL-строки без
+      manifest вместо bootstrap.
+    - Best-effort: ошибки собираются в `failed`, не блокируют.
+  - CLI: `efactory project reindex [--storage-root]
+    [--remove-orphans]` с TSV summary; exit 1 при failed > 0,
+    exit 0 иначе.
+  - README обновлён: новый раздел «Manifest как источник истины»
+    с portability-workflow.
+  - +44 теста (1 миграция backfill, 1 SQL upsert, 20 manifest
+    adapter, 2 application errors, 3 CreateProject, 4 UpdateProject,
+    3 GetProject, 11 ReindexProjects, 3 reindex e2e, 1 portability
+    e2e, 1 partial-failure e2e). Spec —
+    `specs/T098-manifest-primary/spec.md` (Analyzed: 10 Clarify
+    + 3 доп. resolved, 3 Critical + 3 Warning + 7 Note). (T098)
+
+- **Phase VO + derived `Project.status` + Update use case (T097).**
+  Реализация фазы B направления D (ADR T096).
+  - `domain.Phase` — frozen Pydantic VO с 6 каноническими
+    фазами (schematic / simulation / pcb / magnetics / enclosure /
+    documentation), методы `start / complete / skip / unskip` +
+    `transitioned_to(target_status)` dispatcher с матрицей
+    разрешённых переходов.
+  - `ProjectStatus` × 7 (CONCEPT §4.3): idea / schematic /
+    simulated / pcb_designed / magnetics_done / enclosure_done /
+    production_ready. **Derived** от phases через
+    `@computed_field`: последняя непрерывно-закрытая фаза с
+    начала; chain прерывается на pending/in_progress; skipped
+    считается закрытой.
+  - `Project.phases: tuple[Phase, ...]` (6 фаз в каноническом
+    порядке, default — все pending).
+  - `Application.UpdateProject` use case + `PhaseUpdate` DTO +
+    `MetadataRepository.update(project) → None`.
+  - Persistence: SQL `phases` table с FK CASCADE + Alembic
+    миграция `d82c9915c172` с backfill 6 pending rows для
+    existing проектов через batch_alter_table (SQLite-совместимо).
+  - CLI: `efactory project update <name> --new-name` /
+    `--phase <name> --status <s>`; shortcuts `add-phase` /
+    `skip-phase`; обновлённый `show` с таблицей фаз.
+  - `# type: ignore[prop-decorator]` для `@computed_field +
+    @property` (Pydantic-recommended workaround под mypy#5916,
+    согласовано).
+  - `[tool.ruff.lint.flake8-bugbear] extend-immutable-calls =
+    ["typer.Option", "typer.Argument"]` в pyproject.toml.
+  - +56 тестов. Spec — `specs/T097-phase-vo/spec.md` (Analyzed:
+    10 Clarify + 3 Critical + 3 Warning + 6 Note). (T097)
+
+- **Дизайн-направление расширения domain'а зафиксировано: D**
   (`Phase VO + derived status + Update` → `Manifest = primary
   storage` → `Decision aggregate`). ADR в `DECISIONS.md`
   (`2026-05-17 — Domain expansion direction: D`); рассмотрены
   6 альтернатив (A первым, B одним, C первым, SQL=primary,
   Phase=scalar, PhaseName=whitelist) с обоснованием отвержения.
-  Декомпозиция в `BACKLOG.md`: T097 (Phase VO + derived status +
-  Update), T098 (Manifest primary), T099 (Decision aggregate) —
-  с acceptance criteria каждой. Spec —
-  `specs/T096-domain-expansion/spec.md` (Done). Реализации в
-  scope T096 нет. (T096)
+  Декомпозиция в `BACKLOG.md`: T097, T098, T099 — с acceptance
+  criteria каждой. Spec — `specs/T096-domain-expansion/spec.md`
+  (Done). Реализации в scope T096 нет. (T096)
 
-- Auto-install pre-commit pre-push hook через hatchling custom build
-  hook. После `git clone && uv sync` хук установлен автоматически,
-  отдельная команда `uv run pre-commit install --hook-type pre-push`
-  больше не нужна (остаётся как fallback).
-  - `hatch_build.py` в корне реализует `BuildHookInterface.initialize`,
-    делегирует на `uv run --no-sync pre-commit install --hook-type
-    pre-push`. Использует `shutil.which('uv')` для resolved path
-    (избегаем `S607`), очищает `VIRTUAL_ENV` из build venv
-    (иначе uv warning'ует и игнорирует проектный `.venv/`).
+- **Auto-install pre-commit pre-push hook через hatchling custom
+  build hook.** После `git clone && uv sync` хук установлен
+  автоматически, отдельная команда `uv run pre-commit install
+  --hook-type pre-push` больше не нужна (остаётся как fallback).
+  - `hatch_build.py` в корне реализует
+    `BuildHookInterface.initialize`, делегирует на
+    `uv run --no-sync pre-commit install --hook-type pre-push`.
+    Использует `shutil.which('uv')` (избегаем `S607`), очищает
+    `VIRTUAL_ENV` из build venv (иначе uv игнорирует проектный
+    `.venv/`).
   - Регистрация через `[tool.hatch.build.hooks.custom]` в
     `pyproject.toml`.
-  - Guard'ы: skip при отсутствии `.git/` (tarball/non-VCS checkout)
-    и при отсутствии `uv` на PATH — exit 0, warning в stderr.
+  - Guard'ы: skip при отсутствии `.git/` (tarball/non-VCS) и
+    при отсутствии `uv` на PATH — exit 0, warning в stderr.
   - Идемпотентность бесплатно: без `--reinstall` uv кеширует
     editable wheel, hook не дёргается на повторных `uv sync`.
-  - ADR — `DECISIONS.md` (`2026-05-17 — Auto-install pre-push hook
-    через hatchling custom build hook`), spec —
+  - ADR — `DECISIONS.md`
+    (`2026-05-17 — Auto-install pre-push hook через hatchling
+    custom build hook`), spec —
     `specs/T095-auto-install-hook/spec.md`.
   - README → «Проверки перед push» обновлён: ручная команда
     помечена fallback. (T095)
 
 ### Changed
-- `[tool.ruff.lint.ignore]` дополнен `S603` (subprocess call without
-  shell=True и без user-input — известный false-positive). Введено
-  по ходу T095 (`hatch_build.py` — первый subprocess в проекте);
-  обоснование в самой ignore-секции `pyproject.toml`. (T095)
-- Closing-правка `BOARD.md`: запись `Doing → Done` оформляется
+
 - Closing-правка `BOARD.md`: запись `Doing → Done` оформляется
   отдельным commit'ом **после** `gh pr create`, чтобы пометка
   содержала реальный `[closed YYYY-MM-DD, PR #N]` вместо
   placeholder `PR current` (повторившегося ×6 в `[0.2.0]`:
   T086–T091). Зафиксировано подразделом «Closing-правка `BOARD:
   Doing → Done`» в `CLAUDE.md § Git workflow`. Глобальное правило
-  «closing-правка в задачном PR, без парного chore-PR» сохраняется
-  — здесь только проектное уточнение порядка шагов на ветке.
+  «closing-правка в задачном PR, без парного chore-PR»
+  сохраняется — здесь только проектное уточнение порядка шагов на
+  ветке. В 0.3.0 применено без помарок 3 раза (T097, T098, T099).
   (T093)
+- `Project.model_config` получил `extra='ignore'` (T098 Clarify #5)
+  — manifest YAML с future-полями (description, type, и т.п.,
+  которые приедут со своими фичами) валидируется без ошибок;
+  unknown поля молча игнорируются. Документировано: «v1 manifest
+  schema ignores fields outside the spec; they will be removed
+  on next write». (T098)
+- `[tool.ruff.lint.ignore]` дополнен `S603` (subprocess call
+  without shell=True и без user-input — известный false-positive).
+  Введено по ходу T095 (`hatch_build.py` — первый subprocess в
+  проекте); обоснование в самой ignore-секции `pyproject.toml`.
+  (T095)
+- `ManifestNotFoundError`, `ManifestInvalidError` контрактные
+  исключения порта `ProjectManifestRepository` перенесены из
+  adapter в port (adapter переэкспортирует) — application-слой
+  ловит их без нарушения layered contract `application > ports >
+  domain`. (T098)
+- `validate_name` (T092 валидатор против path-traversal) вынесен
+  в общий `domain/_name.py` — разрыв циклического импорта
+  `project ↔ decision`. `ProjectName` и `DecisionTitle` теперь
+  разделяют один валидатор. (T099)
+- `ReindexProjects.reindex_projects` принимает optional
+  `decision_repo: DecisionRepository | None` параметр. Без него —
+  поведение идентично T098 phase 2 (backward compat). (T099)
+
+### Retrospective
+
+**Что зашло:**
+
+- **Полное направление D закрыто за один milestone без правок
+  ADR T096.** T097 → T098 → T099 встали в depends-chain как
+  планировалось: derived `Project.status` (T097) → manifest-first
+  pattern (T098) → markdown + manifest reference (T099) повторил
+  паттерн T098. Архитектурная декомпозиция оправдалась.
+- **Ритуал spec → clarify → analyze работает для крупных фич
+  стабильно.** Три раза (T097, T098, T099) Claude писал
+  draft → 10+ clarify-вопросов → resolved дефолтами Разработчиком
+  → Analyze (Critical/Warning/Note) → Analyzed. До implement
+  ни одной архитектурной правки сверх scope.
+- **TDD outside-in держится по умолчанию.** Каждый use case и
+  adapter — Red e2e/unit → Green реализация → коммит. Никаких
+  «как это протестировать» пауз.
+- **Closing-правка BOARD после `gh pr create` (T093) применилась
+  3 раза без помарок.** В 0.2.0 placeholder `PR current` повторился
+  ×6; в 0.3.0 не повторился ни разу. Правило стабильно.
+- **Pre-push hook (T095) экономит внимание.** Все 6 PR cycle 0.3.0
+  прошли гейт автоматически на push (включая release-PR).
+  Несколько раз ловил мои опечатки до push'а (D213 docstring
+  style, FBT001/003 на bool флаге).
+- **`# type: ignore[prop-decorator]` (T097 feedback)** сработал
+  как ожидалось во всех 3 milestone-задачах с computed_field —
+  обсуждать каждый раз не нужно.
+- **import-linter independence contract расширяется автоматически
+  при появлении новых adapter sub-packages.** T098 добавил
+  `manifest_yaml`, T099 — `decision_markdown`. Контракт ловит
+  любые попытки cross-adapter импортов.
+- **Manifest = truth, SQL = index** архитектурно подтвердилась
+  через два примера: `project.yaml` (T098) и `decisions/*.md`
+  (T099). Паттерн одинаков: atomic write первичного хранилища →
+  обновление индекса; partial-failure → подсказка `reindex`.
+
+**Что не зашло:**
+
+- **CodeRabbit опять на rate-limit.** Через все 6 PR (T097, T098
+  ×2 если считать revert, T099, release) status-check показывал
+  SUCCESS без реального ревью. Альтернатива не выбрана — T094
+  остаётся в BACKLOG как открытый техдолг.
+- **Большие PR с phase-разбиением.** T098 содержал 3 фазы (phase 1
+  spec, phase 2 use cases, phase 3 CLI+e2e) — каждая отдельным
+  коммитом до squash; squash-merge даёт один коммит в main, но
+  обзорный diff большой (1000+ строк). T099 уложился в 2 фазы.
+  Альтернатива — мелкие PR на каждую фазу — отвергнута: больше
+  overhead на review/CodeRabbit (и так на rate-limit), и фазы не
+  имеют самостоятельной ценности (incomplete intermediate
+  states).
+- **Pyright/mypy не дружит с pydantic `RelativePath` coercion.**
+  В T099 adapter `_parse` Pydantic v2 спокойно coerce'ит str →
+  Path через AfterValidator, но static-checker требует явный
+  type. Один `# type: ignore[arg-type]` локально (документирован
+  в self-review T099). Если повторится — обсудим.
+
+**Правки методики (внесены по ходу):**
+
+- **`# type: ignore[prop-decorator]`** для `@computed_field +
+  @property` теперь применяется без обсуждения — это
+  Pydantic-recommended workaround (mypy#5916). Зафиксировано в
+  auto-memory (`feedback_computed_field_type_ignore.md`).
+- **Closing-правка BOARD после `gh pr create`** окончательно
+  стабилизировалась. Никаких изменений в правиле — просто
+  дисциплинированное применение.
+- **CHANGELOG cut** в release-PR (без парного chore-PR) —
+  применено первый раз в этом milestone. Сработало: один PR
+  с переименованием Unreleased + новой пустой Unreleased + Done
+  очисткой BOARD.
+
+**Технический долг и идеи для 0.4.0:**
+
+- T094 (CodeRabbit paid / альтернатива) остаётся открытым —
+  Разработчик пока откладывает.
+- Renaming `MetadataRepository → ProjectIndex` (T098 Clarify #4
+  паркинг) — мини-задача, не критично, можно сделать «по дороге»
+  при следующем рефакторинге.
+- Auto-reindex после ручной правки `project.yaml` или
+  `decisions/*.md` (T098 Clarify #8) — пока явный `reindex`,
+  но при появлении демона / web — пересмотрим.
+- Готовность к Фазе 1a — следующий шаг: bootstrap (T002/T003),
+  KiCad bridge (T004), модели ламп (T006), pipeline OP/tran/AC
+  (T008). Domain-фундамент готов принимать.
 
 ---
 
