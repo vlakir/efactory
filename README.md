@@ -99,22 +99,19 @@ open-source решений.**
 
 ```bash
 uv sync                                       # поставить зависимости
-
-# Один раз — задать пути для каталога проектов и SQLite-метаданных.
-# Файл .secrets уже в .gitignore (альтернатива — env-переменные с
-# префиксом EFACTORY_):
-cat > .secrets <<EOF
-EFACTORY_PROJECTS_ROOT=$HOME/efactory-projects
-EFACTORY_DATABASE_URL=sqlite+aiosqlite:///$HOME/efactory.db
-EOF
-
 uv run efactory project create --name myprj   # создать новый проект
 ```
 
+По умолчанию данные кладутся в `$XDG_DATA_HOME/efactory/`
+(или `$HOME/.local/share/efactory/`, если переменная не задана):
+SQLite-метаданные — `efactory.db`, каталоги проектов — `projects/`.
+Переопределить пути можно через env-переменные `EFACTORY_PROJECTS_ROOT`
+и `EFACTORY_DATABASE_URL` либо через файл `.secrets` в директории
+запуска (уже в `.gitignore`).
+
 Текущий объём функциональности — **Walking Skeleton T085**: сквозной
 use case `CreateProject` (CLI → application → SQLite-метаданные +
-filesystem-каталог проекта → domain). `.secrets` подхватывается
-из текущей директории запуска. По мере добавления функциональности
+filesystem-каталог проекта → domain). По мере добавления функциональности
 будут появляться новые команды — `efactory --help`.
 
 ## Зависимости
