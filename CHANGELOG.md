@@ -25,14 +25,40 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ## [Unreleased]
 
+### Added
+- `composition/settings.py`: XDG-style default'ы для `projects_root`
+  и `database_url` через `Field(default_factory=...)` —
+  `$XDG_DATA_HOME/efactory/{projects,efactory.db}` или
+  `$HOME/.local/share/efactory/...` если переменная не задана.
+  Walking Skeleton CLI работает из чистого окружения без обязательного
+  `.secrets` или env (`Settings()` больше не падает с
+  `ValidationError`). Явное переопределение через
+  `EFACTORY_PROJECTS_ROOT` / `EFACTORY_DATABASE_URL` или
+  `.secrets`-файл остаётся возможным и имеет приоритет над default'ами. (T087)
+- `composition/main.py`: хелпер `_ensure_storage_dirs` — composition
+  root до запуска Alembic-миграций создаёт `projects_root` и
+  родительский каталог SQLite-файла (URL парсится через
+  `sqlalchemy.engine.make_url`, не-SQLite драйверы пропускаются). (T087)
+- Тесты: `tests/unit/composition/test_settings.py` (3 теста —
+  XDG-default, XDG_DATA_HOME override, env override) и
+  `tests/integration/composition/test_main.py` (1 тест — `build_cli_app`
+  без env создаёт storage-каталоги и сквозной use case работает). (T087)
+- В `BACKLOG.md` новый раздел «Архитектурные follow-up'ы Walking
+  Skeleton» с задачей **T087** — дать `Settings` разумные default'ы
+  для `projects_root` / `database_url`, чтобы Walking Skeleton CLI
+  работал из коробки. Выявлено при работе над T086. (T086, закрыт в T087)
+
 ### Changed
-- `README.md` «Быстрый старт»: устаревшая команда
-  `uv run python src/main.py` заменена на Walking Skeleton CLI
-  `uv run efactory project create --name <name>`. В блок добавлено
-  создание `.secrets` с `EFACTORY_PROJECTS_ROOT` и
-  `EFACTORY_DATABASE_URL` — без этих переменных `Settings()`
-  падает с `ValidationError` (см. T087 — следующим шагом
-  даём разумные default'ы и убираем `.secrets`-шаг из quickstart). (T086)
+- README «Быстрый старт» упрощён до двух строчек —
+  `uv sync && uv run efactory project create --name myprj`. Блок
+  создания `.secrets` (введённый в T086) убран после появления
+  default'ов `Settings`. `.secrets`/env описаны справочно как
+  способ переопределить пути по умолчанию. (T087)
+- README «Быстрый старт» (предыдущая итерация в T086): устаревшая
+  команда `uv run python src/main.py` заменена на Walking Skeleton
+  CLI `uv run efactory project create --name <name>` + блок создания
+  `.secrets` (на тот момент `Settings()` падал с `ValidationError` без
+  явных env). Промежуточное состояние, схлопнутое в T087. (T086)
 
 ### Fixed
 - Уточнение к Retrospective `[0.1.0]`: пункт «снять
@@ -44,12 +70,6 @@ T-ID между релизами — `CHANGELOG.md` единственное per
   правке DECISIONS» не была сверена с актуальным состоянием
   ADR. Сам блок Retrospective как часть milestone-snapshot
   `[0.1.0]` не редактируется. (T086)
-
-### Added
-- В `BACKLOG.md` новый раздел «Архитектурные follow-up'ы Walking
-  Skeleton» с задачей **T087** — дать `Settings` разумные default'ы
-  для `projects_root` / `database_url`, чтобы Walking Skeleton CLI
-  работал из коробки. Выявлено при работе над T086. (T086)
 
 ---
 

@@ -31,20 +31,7 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
 ### Архитектурные follow-up'ы Walking Skeleton
 
-- **T087** — [2026-05-17] Дать `Settings` (`composition/settings.py`)
-  разумные default'ы для `projects_root` и `database_url`, чтобы
-  Walking Skeleton CLI работал из коробки без обязательного `.secrets`
-  или env-переменных. Сейчас `Settings()` падает с
-  `ValidationError: 2 validation errors` при инстанцировании, если
-  обе переменные не заданы (см. README «Быстрый старт» — там сейчас
-  требуется создать `.secrets`). Выявлено при работе над T086.
-  Acceptance: `uv run efactory project create --name myprj` из чистого
-  каталога без `.secrets` и без env создаёт проект; пути по умолчанию
-  — на чём-то предсказуемом (например, `$XDG_DATA_HOME/efactory/...`
-  или `~/.local/share/efactory/...`); README «Быстрый старт»
-  упрощается обратно до `uv sync && uv run efactory project create
-  --name myprj`; явное переопределение через `.secrets`/env остаётся
-  возможным.
+<!-- Пусто: T087 (Settings defaults) переехал в BOARD/Doing. -->
 
 ### Фаза 1a — MVP-ядро (3–4 недели)
 

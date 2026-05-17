@@ -66,11 +66,19 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
 
-- **T086** — [closed 2026-05-17, PR current] Обновить `README.md`
+- **T086** — [closed 2026-05-17, PR #7] Обновить `README.md`
   «Быстрый старт» под Walking Skeleton CLI
   (`uv run efactory project create --name <name>` + `.secrets`-блок
   с `EFACTORY_PROJECTS_ROOT` / `EFACTORY_DATABASE_URL`). Запаркован
   follow-up T087 на нормальные default'ы Settings. Уточнена ошибочная
   запись в Retrospective `[0.1.0]` про Kùzu ADR (статус был снят
   ещё в T085). Запись о изменениях — в `CHANGELOG.md` `[Unreleased]`.
+- **T087** — [closed 2026-05-17, PR current] Дать `Settings`
+  (`composition/settings.py`) разумные default'ы для `projects_root`
+  / `database_url` (XDG-стиль). Composition root автоматически
+  создаёт storage-каталоги до запуска Alembic-миграций. README
+  «Быстрый старт» упрощён обратно до двух строчек. По TDD: 3 unit-теста
+  Settings (default / XDG override / env override) + integration-тест
+  composition без env. Запись о изменениях — в `CHANGELOG.md`
+  `[Unreleased]`.
 
