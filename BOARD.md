@@ -61,20 +61,29 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T100** — [взята 2026-05-18, ветка `T100-kicad-sch-api`,
-  спека `specs/T100-kicad-sch-api/spec.md`] Programmatic schematic
-  generation: внутренний фасад `efactory.schematic`. Pre-spike
-  показал, что `kicad-sch-api` 0.5.6 несовместима с KiCad 10
-  `*.kicad_symdir/` (binary per-symbol). Решение по Q0/Q1 —
-  собственный фасад поверх `sexpdata` (вариант D), fallback на B
-  (bundled freeze KiCad 8/9 + `kicad-sch-api`) при провале Phase 0.
-  Phase 0 = переписать существующий `rc_filter.kicad_sch` через API,
-  ngspice OP/TRAN/AC идентично T008. Дальше — half-wave rectifier,
-  SE-amp 6П14П, переписать все `tests/fixtures/*.kicad_sch`. Acceptance:
-  ERC=0 в `kicad-cli`, валидный SPICE netlist, ngspice не падает,
-  coverage ≥ 80% на новом пакете, ADR T100 в `DECISIONS.md`.
-
 ## Done
+
+- **T100** — [closed 2026-05-18, PR #32] Programmatic schematic
+  generation: фасад `efactory.schematic` поверх `sexpdata` (вариант D
+  из спеки §6 после pre-spike, отклонившего `kicad-sch-api` 0.5.6 как
+  несовместимую с KiCad 10 `*.kicad_symdir/`). Реализация в 5 фазах
+  (Phase 0 RC + follow-up multiline/PWR_FLAG; Phase 1 Diode/Inductor/
+  V_AC + half-wave rectifier; Phase 2 BJT/MOSFET + tube/transformer
+  subckt через T006/T007 + SE-amp 6П14П; Phase 2 follow-up
+  grid-align/wire-based layout; Phase 3 ADR T100 + удаление ручной
+  фикстуры `tests/fixtures/rc_filter.kicad_sch` — строится через
+  фасад в `tests/conftest.py::rc_filter_schematic_path`). Embedded
+  `lib_symbols` snippets (14 шт.) — `.kicad_sch` self-contained, не
+  зависит от глобальной `KICAD_SYMBOL_DIR`. Hexagonal: port
+  `ports.outbound.schematic_writer.SchematicWriter` + adapter
+  `KicadSchematicWriter` + domain VO в `domain.schematic`. Acceptance:
+  4 фикстуры (RC, rectifier, common-emitter BJT, SE-amp 6П14П) —
+  ERC=0 в `kicad-cli`, валидный SPICE netlist, ngspice OP/TRAN/AC
+  ожидаемо; coverage на `schematic_kicad`: facade 97%, writer 100%,
+  `domain.schematic` 100%; общий 89.02%; ADR T100 в `DECISIONS.md`
+  (выбор D + альтернативы A/B/C/E + план миграции на KiCad 11/12);
+  5 гейтов зелёные (ruff/format/mypy/lint-imports/pytest — 538
+  passed). 6109 insertions / 197 deletions across 36 files.
 
 - **T008** — [closed 2026-05-18, PR #31] Базовые SPICE-анализы:
   OP / TRAN / AC через `NgspiceSimulator` (subprocess + ASCII raw
