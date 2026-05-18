@@ -40,15 +40,53 @@ from application.update_project import (
 from domain.decision import DecisionStatus
 from domain.phase import PhaseName, PhaseStatus
 from ports.outbound.decision_repository import DecisionNotFoundError
+from ports.outbound.git_repository import GitOperationError
+from ports.outbound.session_logger import SessionEventStatus
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from application.create_project import CreateProjectResult
+    from application.reindex_projects import ReindexSummary
+    from domain.decision import Decision
     from domain.project import Project
     from ports.outbound.decision_repository import DecisionRepository
+    from ports.outbound.git_repository import GitRepository
     from ports.outbound.metadata_repository import MetadataRepository
     from ports.outbound.project_file_repository import ProjectFileRepository
     from ports.outbound.project_manifest_repository import (
         ProjectManifestRepository,
     )
+    from ports.outbound.session_logger import SessionLogger
+
+
+async def _log_command[T](
+    logger: SessionLogger,
+    event: str,
+    *,
+    project: str | None,
+    payload: dict | None,
+    fn: Callable[[], Awaitable[T]],
+) -> T:
+    """Wrapper: log_event(ok) on success / log_event(error) on exception."""
+    try:
+        result = await fn()
+    except Exception as exc:
+        await logger.log_event(
+            event,
+            status=SessionEventStatus.ERROR,
+            project=project,
+            payload=payload,
+            error=f'{type(exc).__name__}: {exc}',
+        )
+        raise
+    await logger.log_event(
+        event,
+        status=SessionEventStatus.OK,
+        project=project,
+        payload=payload,
+    )
+    return result
 
 
 def build_app(
@@ -58,6 +96,8 @@ def build_app(
     file_repository: ProjectFileRepository,
     manifest_repository: ProjectManifestRepository,
     decision_repository: DecisionRepository,
+    git_repository: GitRepository,
+    session_logger: SessionLogger,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -67,14 +107,24 @@ def build_app(
     def create(
         name: str = typer.Option(..., '--name', help='Имя нового проекта'),
     ) -> None:
+        async def _run() -> CreateProjectResult:
+            return await create_project_use_case(
+                name=name,
+                projects_root=projects_root,
+                repo=metadata_repository,
+                file_repo=file_repository,
+                manifest_repo=manifest_repository,
+                git_repo=git_repository,
+            )
+
         try:
-            project = asyncio.run(
-                create_project_use_case(
-                    name=name,
-                    projects_root=projects_root,
-                    repo=metadata_repository,
-                    file_repo=file_repository,
-                    manifest_repo=manifest_repository,
+            result = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'project.create',
+                    project=name,
+                    payload={'name': name},
+                    fn=_run,
                 ),
             )
         except ValidationError as exc:
@@ -84,14 +134,36 @@ def build_app(
         except IndexPersistenceError as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=2) from exc
+        except GitOperationError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        project = result.project
+        if not result.git_initialized:
+            asyncio.run(
+                session_logger.log_event(
+                    'git.init',
+                    status=SessionEventStatus.ERROR,
+                    project=name,
+                    error='git not found on PATH (skipped)',
+                ),
+            )
         typer.echo(
             f'Created project {project.name} at {project.path} (id={project.id})',
         )
 
     @project_app.command('list')
     def list_() -> None:
+        async def _run() -> list:
+            return await list_projects_use_case(repo=metadata_repository)
+
         projects = asyncio.run(
-            list_projects_use_case(repo=metadata_repository),
+            _log_command(
+                session_logger,
+                'project.list',
+                project=None,
+                payload=None,
+                fn=_run,
+            ),
         )
         if not projects:
             typer.echo('No projects found.')
@@ -105,12 +177,21 @@ def build_app(
     def show(
         name: str = typer.Option(..., '--name', help='Имя искомого проекта'),
     ) -> None:
+        async def _run() -> Project:
+            return await get_project_use_case(
+                name=name,
+                repo=metadata_repository,
+                manifest_repo=manifest_repository,
+            )
+
         try:
             project = asyncio.run(
-                get_project_use_case(
-                    name=name,
-                    repo=metadata_repository,
-                    manifest_repo=manifest_repository,
+                _log_command(
+                    session_logger,
+                    'project.show',
+                    project=name,
+                    payload={'name': name},
+                    fn=_run,
                 ),
             )
         except ProjectNotFoundError as exc:
@@ -136,12 +217,21 @@ def build_app(
     def delete(
         name: str = typer.Option(..., '--name', help='Имя удаляемого проекта'),
     ) -> None:
+        async def _run() -> None:
+            await delete_project_use_case(
+                name=name,
+                repo=metadata_repository,
+                file_repo=file_repository,
+            )
+
         try:
             asyncio.run(
-                delete_project_use_case(
-                    name=name,
-                    repo=metadata_repository,
-                    file_repo=file_repository,
+                _log_command(
+                    session_logger,
+                    'project.delete',
+                    project=name,
+                    payload={'name': name},
+                    fn=_run,
                 ),
             )
         except ProjectNotFoundError as exc:
@@ -155,16 +245,32 @@ def build_app(
         new_name: str | None,
         phase_update: PhaseUpdate | None,
     ) -> Project:
+        async def _run() -> Project:
+            return await update_project_use_case(
+                command=UpdateProjectCommand(
+                    name=current_name,
+                    new_name=new_name,
+                    phase_update=phase_update,
+                ),
+                repo=metadata_repository,
+                manifest_repo=manifest_repository,
+            )
+
+        payload: dict = {'name': current_name}
+        if new_name is not None:
+            payload['new_name'] = new_name
+        if phase_update is not None:
+            payload['phase'] = phase_update.name.value
+            payload['status'] = phase_update.target_status.value
+
         try:
             return asyncio.run(
-                update_project_use_case(
-                    command=UpdateProjectCommand(
-                        name=current_name,
-                        new_name=new_name,
-                        phase_update=phase_update,
-                    ),
-                    repo=metadata_repository,
-                    manifest_repo=manifest_repository,
+                _log_command(
+                    session_logger,
+                    'project.update',
+                    project=current_name,
+                    payload=payload,
+                    fn=_run,
                 ),
             )
         except ProjectNotFoundError as exc:
@@ -302,13 +408,23 @@ def build_app(
     ) -> None:
         """Пересобрать SQL индекс по manifest'ам (T098); sync decisions (T099)."""
         root: Path = Path(storage_root) if storage_root is not None else projects_root
-        summary = asyncio.run(
-            reindex_projects_use_case(
+
+        async def _run() -> ReindexSummary:
+            return await reindex_projects_use_case(
                 storage_root=root,
                 repo=metadata_repository,
                 manifest_repo=manifest_repository,
                 decision_repo=decision_repository,
                 remove_orphans=remove_orphans,
+            )
+
+        summary = asyncio.run(
+            _log_command(
+                session_logger,
+                'project.reindex',
+                project=None,
+                payload={'storage_root': str(root), 'remove_orphans': remove_orphans},
+                fn=_run,
             ),
         )
         typer.echo(f'Reindexed {summary.indexed} projects.')
@@ -384,20 +500,34 @@ def build_app(
             if decision_date is not None
             else datetime.now(UTC).date()
         )
+
+        async def _run() -> Decision:
+            return await add_decision_use_case(
+                project_name=project,
+                title=title,
+                decision_date=date_value,
+                status=status,
+                summary=summary,
+                rationale=rationale,
+                evidence=Path(evidence) if evidence is not None else None,
+                session=Path(session) if session is not None else None,
+                repo=metadata_repository,
+                manifest_repo=manifest_repository,
+                decision_repo=decision_repository,
+            )
+
         try:
             decision = asyncio.run(
-                add_decision_use_case(
-                    project_name=project,
-                    title=title,
-                    decision_date=date_value,
-                    status=status,
-                    summary=summary,
-                    rationale=rationale,
-                    evidence=Path(evidence) if evidence is not None else None,
-                    session=Path(session) if session is not None else None,
-                    repo=metadata_repository,
-                    manifest_repo=manifest_repository,
-                    decision_repo=decision_repository,
+                _log_command(
+                    session_logger,
+                    'decision.add',
+                    project=project,
+                    payload={
+                        'project': project,
+                        'title': title,
+                        'status': status.value,
+                    },
+                    fn=_run,
                 ),
             )
         except ProjectNotFoundError as exc:
@@ -426,13 +556,22 @@ def build_app(
             typer.Option('--project', help='Имя проекта'),
         ],
     ) -> None:
+        async def _run() -> list:
+            return await list_decisions_use_case(
+                project_name=project,
+                repo=metadata_repository,
+                manifest_repo=manifest_repository,
+                decision_repo=decision_repository,
+            )
+
         try:
             decisions = asyncio.run(
-                list_decisions_use_case(
-                    project_name=project,
-                    repo=metadata_repository,
-                    manifest_repo=manifest_repository,
-                    decision_repo=decision_repository,
+                _log_command(
+                    session_logger,
+                    'decision.list',
+                    project=project,
+                    payload={'project': project},
+                    fn=_run,
                 ),
             )
         except ProjectNotFoundError as exc:
@@ -461,14 +600,23 @@ def build_app(
             typer.Option('--id', help='ID решения (D001)'),
         ],
     ) -> None:
+        async def _run() -> Decision:
+            return await get_decision_use_case(
+                project_name=project,
+                decision_id=decision_id,
+                repo=metadata_repository,
+                manifest_repo=manifest_repository,
+                decision_repo=decision_repository,
+            )
+
         try:
             decision = asyncio.run(
-                get_decision_use_case(
-                    project_name=project,
-                    decision_id=decision_id,
-                    repo=metadata_repository,
-                    manifest_repo=manifest_repository,
-                    decision_repo=decision_repository,
+                _log_command(
+                    session_logger,
+                    'decision.show',
+                    project=project,
+                    payload={'project': project, 'id': decision_id},
+                    fn=_run,
                 ),
             )
         except ProjectNotFoundError as exc:

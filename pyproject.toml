@@ -201,4 +201,6 @@ modules = [
     "adapters.outbound.file_store",
     "adapters.outbound.manifest_yaml",
     "adapters.outbound.decision_markdown",
+    "adapters.outbound.git_subprocess",
+    "adapters.outbound.session_jsonl",
 ]

@@ -17,7 +17,11 @@ from composition.settings import Settings
 if TYPE_CHECKING:
     from pathlib import Path
 
-_EFACTORY_ENV_VARS = ('EFACTORY_PROJECTS_ROOT', 'EFACTORY_DATABASE_URL')
+_EFACTORY_ENV_VARS = (
+    'EFACTORY_PROJECTS_ROOT',
+    'EFACTORY_DATABASE_URL',
+    'EFACTORY_SESSION_ROOT',
+)
 
 
 @pytest.fixture(autouse=True)
@@ -46,6 +50,19 @@ def test_defaults_use_home_local_share_when_no_xdg(tmp_path: 'Path') -> None:
         settings.database_url
         == f'sqlite+aiosqlite:///{expected_root / "efactory.db"}'
     )
+    assert settings.session_root == expected_root / 'sessions'
+
+
+def test_env_overrides_session_root(
+    tmp_path: 'Path',
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    custom_sessions = tmp_path / 'custom_sessions'
+    monkeypatch.setenv('EFACTORY_SESSION_ROOT', str(custom_sessions))
+
+    settings = Settings()
+
+    assert settings.session_root == custom_sessions
 
 
 def test_defaults_use_xdg_data_home_when_set(
