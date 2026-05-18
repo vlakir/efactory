@@ -99,6 +99,52 @@ _CONN_01X04_PINS = (
     _PinLayout('4', (-5.08, 5.08)),
 )
 
+
+@dataclass(frozen=True)
+class _ValveSymbolDef:
+    """
+    Описание ламповой `lib_id` из стандартной KiCad-библиотеки `Valve.*`.
+
+    `pins` — physical pin'ы в порядке появления в registry; `spice_pin_names`
+    параллельна `pins` и задаёт SPICE-имя для каждого физического pin'а
+    (`Sim.Pins = '<num>=<name> ...'`). `unit` — индекс multi-unit символа;
+    для headless-SPICE обычно `1` (body), filament-юниты (например, EL84
+    unit 2 = F1/F2) не инстанцируем — KiCad их просто не рисует.
+
+    Coords в `_PinLayout` уже **schematic-абсолютные** (Y-down), т.е.
+    инвертированы относительно library symbol coords (которые Y-up).
+    Pattern совпадает с BJT/MOSFET в этом же модуле.
+    """
+
+    lib_id: str
+    pins: tuple[_PinLayout, ...]
+    spice_pin_names: tuple[str, ...]
+    unit: int
+    label_offsets: _LabelOffsets
+
+
+# EL84 (Valve.kicad_sym): multi-unit пентод. Unit 1 — тело (anode A pin 7,
+# control grid G1 pin 2, cathode K_G3 pin 3, screen G2 pin 9). Unit 2 —
+# накал F1/F2 (pins 4/5), не используется в headless-SPICE.
+# Library-coords Y-up → schematic Y-down: знак Y инвертирован.
+_VALVE_EL84 = _ValveSymbolDef(
+    lib_id='Valve:EL84',
+    pins=(
+        _PinLayout('2', (-7.62, 1.27)),  # G1 (control grid), library (-7.62, -1.27)
+        _PinLayout('3', (-2.54, 8.89)),  # K_G3 (cathode), library (-2.54, -8.89)
+        _PinLayout('7', (0.0, -11.43)),  # A (anode/plate), library (0.0, +11.43)
+        _PinLayout('9', (7.62, -1.27)),  # G2 (screen), library (+7.62, +1.27)
+    ),
+    spice_pin_names=('G', 'K', 'P', 'G2'),
+    unit=1,
+    # Reference сверху-справа, Value снизу — canonical для Valve symbols.
+    label_offsets=_LabelOffsets(ref=(7.62, -10.16), value=(7.62, 7.62)),
+)
+
+_VALVE_REGISTRY: dict[str, _ValveSymbolDef] = {
+    _VALVE_EL84.lib_id: _VALVE_EL84,
+}
+
 # R/C/L Reference/Value — справа от horizontal-rendered body, разнесены по Y.
 # Числа взяты из user-perfected layout (T100 Phase 0 final, KiCad 10 PPA save).
 _RC_LABEL_OFFSETS = _LabelOffsets(ref=(1.016, -4.572), value=(1.016, -2.54))
@@ -733,26 +779,70 @@ class Schematic:
         pin_names: tuple[str, ...],
         at: tuple[float, float] | Position,
         rotation: float = 0.0,
+        symbol: str | None = None,
     ) -> Subcircuit:
         """
-        Generic 4-pin SPICE subckt-инстанс (поверх `Connector_Generic:Conn_01x04`).
+        SPICE subckt-инстанс с настраиваемым lib_id.
 
-        `model_id` — имя `.SUBCKT` в lib-файле; `lib_path` — путь к
-        `.lib` (KiCad SPICE writer автоматически вставит `.include`).
-        `pin_names` — упорядоченные имена пинов subckt в порядке symbol pin
+        Default (`symbol=None`) — generic 4-pin `Connector_Generic:Conn_01x04`,
+        совместимо с T100 Phase 2 fixtures (SE-amp, common-emitter).
+        `pin_names` — упорядоченные SPICE-имена в порядке physical pin
         '1','2','3','4' (для tube: ('P','G2','G','K'); для OPT_SE_5K_8:
         ('P1','P2','S1','S2')).
+
+        `symbol` (T104) — ключ из `_VALVE_REGISTRY` (`'Valve:EL84'` и др.).
+        Когда передан, символ берётся из стандартной библиотеки KiCad
+        (`Valve.kicad_sym`); фасад автоматически использует физические
+        pin-номера символа и mapping `Sim.Pins` через registry. В этом
+        режиме `pin_names` должны как multiset совпадать с
+        `_ValveSymbolDef.spice_pin_names` (иначе `ValueError`).
 
         Используется внутри `add_tube` / `add_transformer`; в API
         пользователя — для специфичных моделей без VO в T006/T007.
         """
-        if len(pin_names) != len(_CONN_01X04_PINS):
+        position = _to_position(at)
+        if symbol is None:
+            return self._add_generic_conn_subckt(
+                reference=reference,
+                model_id=model_id,
+                lib_path=lib_path,
+                pin_names=pin_names,
+                position=position,
+                rotation=rotation,
+            )
+        valve = _VALVE_REGISTRY.get(symbol)
+        if valve is None:
             msg = (
-                f'add_subckt: pin_names must have {len(_CONN_01X04_PINS)} entries '
-                f'(Conn_01x04), got {len(pin_names)}: {pin_names!r}'
+                f'add_subckt: unknown symbol {symbol!r}; '
+                f'known: {sorted(_VALVE_REGISTRY)}'
             )
             raise ValueError(msg)
-        position = _to_position(at)
+        return self._add_valve_subckt(
+            reference=reference,
+            model_id=model_id,
+            lib_path=lib_path,
+            pin_names=pin_names,
+            position=position,
+            rotation=rotation,
+            valve=valve,
+        )
+
+    def _add_generic_conn_subckt(
+        self,
+        *,
+        reference: str,
+        model_id: str,
+        lib_path: Path,
+        pin_names: tuple[str, ...],
+        position: Position,
+        rotation: float,
+    ) -> Subcircuit:
+        if len(pin_names) != len(_CONN_01X04_PINS):
+            msg = (
+                f'add_subckt: pin_names must have {len(_CONN_01X04_PINS)} '
+                f'entries (Conn_01x04), got {len(pin_names)}: {pin_names!r}'
+            )
+            raise ValueError(msg)
         sim_pins = ' '.join(
             f'{p.name}={name}'
             for p, name in zip(_CONN_01X04_PINS, pin_names, strict=True)
@@ -788,6 +878,76 @@ class Schematic:
             pin_by_name=pin_by_name,
         )
 
+    def _add_valve_subckt(
+        self,
+        *,
+        reference: str,
+        model_id: str,
+        lib_path: Path,
+        pin_names: tuple[str, ...],
+        position: Position,
+        rotation: float,
+        valve: _ValveSymbolDef,
+    ) -> Subcircuit:
+        # Multiset-проверка: SPICE-имена subckt должны совпадать с
+        # ожидаемыми именами для этого Valve-символа (порядок не важен).
+        if sorted(pin_names) != sorted(valve.spice_pin_names):
+            msg = (
+                f'add_subckt: pin_names {pin_names!r} не совпадают со SPICE-'
+                f'именами для {valve.lib_id} ({valve.spice_pin_names!r})'
+            )
+            raise ValueError(msg)
+        # Mapping: SPICE-имя → physical pin number, через registry.
+        spice_to_kicad: dict[str, str] = {
+            spice_name: pin.name
+            for pin, spice_name in zip(
+                valve.pins,
+                valve.spice_pin_names,
+                strict=True,
+            )
+        }
+        # Sim.Pins: KiCad SPICE writer берёт mapping `kicad_pin=spice_name`
+        # для каждого физического pin'а; порядок не критичен для писателя,
+        # сохраняем registry-порядок для детерминированного diff.
+        sim_pins = ' '.join(
+            f'{spice_to_kicad[name]}={name}' for name in valve.spice_pin_names
+        )
+        properties = {
+            'Sim.Device': 'subckt',
+            'Sim.Library': str(lib_path),
+            'Sim.Name': model_id,
+            'Sim.Pins': sim_pins,
+        }
+        ref_pos, value_pos = _label_positions(position, valve.label_offsets)
+        self._components.append(
+            ComponentSpec(
+                lib_id=valve.lib_id,
+                reference=reference,
+                value=model_id,
+                position=position,
+                rotation=rotation,
+                properties=properties,
+                pins=tuple(p.name for p in valve.pins),
+                ref_position=ref_pos,
+                value_position=value_pos,
+                unit=valve.unit,
+            ),
+        )
+        pin_positions = _pin_positions(position, rotation, valve.pins)
+        pin_by_name = {
+            spice_name: pin_positions[pin.name]
+            for pin, spice_name in zip(
+                valve.pins,
+                valve.spice_pin_names,
+                strict=True,
+            )
+        }
+        return Subcircuit(
+            reference=reference,
+            pin_positions=pin_positions,
+            pin_by_name=pin_by_name,
+        )
+
     def add_tube(
         self,
         *,
@@ -795,12 +955,18 @@ class Schematic:
         reference: str,
         at: tuple[float, float] | Position,
         rotation: float = 0.0,
+        symbol: str | None = None,
     ) -> Subcircuit:
         """
         Tube subckt (T006 `SpiceModel`, category=TUBE) через `add_subckt`.
 
         Берёт `file_path` и `subckt_pins` из модели; задаёт `model_id =
         spice_model.id`. Pin access: `.pin('P')`, `.pin('G2')`, ...
+
+        `symbol` (T104, optional) — ключ Valve-символа (`'Valve:EL84'` и
+        др. из `_VALVE_REGISTRY`). Без него — generic Conn_01x04 stand-in
+        (legacy T100 path). С ним — реальное изображение лампы в KiCad GUI,
+        SPICE-numerics идентичны.
         """
         return self.add_subckt(
             reference=reference,
@@ -809,6 +975,7 @@ class Schematic:
             pin_names=spice_model.subckt_pins,
             at=at,
             rotation=rotation,
+            symbol=symbol,
         )
 
     def add_transformer(

@@ -61,6 +61,24 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T104** — [взята 2026-05-18, ветка `T104-tube-valve-symbols`]
+  Phase 0: красивые tube symbols в `efactory.schematic` (закрывает
+  T100 Q4 compromise). Стандартная KiCad библиотека `Valve.kicad_sym`
+  содержит 91 ламповый символ — используем готовые вместо
+  `Connector_Generic:Conn_01x04`. **Scope Phase 0:** (а) расширить
+  `add_tube` фасада с optional `symbol_lib_id` + `symbol_pins` +
+  `unit` (multi-unit support для headless-SPICE — instance с unit 1,
+  filament игнорируется); (б) embed `Valve:EL84` snippet в адаптере;
+  (в) новая фикстура `test_triode_amp_facade.py` — single-stage
+  common-cathode 6П14П amp без OPT (избегаем W2 риск T103),
+  топология V_in → C_in → G; V_BB → R_p → P; K через R_k ∥ C_k →
+  GND. **НЕ трогаем:** SE-amp fixture (T103 territory), маппинг
+  для всех советских ламп (T105), multi-unit instances для
+  dual-triodes (T105). Acceptance: GUI рисует фикстуру реальной
+  пентодой EL84 (ручная проверка Vladimir); ngspice TRAN gain ≥ 30×
+  на plate; backward compat — `add_tube` без overrides
+  по-прежнему даёт Conn_01x04 path; 5 гейтов зелёные.
+
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
