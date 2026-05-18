@@ -61,6 +61,17 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T007** — [taken 2026-05-18] Transformer / load SPICE model
+  library. Domain.TransformerModel + TransformerKind (opt | load).
+  Outbound port TransformerLibrary + filesystem adapter (parallel
+  to TubeModelLibrary, не generalize). CLI `efactory transformer
+  list / show`. data/models/transformers/{opt,load}/ с 5 example
+  моделей: OPT_SE_5K_8, OPT_PP_6K6_8, SPEAKER_8OHM (с резонансом),
+  SPEAKER_8OHM_RES (чистый R), SPEAKER_4OHM. Settings.transformer_*
+  + user overlay. ngspice smoke — T008. Спека (Draft, 6 Clarify) —
+  `specs/T007-transformer-models/spec.md`. Ветка
+  `T007-transformer-models`.
+
 ## Done
 
 - **T006** — [closed 2026-05-18, PR #24] Tube SPICE model library
