@@ -1,23 +1,28 @@
-"""T100 Phase 2 acceptance: Single-Ended pentode amp 6П14П + OPT.
+"""T100 Phase 2 acceptance: SE pentode amp 6П14П + OPT_SE_5K_8.
 
-Топология (упрощённая SE pentode):
-  V_in → C_in → grid (G)
-  grid → R_g (470k) → GND   [grid-leak bias]
-  cathode (K) → R_k (270Ω) // C_k (220 µF) → GND  [auto-bias]
-  screen (G2) → B+ напрямую (без R_screen для compactness)
-  plate (P) → OPT.P1
-  OPT.P2 → B+ (V_B = 250 V DC)
-  OPT.S1, OPT.S2 → R_load (8 Ω)
+T103 re-layout (2026-05-19): переписана топология после W2 risk
+realized в T102 (старый layout сливал /plate с screen/OPT.P1/P2/B+
+через wire-crossings без junction'ов). Новый подход:
+
+  * EL84 (T104 Valve:EL84 symbol — anode/grid/cathode geometry, не
+    Conn_01x04 stand-in).
+  * OPT **выше** лампы (Y = 70), плата (P, top of EL84 на Y=77.47)
+    соединяется с OPT.P1 через короткий L-route, идущий ВВЕРХ над
+    B+ rail (Y=58.42) — не пересекает rail или stub'ы.
+  * B+ rail кончается at X=115 (после OPT). G2 stub идёт rail-end →
+    DOWN → LEFT к G2 pin (96.52, 87.63) — не пересекает plate wire.
+
+Топология:
+  V_in (10 mV @ 1 kHz) → C_in → grid; grid → R_g → GND (grid leak);
+  cathode → R_k (270Ω) ∥ C_k (22µF) → GND (auto-bias);
+  screen G2 → B+ напрямую через rail-stub;
+  plate → OPT.P1; OPT.P2 → B+;
+  OPT.S1/S2 → R_load (8 Ω) loop.
 
 Acceptance:
-  - kicad-cli sch export netlist: содержит XV1 ... 6P14P и XT1 ... OPT_SE_5K_8;
-    оба .include подцеплены из Sim.Library.
-  - ngspice TRAN: V(/plate) показывает AC swing ≥ 1 V (есть усиление),
-    secondary V(S1)−V(S2) ненулевой (через трансформатор сигнал проходит).
-
-Tube/OPT subckts подгружаются из data/models/ через `SpiceModel` VO,
-напрямую конструируемый (без полной T006 SpiceModelLibrary integration —
-держим тест автономным).
+  * netlist содержит X1 ... 6P14P + X2 ... OPT_SE_5K_8; оба .include.
+  * ngspice TRAN: V(/plate) AC swing ≥ 5× от V(/input) (T103 threshold).
+  * ERC: 0 errors (cosmetic warnings — lib_symbol_mismatch OK).
 """
 
 from __future__ import annotations
@@ -64,7 +69,12 @@ needs_ngspice = pytest.mark.skipif(
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _TUBE_LIB = _REPO_ROOT / 'data' / 'models' / 'tubes' / 'custom' / '6P14P.lib'
 _OPT_LIB = (
-    _REPO_ROOT / 'data' / 'models' / 'transformers' / 'generic' / 'OPT_SE_5K_8.lib'
+    _REPO_ROOT
+    / 'data'
+    / 'models'
+    / 'transformers'
+    / 'generic'
+    / 'OPT_SE_5K_8.lib'
 )
 
 
@@ -92,28 +102,31 @@ def _opt_se_5k_8() -> SpiceModel:
     )
 
 
-# Layout (mm, Y-down) на KiCad-стандартной сетке 1.27 mm. Wire-based
-# топология, labels — только для SPICE-trace nodes (input/plate/sec_*).
-#
-# V_DC/V_AC polarity workaround (Y-flip bug в фасаде): pin_plus = real '-',
-# pin_minus = real '+'. Для +B+=250V — pin_minus подключаем к B+ rail,
-# pin_plus → GND. См. facade.py комментарий.
-_V_IN_AT   = (50.8, 80.01)         # rotation=0: pin_plus@(50.8,85.09)→GND, pin_minus@(50.8,74.93)→C_in
-_GND_VIN_AT = (50.8, 88.9)
-_FLG_AT    = (45.72, 88.9)
-_C_IN_AT   = (63.5, 74.93)         # rotation=90 horizontal
-_R_G_AT    = (78.74, 77.47)        # pin_b@(78.74,73.66)→grid, pin_a@(78.74,81.28)→GND
-_GND_RG_AT = (78.74, 85.09)
-_TUBE_AT   = (99.06, 71.12)        # Conn_01x04: P@(93.98,68.58), G2@(93.98,71.12), G@(93.98,73.66), K@(93.98,76.2)
-_R_K_AT    = (105.41, 80.01)       # pin_b@(105.41,76.2)→cathode
-_GND_RK_AT = (105.41, 87.63)
-_C_K_AT    = (116.84, 80.01)       # parallel R_K
-_GND_CK_AT = (116.84, 87.63)
-_OPT_AT    = (132.08, 71.12)       # P1@(127.0,68.58)→plate, P2@(127.0,71.12)→B+, S1@(127.0,73.66), S2@(127.0,76.2)
-_R_LOAD_AT = (144.78, 77.47)       # pin_b@(144.78,73.66) = OPT.S1.y; pin_a@(144.78,81.28)
-_V_B_AT    = (144.78, 60.96)       # rotation=0: pin_plus@(144.78,66.04)→GND, pin_minus@(144.78,55.88)→B+ rail
-_GND_VB_AT = (144.78, 69.85)
-_BPLUS_RAIL_Y = 55.88              # horizontal rail соединяет V_B.pin_minus, tube.G2, OPT.P2
+# Layout (mm, Y-down) на KiCad-стандартной сетке 1.27 mm.
+# Vertical layering: B+ rail сверху (Y=58.42), затем OPT (Y=70),
+# затем EL84 (Y=88.9) с plate (Y=77.47) выходящим UP к OPT, наконец
+# cathode bias снизу (R_k/C_k Y~101). Плата соединяется с OPT.P1 через
+# Y=67.46 (выше B+ rail), что исключает пересечения с любыми stub'ами.
+
+_V_BB_AT       = (50.8, 63.5)         # rotation=0: pin_minus@(50.8,58.42)→B+ rail, pin_plus@(50.8,68.58)→GND
+_GND_VBB_AT    = (50.8, 73.66)
+_V_IN_AT       = (50.8, 88.9)         # pin_plus@(50.8,93.98)→GND, pin_minus@(50.8,83.82)→C_in
+_GND_VIN_AT    = (50.8, 97.79)
+_FLG_AT        = (45.72, 97.79)
+_C_IN_AT       = (63.5, 83.82)        # rotation=90: pin_a@(59.69,83.82), pin_b@(67.31,83.82)
+_R_G_AT        = (81.28, 93.98)       # pin_a@(81.28,97.79)→GND, pin_b@(81.28,90.17)=EL84.G
+_GND_RG_AT     = (81.28, 101.6)
+_TUBE_AT       = (88.9, 88.9)         # Valve:EL84 — G(81.28,90.17), K(86.36,97.79), P(88.9,77.47), G2(96.52,87.63)
+_R_K_AT        = (86.36, 101.6)       # pin_a@(86.36,105.41)→GND, pin_b@(86.36,97.79)=EL84.K
+_GND_RK_AT     = (86.36, 109.22)
+_C_K_AT        = (96.52, 101.6)       # pin_a@(96.52,105.41)→GND, pin_b@(96.52,97.79)→cathode rail
+_GND_CK_AT     = (96.52, 109.22)
+_OPT_AT        = (115.57, 69.85)      # Conn_01x04: P1(110.49,67.31), P2(110.49,69.85), S1(110.49,72.39), S2(110.49,74.93)
+_R_LOAD_AT     = (124.46, 76.2)       # pin_b@(124.46,72.39)=OPT.S1.Y, pin_a@(124.46,80.01)
+
+_BPLUS_RAIL_Y     = 58.42              # горизонталь B+: V_BB.pin_minus → X=115.57 (за OPT центром)
+_BPLUS_RAIL_END_X = 115.57             # endpoint = X_opt, откуда G2 stub L-route
+_PLATE_WIRE_Y     = 67.31              # plate routes к OPT.P1 — Y=67.31 (=53·1.27, on-grid)
 
 
 def _app_manager() -> SubprocessAppManager:
@@ -123,73 +136,106 @@ def _app_manager() -> SubprocessAppManager:
 def _build_se_amp(path: Path) -> Path:
     sch = Schematic('se_amp_6p14p')
 
-    # rotation=0: facade pin_plus → real '-', pin_minus → real '+' (Y-flip workaround)
-    v_in = sch.add_v_ac(
-        reference='V1', value='VSIN', at=_V_IN_AT,
-        amplitude=0.010, frequency=1000.0,
+    # T104 auto-numbering: V1, V2, C1, R1, X1 (tube), R2, C2, X2 (OPT), R3
+    v_bb = sch.add_v_dc(value='250', at=_V_BB_AT)                       # V1
+    v_in = sch.add_v_ac(                                                # V2
+        value='VSIN', at=_V_IN_AT, amplitude=0.010, frequency=1000.0,
     )
-    c_in = sch.add_capacitor(
-        reference='C1', value='10n', at=_C_IN_AT, rotation=90,
+    c_in = sch.add_capacitor(value='100n', at=_C_IN_AT, rotation=90)    # C1
+    r_g = sch.add_resistor(value='470k', at=_R_G_AT)                    # R1
+    xv1 = sch.add_tube(                                                 # X1
+        spice_model=_tube_6p14p(), at=_TUBE_AT, symbol='Valve:EL84',
     )
-    r_g = sch.add_resistor(reference='Rg', value='470k', at=_R_G_AT)
-    xv1 = sch.add_tube(
-        spice_model=_tube_6p14p(),
-        reference='XV1', at=_TUBE_AT,
+    r_k = sch.add_resistor(value='270', at=_R_K_AT)                     # R2
+    c_k = sch.add_capacitor(value='22u', at=_C_K_AT)                    # C2
+    xt1 = sch.add_transformer(                                          # X2
+        spice_model=_opt_se_5k_8(), at=_OPT_AT,
     )
-    r_k = sch.add_resistor(reference='Rk', value='270', at=_R_K_AT)
-    c_k = sch.add_capacitor(reference='Ck', value='220u', at=_C_K_AT)
-    xt1 = sch.add_transformer(
-        spice_model=_opt_se_5k_8(),
-        reference='XT1', at=_OPT_AT,
-    )
-    r_load = sch.add_resistor(reference='RL', value='8', at=_R_LOAD_AT)
-    v_b = sch.add_v_dc(reference='V2', value='250', at=_V_B_AT)
+    r_load = sch.add_resistor(value='8', at=_R_LOAD_AT)                 # R3
+    gnd_vbb = sch.add_ground(at=_GND_VBB_AT)
     gnd_vin = sch.add_ground(at=_GND_VIN_AT)
     gnd_rg = sch.add_ground(at=_GND_RG_AT)
     gnd_rk = sch.add_ground(at=_GND_RK_AT)
     gnd_ck = sch.add_ground(at=_GND_CK_AT)
-    gnd_vb = sch.add_ground(at=_GND_VB_AT)
     flg = sch.add_pwr_flag(at=_FLG_AT, rotation=180)
 
-    # === Wires ===
-    # Input: V_in.pin_minus → C_in.pin_a (horizontal Y=74.93)
-    sch.connect(v_in.pin_minus, c_in.pin_a)
-    # Grid: C_in.pin_b → R_g.pin_b → tube.G (через L-corner на X=67.31, Y=73.66)
-    sch.connect(c_in.pin_b, Position(x_mm=_C_IN_AT[0] + 3.81, y_mm=73.66))
-    sch.connect(Position(x_mm=_C_IN_AT[0] + 3.81, y_mm=73.66), r_g.pin_b)
-    sch.connect(r_g.pin_b, xv1.pin('G'))
-    sch.junction(at=(_R_G_AT[0], 73.66))  # T: R_g pin + grid wire L↔R
-    # Cathode rail: tube.K → R_k.pin_b → C_k.pin_b (horizontal Y=76.2)
-    sch.connect(xv1.pin('K'), r_k.pin_b)
-    sch.connect(r_k.pin_b, c_k.pin_b)
-    sch.junction(at=(_R_K_AT[0], 76.2))  # T: R_k pin + rail
-    # Plate: tube.P → OPT.P1 (horizontal Y=68.58)
-    sch.connect(xv1.pin('P'), xt1.pin('P1'))
-    # B+ rail: V_B.pin_minus → горизонталь Y=55.88 → стуbs к tube.G2 и OPT.P2
-    sch.connect(v_b.pin_minus, Position(x_mm=93.98, y_mm=_BPLUS_RAIL_Y))
-    sch.connect(Position(x_mm=93.98, y_mm=_BPLUS_RAIL_Y), xv1.pin('G2'))
-    sch.connect(Position(x_mm=127.0, y_mm=_BPLUS_RAIL_Y), xt1.pin('P2'))
-    sch.junction(at=(127.0, _BPLUS_RAIL_Y))  # T: rail + stub к OPT
-    # Secondary loop: S1 → R_load.pin_b (horizontal Y=73.66), S2 → R_load.pin_a (L)
-    sch.connect(xt1.pin('S1'), r_load.pin_b)
-    sch.connect(xt1.pin('S2'), Position(x_mm=_R_LOAD_AT[0], y_mm=76.2))
-    sch.connect(Position(x_mm=_R_LOAD_AT[0], y_mm=76.2), r_load.pin_a)
+    # === B+ rail (Y=58.42) ===
+    # V_BB.pin_minus → горизонталь rail → endpoint X=115 (за OPT)
+    sch.connect(
+        v_bb.pin_minus,
+        Position(x_mm=_BPLUS_RAIL_END_X, y_mm=_BPLUS_RAIL_Y),
+    )
+    # OPT.P2 stub: rail (Y=58.42, X=110.49) → OPT.P2 (110.49, 70)
+    sch.connect(
+        Position(x_mm=110.49, y_mm=_BPLUS_RAIL_Y),
+        xt1.pin('P2'),
+    )
+    sch.junction(at=(110.49, _BPLUS_RAIL_Y))   # T on rail для P2 stub
+    # G2 stub L-route: rail endpoint (115, 58.42) → DOWN (115, 87.63) →
+    # LEFT к G2 pin (96.52, 87.63). Y=87.63 ниже OPT.S2 (Y=75.08) — не
+    # пересекает secondary, и под plate wire (Y=67.46).
+    sch.connect(
+        Position(x_mm=_BPLUS_RAIL_END_X, y_mm=_BPLUS_RAIL_Y),
+        Position(x_mm=_BPLUS_RAIL_END_X, y_mm=87.63),
+    )
+    sch.connect(
+        Position(x_mm=_BPLUS_RAIL_END_X, y_mm=87.63),
+        xv1.pin('G2'),
+    )
 
-    # GND-стержни
+    # === Plate wire (Y=67.46, ВЫШЕ rail) ===
+    # EL84.P (88.9, 77.47) → corner (88.9, 67.46) → OPT.P1 (110.49, 67.46).
+    # Y=67.46 < rail Y=58.42? Нет, 67.46 > 58.42. Plate wire ниже rail в
+    # mm-числе (т.е. визуально ниже сверху-вниз), но выше тубы. Critical
+    # check: вертикаль X=88.9 не пересекает G2 stub (X=115) и P2 stub
+    # (X=110.49). Горизонталь Y=67.46 не пересекает rail Y=58.42 и не
+    # включает OPT pins (которые на Y=70+).
+    sch.connect(xv1.pin('P'), Position(x_mm=88.9, y_mm=_PLATE_WIRE_Y))
+    sch.connect(
+        Position(x_mm=88.9, y_mm=_PLATE_WIRE_Y),
+        xt1.pin('P1'),
+    )
+
+    # === Grid wire (V_in → C_in → R_g/G_node) ===
+    sch.connect(v_in.pin_minus, c_in.pin_a)
+    # C_in.pin_b (67.31, 83.82) → R_g.pin_b/G (81.28, 90.17). Manhattan
+    # corner = (67.31, 90.17). Horizontal Y=90.17 в X-диапазоне 67.31→81.28
+    # — не пересекает R_g body (X=81.28, but endpoint), не пересекает
+    # tube pins (G at X=81.28 endpoint).
+    sch.connect(c_in.pin_b, xv1.pin('G'))
+    sch.junction(at=(_R_G_AT[0], 90.17))   # T: R_g.pin_b + G pin + wire end
+
+    # === Cathode rail (Y=97.79) ===
+    # K (86.36, 97.79) overlaps with R_k.pin_b; wire к C_k.pin_b (96.52,97.79)
+    sch.connect(xv1.pin('K'), c_k.pin_b)
+    sch.junction(at=(_R_K_AT[0], 97.79))   # T: K + R_k.pin_b + wire start
+
+    # === Secondary loop (R_load between S1 и S2) ===
+    # S1 (110.49, 72.39) → R_load.pin_b (124.46, 72.39). Horizontal Y=72.39.
+    sch.connect(xt1.pin('S1'), r_load.pin_b)
+    # S2 (110.49, 74.93) → R_load.pin_a (124.46, 80.01). Manhattan L-route.
+    sch.connect(xt1.pin('S2'), r_load.pin_a)
+
+    # === GND-стержни ===
+    sch.connect(v_bb.pin_plus, gnd_vbb.pin)
     sch.connect(v_in.pin_plus, gnd_vin.pin)
-    sch.connect(v_b.pin_plus, gnd_vb.pin)
     sch.connect(r_g.pin_a, gnd_rg.pin)
     sch.connect(r_k.pin_a, gnd_rk.pin)
     sch.connect(c_k.pin_a, gnd_ck.pin)
     sch.connect(flg.pin, v_in.pin_plus)
 
-    # SPICE-trace labels (только для assertions)
+    # === SPICE-trace labels ===
     sch.label('input', at=v_in.pin_minus)
     sch.label('plate', at=xv1.pin('P'))
     sch.label('sec_a', at=xt1.pin('S1'))
     sch.label('sec_b', at=xt1.pin('S2'))
 
-    sch.spice_directive('.tran 10u 5m uic', at=(50.8, 95.25))
+    # .tran с uic — ngspice использует initial conditions (нули) и
+    # интегрирует TRAN. Без uic SPICE-bias point sometimes diverges для
+    # SE-amp (OPT primary как DC short между plate и B+, лампа auto-bias
+    # через R_k — non-trivial nonlinear solve). τ_Ck = 270·22µF ≈ 5.9 ms;
+    # t_stop = 80 ms = ~14τ — больше для надёжного settling с uic-start.
+    sch.spice_directive('.tran 10u 80m uic', at=(50.8, 115.57))
 
     return sch.save(path)
 
@@ -203,18 +249,18 @@ async def _export_netlist(schematic_path: Path, netlist_path: Path) -> Path:
 async def test_facade_se_amp_writes_subckt_instances_and_includes(
     tmp_path: Path,
 ) -> None:
-    """Netlist содержит XV1/XT1 X-инстансы + два .include для tube/OPT."""
+    """Netlist содержит X1/X2 X-инстансы + два .include для tube/OPT."""
     sch_path = _build_se_amp(tmp_path / 'se_amp.kicad_sch')
     netlist = await _export_netlist(sch_path, tmp_path / 'se_amp.cir')
     text = netlist.read_text()
     # X-instance для tube
-    xv1_lines = [ln for ln in text.splitlines() if ln.startswith('XV1 ')]
-    assert xv1_lines, f'No XV1 line:\n{text}'
-    assert xv1_lines[0].split()[-1] == '6P14P', xv1_lines[0]
+    x1_lines = [ln for ln in text.splitlines() if ln.startswith('X1 ')]
+    assert x1_lines, f'No X1 line:\n{text}'
+    assert x1_lines[0].split()[-1] == '6P14P', x1_lines[0]
     # X-instance для OPT
-    xt1_lines = [ln for ln in text.splitlines() if ln.startswith('XT1 ')]
-    assert xt1_lines, f'No XT1 line:\n{text}'
-    assert xt1_lines[0].split()[-1] == 'OPT_SE_5K_8', xt1_lines[0]
+    x2_lines = [ln for ln in text.splitlines() if ln.startswith('X2 ')]
+    assert x2_lines, f'No X2 line:\n{text}'
+    assert x2_lines[0].split()[-1] == 'OPT_SE_5K_8', x2_lines[0]
     # .include для обеих библиотек
     assert '6P14P.lib' in text, text
     assert 'OPT_SE_5K_8.lib' in text, text
@@ -222,28 +268,21 @@ async def test_facade_se_amp_writes_subckt_instances_and_includes(
 
 @needs_kicad
 @needs_ngspice
-@pytest.mark.skip(
-    reason=(
-        'T100 W2 risk realized: B+ rail wires (X=93.98 → tube.G2, X=127.0 → '
-        'OPT.P2) проходят через tube.P / OPT.P1 без явных junction; KiCad '
-        'merg`ит /plate с screen/OPT-primary/B+ через visual touch — '
-        'plate AC swing = 0. PWRS subst (T102) сработал, ngspice прогоняет '
-        'до конца. Layout-фикс — отдельная задача T103.'
-    ),
-)
 async def test_facade_se_amp_tran_shows_amplification(tmp_path: Path) -> None:
-    """TRAN: AC swing на plate ≥ 5× от input — лампа усиливает сигнал."""
+    """T103 acceptance: AC swing на /plate ≥ 5× от /input — лампа усиливает."""
     sch_path = _build_se_amp(tmp_path / 'se_amp.kicad_sch')
     netlist = await _export_netlist(sch_path, tmp_path / 'se_amp.cir')
     simulator = NgspiceSimulator(_app_manager())
 
     result = await simulator.run(
-        netlist, TranAnalysis(t_step=1e-5, t_stop=5e-3),
+        netlist, TranAnalysis(t_step=1e-5, t_stop=80e-3),
     )
     assert result.time_series is not None
     ts = result.time_series
 
-    skip = len(ts.time) // 2
+    # Берём последние 20% точек — после bias settling (>5τ).
+    n = len(ts.time)
+    skip = int(n * 0.8)
     vin = ts.traces['v(/input)'][skip:]
     vp = ts.traces['v(/plate)'][skip:]
 
@@ -251,4 +290,6 @@ async def test_facade_se_amp_tran_shows_amplification(tmp_path: Path) -> None:
     vp_pp = max(vp) - min(vp)
     assert vin_pp > 0.005, f'Input swing too low: {vin_pp}'
     gain = vp_pp / vin_pp
-    assert gain >= 5.0, f'Plate gain {gain:.1f}× ниже порога 5× (SE pentode)'
+    assert gain >= 5.0, (
+        f'Plate gain {gain:.1f}× ниже порога 5× (SE pentode)'
+    )

@@ -84,21 +84,8 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   достаёт параметры из библиотеки; default-параметр в фасаде убран.
 <!-- T102 перенесена в BOARD.md → Doing (2026-05-18). -->
 
-- **T103** — [2026-05-18] SE-amp wire-router: фикс T100 W2 risk
-  realized. Обнаружено в T102: в `tests/integration/adapters/
-  schematic_kicad/test_se_amp_facade.py` B+ rail-стубы
-  (X=93.98 → tube.G2, X=127.0 → OPT.P2) проходят через `tube.P` и
-  `OPT.P1` без явных `(junction)` — KiCad merg`ит net `/plate` со
-  screen / OPT-primary / B+. SE-amp tube → plate → OPT pin layout
-  переписать через «канальные коридоры» (горизонтальные/вертикальные
-  rail-row'ы между рядами grid'а), либо вручную развести B+ так,
-  чтобы wire не пересекал чужие pin'ы. Acceptance:
-  `test_facade_se_amp_tran_shows_amplification` снят со skip,
-  ngspice TRAN даёт plate AC swing ≥ 5× от input. Альтернатива —
-  расширить wire-router в `facade.py` (≤50 LOC по T100 §Analyze W2)
-  чтобы при `connect()` мимо чужих pin'ов ставился explicit
-  junction-избегающий обход. **Не блокирует фазу 1b** — SE-amp не
-  на критическом пути LLM chat-client.
+<!-- T103 перенесена в BOARD.md → Done (2026-05-19). -->
+
 - **T105** — [2026-05-18] Extend `_VALVE_REGISTRY` для остальных
   советских ламп. T104 Phase 0 закрыл только `Valve:EL84` (6П14П).
   Phase 1: маппинг ID → western Valve-symbol для популярных
