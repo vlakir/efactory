@@ -61,6 +61,16 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T008** — [taken 2026-05-18] Базовые SPICE-анализы в bridge:
+  OP / tran / AC через ngspice subprocess. Заменяет StubSimulator
+  реальным `NgspiceSimulator`. Spec
+  (`specs/T008-spice-analyses/spec.md`), ветка `T008-spice-analyses`.
+  Acceptance: 3 анализа отрабатывают на 3 тест-фикстурах (RC,
+  SE-amp, выпрямитель) с проверкой расчётной точки ±10%; ngspice
+  считается предусловием (apt install отдельно); CLI `bridge sim-run`
+  + `bridge design-to-netlist` + `bridge design-to-sim` как
+  композиция.
+
 ## Done
 
 - **T004** — [closed 2026-05-18, PR #30] KiCad → SPICE pipeline
