@@ -1,0 +1,18 @@
+* 6П14П — советский выходной пентод, аналог EL84 / 6BQ5.
+*
+* Koren pentode model. Параметры близки к EL84; популярна в советских
+* SE-усилителях и SE/PP audiophile конструкциях (классическая 1-2 W
+* SE-схема, может работать в триодном включении).
+*
+* tube_type: pentode
+* Pins: P (plate), G2 (screen), G (grid 1), K (cathode).
+.SUBCKT 6P14P P G2 G K
+* Koren parameters: MU=19.5 EX=1.4 KG1=1900 KG2=4500 KP=470 KVB=24
+E1 7 0 VALUE={V(G2,K)/470*LN(1+EXP(470*(1/19.5+V(G,K)/V(G2,K))))}
+G1 P K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/1900 * ATAN(V(P,K)/24)}
+G2 G2 K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/4500}
+C1 G K 10.8p
+C2 G P 0.5p
+C3 P K 6.5p
+RGI G K 1MEG
+.ENDS 6P14P

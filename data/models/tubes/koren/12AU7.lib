@@ -1,0 +1,18 @@
+* 12AU7 / ECC82 — medium-mu dual triode (driver / cathode follower).
+*
+* Norman Koren triode model. Typical-sample parameters fitted from
+* published RCA / Philips curves.
+*
+* tube_type: triode
+* Pins: P (plate), G (grid), K (cathode) — single section.
+*
+* Approximate; see T031 (Tube-curve-fitting) for precise per-sample fit.
+.SUBCKT 12AU7 P G K
+* Koren parameters: MU=21.5 EX=1.3 KG1=1180 KP=84 KVB=300
+E1 7 0 VALUE={V(P,K)/84*LN(1+EXP(84*(1/21.5+V(G,K)/SQRT(300+V(P,K)*V(P,K)))))}
+G1 P K VALUE={(PWRS(V(7),1.3)+PWRS(V(7),1.3))/1180}
+C1 G K 1.6p
+C2 G P 1.5p
+C3 P K 0.5p
+RGI G K 1MEG
+.ENDS 12AU7
