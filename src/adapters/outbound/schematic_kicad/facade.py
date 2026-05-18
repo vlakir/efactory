@@ -32,6 +32,8 @@ from domain.schematic import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from domain.spice_model import SpiceModel
+
 
 # Локальные позиции пинов и lib_id для каждого known kind. Числа взяты
 # из стандартной библиотеки KiCad (см. `lib_symbols/*.sexp`).
@@ -65,6 +67,37 @@ _VAC_PINS = (_PinLayout('1', (0.0, 5.08)), _PinLayout('2', (0.0, -5.08)))
 _DIODE_PINS = (_PinLayout('1', (-3.81, 0.0)), _PinLayout('2', (3.81, 0.0)))
 _GND_PINS = (_PinLayout('1', (0.0, 0.0)),)
 _PWR_FLAG_PINS = (_PinLayout('1', (0.0, 0.0)),)
+# === ВНИМАНИЕ: Y-flip для asymmetric-по-Y компонентов ===
+# KiCad symbol library использует Y-up convention (+Y = «вверху» в symbol),
+# а .kicad_sch — Y-down. KiCad GUI инвертирует Y при placement, поэтому
+# pin "C" Q_NPN в библиотеке at (2.54, +5.08) живёт в schematic at
+# (cx+2.54, cy-5.08). Наш `_transform_pin` Y не инвертирует — это
+# исторически работает для R/C/L/V_DC/V_AC/Diode (либо симметричны по Y,
+# либо assertions используют abs()). Для НОВЫХ компонентов с Y-аsymmetry
+# и assertion'ами по polarity (BJT/MOSFET/Conn) кодируем Y уже как
+# schematic-abs offset (т.е. отрицательный Y от library).
+#
+# Известный side-effect для R/C/L/V_DC/V_AC: pin_plus у V_DC возвращает
+# координату pin '1' (cy+5.08), но реальный «+» терминал в schematic at
+# (cy-5.08) — т.е. наш pin_plus попадает на real pin '-'. Phase 0/1
+# тесты этого не замечают (abs() в asserts); в новых тестах с активными
+# компонентами обходится swap'ом подключения GND/supply (см. CE/SE-amp).
+_BJT_PINS = (
+    _PinLayout('B', (-5.08, 0.0)),
+    _PinLayout('C', (2.54, -5.08)),
+    _PinLayout('E', (2.54, 5.08)),
+)
+_MOSFET_PINS = (
+    _PinLayout('G', (-5.08, 0.0)),
+    _PinLayout('D', (2.54, -5.08)),
+    _PinLayout('S', (2.54, 5.08)),
+)
+_CONN_01X04_PINS = (
+    _PinLayout('1', (-5.08, -2.54)),
+    _PinLayout('2', (-5.08, 0.0)),
+    _PinLayout('3', (-5.08, 2.54)),
+    _PinLayout('4', (-5.08, 5.08)),
+)
 
 # R/C/L Reference/Value — справа от horizontal-rendered body, разнесены по Y.
 # Числа взяты из user-perfected layout (T100 Phase 0 final, KiCad 10 PPA save).
@@ -79,6 +112,12 @@ _GND_LABEL_OFFSETS = _LabelOffsets(ref=(0.0, 6.35), value=(0.0, 3.81))
 # PWR_FLAG offsets под user-perfected layout (PWR_FLAG at rotation 180 на
 # уровне GND): Reference над, Value под перевёрнутым символом.
 _PWR_FLAG_LABEL_OFFSETS = _LabelOffsets(ref=(0.0, -1.9), value=(0.0, 6.096))
+# BJT/MOSFET: canonical KiCad lib defaults — Reference сверху-справа,
+# Value снизу-справа от body.
+_BJT_LABEL_OFFSETS = _LabelOffsets(ref=(5.08, 1.27), value=(5.08, -1.27))
+_MOSFET_LABEL_OFFSETS = _BJT_LABEL_OFFSETS
+# Conn_01x04: Reference сверху, Value снизу — canonical Connector_Generic.
+_CONN_01X04_LABEL_OFFSETS = _LabelOffsets(ref=(0.0, 5.08), value=(0.0, -7.62))
 
 _VDC_DEFAULT_PROPERTIES = {
     'Sim.Pins': '1=+ 2=-',
@@ -224,6 +263,62 @@ class PwrFlag(_ComponentHandle):
     @property
     def pin(self) -> Position:
         return self.pin_positions['1']
+
+
+@dataclass(frozen=True)
+class Bjt(_ComponentHandle):
+    """BJT-handle для Device:Q_NPN / Q_PNP. Pin numbers — буквы B/C/E."""
+
+    @property
+    def pin_b(self) -> Position:
+        return self.pin_positions['B']
+
+    @property
+    def pin_c(self) -> Position:
+        return self.pin_positions['C']
+
+    @property
+    def pin_e(self) -> Position:
+        return self.pin_positions['E']
+
+
+@dataclass(frozen=True)
+class Mosfet(_ComponentHandle):
+    """MOSFET-handle для Device:Q_NMOS / Q_PMOS. Pin numbers — буквы D/G/S."""
+
+    @property
+    def pin_g(self) -> Position:
+        return self.pin_positions['G']
+
+    @property
+    def pin_d(self) -> Position:
+        return self.pin_positions['D']
+
+    @property
+    def pin_s(self) -> Position:
+        return self.pin_positions['S']
+
+
+@dataclass(frozen=True)
+class Subcircuit(_ComponentHandle):
+    """
+    Generic SPICE subckt-инстанс поверх Connector_Generic:Conn_01x0N.
+
+    Используется для tube/transformer моделей: symbol — нейтральный
+    N-pin connector; semantic access к пинам — через `.pin(<subckt_name>)`
+    ('P'/'G2'/'G'/'K' для tube, 'P1'/'P2'/'S1'/'S2' для OPT). Mapping
+    держится в `pin_by_name` — заполняется фабрикой `add_subckt`.
+    """
+
+    pin_by_name: dict[str, Position]
+
+    def pin(self, name: str) -> Position:
+        try:
+            return self.pin_by_name[name]
+        except KeyError as exc:
+            available = sorted(self.pin_by_name)
+            msg = f'{self.reference}: no pin {name!r} (have {available})'
+            raise KeyError(msg) from exc
 
 
 def _to_position(at: tuple[float, float] | Position) -> Position:
@@ -527,6 +622,216 @@ class Schematic:
             pin_positions=_pin_positions(position, rotation, _PWR_FLAG_PINS),
         )
 
+    def add_bjt(
+        self,
+        *,
+        reference: str,
+        value: str,
+        polarity: str,
+        model_name: str,
+        at: tuple[float, float] | Position,
+        rotation: float = 0.0,
+    ) -> Bjt:
+        """
+        BJT-инстанс (`Device:Q_NPN` или `Q_PNP`) с привязкой к SPICE .model.
+
+        `polarity` — 'NPN' / 'PNP'; задаёт KiCad symbol и `Sim.Device`.
+        `model_name` — имя .model card (определяется отдельно через
+        `spice_directive('.model <name> NPN(...)')` или из external lib).
+        SPICE pin order для primitive BJT — C/B/E, что фиксируется
+        `Sim.Pins='C=1 B=2 E=3'`.
+        """
+        if polarity == 'NPN':
+            lib_id = 'Device:Q_NPN'
+        elif polarity == 'PNP':
+            lib_id = 'Device:Q_PNP'
+        else:
+            msg = f"BJT polarity must be 'NPN' or 'PNP', got {polarity!r}"
+            raise ValueError(msg)
+        position = _to_position(at)
+        properties = {
+            'Sim.Device': polarity,
+            'Sim.Model': model_name,
+            'Sim.Pins': 'C=1 B=2 E=3',
+        }
+        ref_pos, value_pos = _label_positions(position, _BJT_LABEL_OFFSETS)
+        self._components.append(
+            ComponentSpec(
+                lib_id=lib_id,
+                reference=reference,
+                value=value,
+                position=position,
+                rotation=rotation,
+                properties=properties,
+                pins=tuple(p.name for p in _BJT_PINS),
+                ref_position=ref_pos,
+                value_position=value_pos,
+            ),
+        )
+        return Bjt(
+            reference=reference,
+            pin_positions=_pin_positions(position, rotation, _BJT_PINS),
+        )
+
+    def add_mosfet(
+        self,
+        *,
+        reference: str,
+        value: str,
+        polarity: str,
+        model_name: str,
+        at: tuple[float, float] | Position,
+        rotation: float = 0.0,
+    ) -> Mosfet:
+        """
+        MOSFET-инстанс (`Device:Q_NMOS` или `Q_PMOS`).
+
+        SPICE pin order для primitive MOSFET — D/G/S (3-pin модель, bulk
+        соединён к source внутри primitive). `Sim.Pins='D=1 G=2 S=3'`.
+        """
+        if polarity == 'NMOS':
+            lib_id = 'Device:Q_NMOS'
+        elif polarity == 'PMOS':
+            lib_id = 'Device:Q_PMOS'
+        else:
+            msg = f"MOSFET polarity must be 'NMOS' or 'PMOS', got {polarity!r}"
+            raise ValueError(msg)
+        position = _to_position(at)
+        properties = {
+            'Sim.Device': polarity,
+            'Sim.Model': model_name,
+            'Sim.Pins': 'D=1 G=2 S=3',
+        }
+        ref_pos, value_pos = _label_positions(position, _MOSFET_LABEL_OFFSETS)
+        self._components.append(
+            ComponentSpec(
+                lib_id=lib_id,
+                reference=reference,
+                value=value,
+                position=position,
+                rotation=rotation,
+                properties=properties,
+                pins=tuple(p.name for p in _MOSFET_PINS),
+                ref_position=ref_pos,
+                value_position=value_pos,
+            ),
+        )
+        return Mosfet(
+            reference=reference,
+            pin_positions=_pin_positions(position, rotation, _MOSFET_PINS),
+        )
+
+    def add_subckt(
+        self,
+        *,
+        reference: str,
+        model_id: str,
+        lib_path: Path,
+        pin_names: tuple[str, ...],
+        at: tuple[float, float] | Position,
+        rotation: float = 0.0,
+    ) -> Subcircuit:
+        """
+        Generic 4-pin SPICE subckt-инстанс (поверх `Connector_Generic:Conn_01x04`).
+
+        `model_id` — имя `.SUBCKT` в lib-файле; `lib_path` — путь к
+        `.lib` (KiCad SPICE writer автоматически вставит `.include`).
+        `pin_names` — упорядоченные имена пинов subckt в порядке symbol pin
+        '1','2','3','4' (для tube: ('P','G2','G','K'); для OPT_SE_5K_8:
+        ('P1','P2','S1','S2')).
+
+        Используется внутри `add_tube` / `add_transformer`; в API
+        пользователя — для специфичных моделей без VO в T006/T007.
+        """
+        if len(pin_names) != len(_CONN_01X04_PINS):
+            msg = (
+                f'add_subckt: pin_names must have {len(_CONN_01X04_PINS)} entries '
+                f'(Conn_01x04), got {len(pin_names)}: {pin_names!r}'
+            )
+            raise ValueError(msg)
+        position = _to_position(at)
+        sim_pins = ' '.join(
+            f'{p.name}={name}'
+            for p, name in zip(_CONN_01X04_PINS, pin_names, strict=True)
+        )
+        properties = {
+            'Sim.Device': 'subckt',
+            'Sim.Library': str(lib_path),
+            'Sim.Name': model_id,
+            'Sim.Pins': sim_pins,
+        }
+        ref_pos, value_pos = _label_positions(position, _CONN_01X04_LABEL_OFFSETS)
+        self._components.append(
+            ComponentSpec(
+                lib_id='Connector_Generic:Conn_01x04',
+                reference=reference,
+                value=model_id,
+                position=position,
+                rotation=rotation,
+                properties=properties,
+                pins=tuple(p.name for p in _CONN_01X04_PINS),
+                ref_position=ref_pos,
+                value_position=value_pos,
+            ),
+        )
+        pin_positions = _pin_positions(position, rotation, _CONN_01X04_PINS)
+        pin_by_name = {
+            name: pin_positions[p.name]
+            for p, name in zip(_CONN_01X04_PINS, pin_names, strict=True)
+        }
+        return Subcircuit(
+            reference=reference,
+            pin_positions=pin_positions,
+            pin_by_name=pin_by_name,
+        )
+
+    def add_tube(
+        self,
+        *,
+        spice_model: SpiceModel,
+        reference: str,
+        at: tuple[float, float] | Position,
+        rotation: float = 0.0,
+    ) -> Subcircuit:
+        """
+        Tube subckt (T006 `SpiceModel`, category=TUBE) через `add_subckt`.
+
+        Берёт `file_path` и `subckt_pins` из модели; задаёт `model_id =
+        spice_model.id`. Pin access: `.pin('P')`, `.pin('G2')`, ...
+        """
+        return self.add_subckt(
+            reference=reference,
+            model_id=spice_model.id,
+            lib_path=spice_model.file_path,
+            pin_names=spice_model.subckt_pins,
+            at=at,
+            rotation=rotation,
+        )
+
+    def add_transformer(
+        self,
+        *,
+        spice_model: SpiceModel,
+        reference: str,
+        at: tuple[float, float] | Position,
+        rotation: float = 0.0,
+    ) -> Subcircuit:
+        """
+        Transformer subckt (T007 `SpiceModel`, category=TRANSFORMER).
+
+        Тот же механизм, что и `add_tube` — оба завязаны на `add_subckt`
+        + 4-pin Conn_01x04. Pin access по subckt-именам (`'P1'`, `'P2'`,
+        `'S1'`, `'S2'` для SE OPT).
+        """
+        return self.add_subckt(
+            reference=reference,
+            model_id=spice_model.id,
+            lib_path=spice_model.file_path,
+            pin_names=spice_model.subckt_pins,
+            at=at,
+            rotation=rotation,
+        )
+
     def connect(self, start: Position, end: Position) -> None:
         """
         Соединить две точки Manhattan-маршрутом (вертикаль → горизонталь).
@@ -581,13 +886,16 @@ class Schematic:
 
 
 __all__ = [
+    'Bjt',
     'Capacitor',
     'Diode',
     'Ground',
     'Inductor',
+    'Mosfet',
     'PwrFlag',
     'Resistor',
     'Schematic',
+    'Subcircuit',
     'VoltageSourceAc',
     'VoltageSourceDc',
 ]

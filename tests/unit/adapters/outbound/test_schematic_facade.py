@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import pytest
 
 from adapters.outbound.schematic_kicad.facade import Schematic
 from domain.schematic import Position
+from domain.spice_model import (
+    ComponentCategory,
+    ModelSource,
+    SpiceModel,
+)
 
 
 def test_resistor_pins_at_rotation_zero() -> None:
@@ -161,3 +167,146 @@ def test_round_grid_eliminates_float_jitter() -> None:
     assert not math.isnan(r.pin_a.x_mm)
     assert r.pin_a.x_mm == -3.81  # без jitter
     assert r.pin_a.y_mm == 0.0
+
+
+# === Phase 2: BJT / MOSFET / subckt / tube / transformer ===
+
+
+def test_add_bjt_npn_sim_properties_and_pin_handles() -> None:
+    sch = Schematic('t')
+    q = sch.add_bjt(
+        reference='Q1', value='2N3904',
+        polarity='NPN', model_name='2N3904',
+        at=(100.0, 50.0),
+    )
+    spec = sch.to_spec()
+    c = spec.components[0]
+    assert c.lib_id == 'Device:Q_NPN'
+    assert c.properties['Sim.Device'] == 'NPN'
+    assert c.properties['Sim.Model'] == '2N3904'
+    assert c.properties['Sim.Pins'] == 'C=1 B=2 E=3'
+    # pin handles по semantic именам
+    assert q.pin_b == Position(x_mm=94.92, y_mm=50.0)
+    assert q.pin_c == Position(x_mm=102.54, y_mm=50.0 - 5.08)
+    assert q.pin_e == Position(x_mm=102.54, y_mm=50.0 + 5.08)
+
+
+def test_add_bjt_pnp_uses_pnp_symbol_and_sim_device() -> None:
+    sch = Schematic('t')
+    sch.add_bjt(
+        reference='Q2', value='2N3906',
+        polarity='PNP', model_name='2N3906',
+        at=(0.0, 0.0),
+    )
+    c = sch.to_spec().components[0]
+    assert c.lib_id == 'Device:Q_PNP'
+    assert c.properties['Sim.Device'] == 'PNP'
+
+
+def test_add_bjt_invalid_polarity_raises() -> None:
+    sch = Schematic('t')
+    with pytest.raises(ValueError, match='NPN.*PNP'):
+        sch.add_bjt(
+            reference='Q1', value='?',
+            polarity='JFET',  # invalid
+            model_name='?', at=(0.0, 0.0),
+        )
+
+
+def test_add_mosfet_nmos_sim_properties_and_pins() -> None:
+    sch = Schematic('t')
+    m = sch.add_mosfet(
+        reference='M1', value='IRF540',
+        polarity='NMOS', model_name='IRF540',
+        at=(50.0, 50.0),
+    )
+    c = sch.to_spec().components[0]
+    assert c.lib_id == 'Device:Q_NMOS'
+    assert c.properties['Sim.Device'] == 'NMOS'
+    assert c.properties['Sim.Pins'] == 'D=1 G=2 S=3'
+    assert m.pin_g.x_mm == pytest.approx(50.0 - 5.08)
+    assert m.pin_d.y_mm == pytest.approx(50.0 - 5.08)
+    assert m.pin_s.y_mm == pytest.approx(50.0 + 5.08)
+
+
+def test_add_mosfet_invalid_polarity_raises() -> None:
+    sch = Schematic('t')
+    with pytest.raises(ValueError, match='NMOS.*PMOS'):
+        sch.add_mosfet(
+            reference='M1', value='?', polarity='JFET',
+            model_name='?', at=(0.0, 0.0),
+        )
+
+
+def test_add_subckt_writes_sim_library_and_pin_mapping() -> None:
+    sch = Schematic('t')
+    sub = sch.add_subckt(
+        reference='XV1', model_id='6P14P',
+        lib_path=Path('/some/where/6P14P.lib'),
+        pin_names=('P', 'G2', 'G', 'K'),
+        at=(50.0, 50.0),
+    )
+    c = sch.to_spec().components[0]
+    assert c.lib_id == 'Connector_Generic:Conn_01x04'
+    assert c.properties['Sim.Device'] == 'subckt'
+    assert c.properties['Sim.Name'] == '6P14P'
+    assert c.properties['Sim.Library'] == '/some/where/6P14P.lib'
+    assert c.properties['Sim.Pins'] == '1=P 2=G2 3=G 4=K'
+    # pin('P') — semantic access
+    assert sub.pin('P') == Position(x_mm=50.0 - 5.08, y_mm=50.0 - 2.54)
+    assert sub.pin('K') == Position(x_mm=50.0 - 5.08, y_mm=50.0 + 5.08)
+
+
+def test_add_subckt_wrong_pin_count_raises() -> None:
+    sch = Schematic('t')
+    with pytest.raises(ValueError, match='4 entries'):
+        sch.add_subckt(
+            reference='XV1', model_id='?',
+            lib_path=Path('/x.lib'),
+            pin_names=('A', 'B'),  # 2 pins, expected 4
+            at=(0.0, 0.0),
+        )
+
+
+def test_subcircuit_pin_unknown_name_raises() -> None:
+    sch = Schematic('t')
+    sub = sch.add_subckt(
+        reference='X', model_id='?',
+        lib_path=Path('/x.lib'),
+        pin_names=('A', 'B', 'C', 'D'),
+        at=(0.0, 0.0),
+    )
+    with pytest.raises(KeyError, match="no pin 'Z'"):
+        sub.pin('Z')
+
+
+def test_add_tube_uses_spice_model_metadata() -> None:
+    sch = Schematic('t')
+    model = SpiceModel(
+        id='6P14P', name='6П14П',
+        category=ComponentCategory.TUBE, subcategory='pentode',
+        source=ModelSource.CUSTOM,
+        file_path=Path('/data/tubes/6P14P.lib'),
+        subckt_pins=('P', 'G2', 'G', 'K'),
+    )
+    sch.add_tube(spice_model=model, reference='XV1', at=(0.0, 0.0))
+    c = sch.to_spec().components[0]
+    assert c.value == '6P14P'
+    assert c.properties['Sim.Name'] == '6P14P'
+    assert c.properties['Sim.Library'] == '/data/tubes/6P14P.lib'
+    assert c.properties['Sim.Pins'] == '1=P 2=G2 3=G 4=K'
+
+
+def test_add_transformer_uses_spice_model_metadata() -> None:
+    sch = Schematic('t')
+    model = SpiceModel(
+        id='OPT_SE_5K_8', name='OPT_SE_5K_8',
+        category=ComponentCategory.TRANSFORMER, subcategory='opt',
+        source=ModelSource.GENERIC,
+        file_path=Path('/data/trafo/OPT_SE_5K_8.lib'),
+        subckt_pins=('P1', 'P2', 'S1', 'S2'),
+    )
+    sch.add_transformer(spice_model=model, reference='XT1', at=(10.0, 10.0))
+    c = sch.to_spec().components[0]
+    assert c.properties['Sim.Name'] == 'OPT_SE_5K_8'
+    assert c.properties['Sim.Pins'] == '1=P1 2=P2 3=S1 4=S2'

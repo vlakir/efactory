@@ -75,6 +75,19 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   ...). Расширяет T007 generalization. Acceptance:
   `efactory diode list/show` работает; `facade.add_diode(model='1N4007')`
   достаёт параметры из библиотеки; default-параметр в фасаде убран.
+- **T102** — [2026-05-18] T006 tube .lib → ngspice-compatible `PWRS()`
+  → `sgn()*pwr(abs(), ...)`. Сейчас все custom лампы (`6P14P`, `6N1P`,
+  `GU50` и ещё ~12) используют PSpice-extension `PWRS(x,y)` в Koren-
+  формулах G-источников; ngspice 45 без `--compatibility-mode=psa`
+  валится с `no such function 'pwrs'`. Скрипт-патчер пробегает по
+  `data/models/tubes/custom/*.lib`, делает функционально-эквивалентную
+  замену через `sgn(x)*pwr(abs(x),y)`. Acceptance: T100 SE-amp TRAN
+  test (`test_facade_se_amp_tran_shows_amplification`) снят со
+  `skip` и проходит — ngspice TRAN для 6П14П SE-amp работает без
+  PSpice-mode. Обнаружено в T100 Phase 2; до фикса T006-модели не
+  годны для прогона в pure ngspice. Альтернатива — собирать ngspice с
+  `--enable-pspice` или включить `--compatibility-mode psa` в нашем
+  `NgspiceSimulator` (отдельное решение в ADR).
 
 ### Фаза 1b — Чат-клиент (+2–3 недели)
 
