@@ -20,6 +20,7 @@ Tab-индентация и набор обязательных полей (`bod
 
 from __future__ import annotations
 
+import re
 import uuid as uuid_module
 from importlib import resources
 from typing import TYPE_CHECKING
@@ -59,6 +60,9 @@ def _t(depth: int) -> str:
     return '\t' * depth
 
 
+_EXTENDS_RE = re.compile(r'\(extends "([^"]+)"\)')
+
+
 def _load_lib_symbol(lib_id: str) -> str:
     fname = lib_id.replace(':', '.') + '.sexp'
     try:
@@ -70,6 +74,49 @@ def _load_lib_symbol(lib_id: str) -> str:
             f'{fname!r} not found in {_LIB_SYMBOLS_PACKAGE}.'
         )
         raise SchematicWriteError(msg) from exc
+
+
+def _collect_lib_symbols(lib_ids: list[str]) -> list[str]:
+    """
+    Загрузить snippets для всех lib_ids + parent-цепочки через `(extends ...)`.
+
+    Topological-sorted: parents эмитятся перед derived. Дедупликация: каждый
+    lib_id загружается ровно один раз даже если несколько компонентов его
+    используют или несколько derived ссылаются на одного parent.
+
+    KiCad `(extends "X")` требует, чтобы parent X присутствовал в той же
+    `lib_symbols` секции и эмитился ДО derived (иначе symbol не
+    разрешается). Для T105: `Valve:ECC83 extends Valve:ECC81` — при
+    использовании ECC83 автоматически подгружаем ECC81.
+    """
+    loaded: dict[str, str] = {}
+    queue = list(dict.fromkeys(lib_ids))  # preserve order, dedup
+    while queue:
+        lid = queue.pop(0)
+        if lid in loaded:
+            continue
+        snippet = _load_lib_symbol(lid)
+        loaded[lid] = snippet
+        for match in _EXTENDS_RE.finditer(snippet):
+            parent = match.group(1)
+            if parent not in loaded:
+                queue.append(parent)
+    # Topo-sort: parents before derived.
+    ordered: list[str] = []
+    pending = set(loaded)
+    while pending:
+        progressed = False
+        for lid in list(pending):
+            parents = {m.group(1) for m in _EXTENDS_RE.finditer(loaded[lid])}
+            if parents.issubset(set(ordered)):
+                ordered.append(lid)
+                pending.discard(lid)
+                progressed = True
+        if not progressed:
+            # Cycle или missing dependency — fall back на arbitrary порядок.
+            ordered.extend(sorted(pending))
+            break
+    return [loaded[lid] for lid in ordered]
 
 
 def _is_power_symbol(component: ComponentSpec) -> bool:
@@ -294,12 +341,8 @@ class KicadSchematicWriter:
             _t(1) + '(paper "A4")',
             _t(1) + '(lib_symbols',
         ]
-        seen: set[str] = set()
-        for component in spec.components:
-            if component.lib_id in seen:
-                continue
-            seen.add(component.lib_id)
-            lines.append(_load_lib_symbol(component.lib_id))
+        lib_ids = [c.lib_id for c in spec.components]
+        lines.extend(_collect_lib_symbols(lib_ids))
         lines.append(_t(1) + ')')
         for wire in spec.wires:
             lines.extend(_wire_block(1, wire))
