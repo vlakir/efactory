@@ -35,28 +35,28 @@ def _default_session_root() -> Path:
     return _default_data_dir() / 'sessions'
 
 
-def _default_tube_library_root() -> Path:
+def _default_library_root() -> Path:
     """
-    `<repo>/data/models/tubes/` в development (editable install).
+    `<repo>/data/models/` — корень built-in SPICE-моделей (T006 + T007).
 
-    Resolution path: settings.py → composition/ → src/ → <repo>. На
-    production install (когда появится T002 bootstrap + pip install
-    с force-include) этот путь придётся переопределить через
-    `EFACTORY_TUBE_LIBRARY_ROOT` env — Phase 1a development
-    единственный сценарий (T006 C1).
+    Структура: `<root>/<category>/<source>/*.{lib,inc,cir}`. Категории:
+    tubes / transformers / loads. Resolution path: settings.py →
+    composition/ → src/ → <repo>. На production install переопределяется
+    через `EFACTORY_LIBRARY_ROOT` env.
     """
-    return Path(__file__).resolve().parents[2] / 'data' / 'models' / 'tubes'
+    return Path(__file__).resolve().parents[2] / 'data' / 'models'
 
 
-def _default_user_tube_library_root() -> Path:
+def _default_user_library_root() -> Path:
     """
-    `<storage_root>/models/tubes/` для user-added моделей (T006 fix-up Q3).
+    `<storage_root>/models/` для user-added SPICE-моделей (T006 fix-up Q3).
 
-    Adapter будет overlay'ить эти модели поверх built-in: user-id
-    перезаписывает built-in. Каталог не создаётся автоматически — если
-    отсутствует, adapter работает только с built-in.
+    User-id с тем же именем, что built-in, перезаписывает built-in
+    (overlay). Структура та же: `<root>/<category>/<source>/...`.
+    Каталог не создаётся автоматически — если отсутствует, adapter
+    работает только с built-in.
     """
-    return _default_data_dir() / 'models' / 'tubes'
+    return _default_data_dir() / 'models'
 
 
 class Settings(BaseSettings):
@@ -81,7 +81,5 @@ class Settings(BaseSettings):
     projects_root: Path = Field(default_factory=_default_projects_root)
     database_url: str = Field(default_factory=_default_database_url)
     session_root: Path = Field(default_factory=_default_session_root)
-    tube_library_root: Path = Field(default_factory=_default_tube_library_root)
-    user_tube_library_root: Path = Field(
-        default_factory=_default_user_tube_library_root,
-    )
+    library_root: Path = Field(default_factory=_default_library_root)
+    user_library_root: Path = Field(default_factory=_default_user_library_root)

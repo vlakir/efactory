@@ -209,5 +209,5 @@ modules = [
     "adapters.outbound.decision_markdown",
     "adapters.outbound.git_subprocess",
     "adapters.outbound.session_jsonl",
-    "adapters.outbound.tube_models",
+    "adapters.outbound.spice_models",
 ]

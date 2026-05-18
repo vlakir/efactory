@@ -1,0 +1,15 @@
+* SPEAKER_4OHM — typical 4Ω hi-fi speaker model with mechanical resonance.
+*
+* Аналог SPEAKER_8OHM но для 4Ω выхода (типично для PP-усилителей с
+* отводом на 4 Ω, и для современных hi-end систем). Резонанс ~60 Hz.
+*
+* subcategory: speaker
+* Pins: SP, SN — speaker terminals.
+.SUBCKT SPEAKER_4OHM SP SN
+Rdc SP A 3.2
+Lvc A SN 0.2m
+* Mechanical resonance ~60 Hz.
+Rcm SP B 12
+Lcm B C 16m
+Ccm C SN 440u
+.ENDS SPEAKER_4OHM

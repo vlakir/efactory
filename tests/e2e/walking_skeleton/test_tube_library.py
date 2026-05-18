@@ -112,7 +112,7 @@ def test_tube_show_rectifier_5ar4(
     result = runner.invoke(build_cli_app(), ['tube', 'show', '--id', '5AR4'])
 
     assert result.exit_code == 0, result.output
-    assert 'tube_type: rectifier' in result.output
+    assert 'type: rectifier' in result.output
     assert 'pins: A1 A2 K' in result.output
     assert '.SUBCKT 5AR4' in result.output
     assert '.MODEL DIODE_5AR4' in result.output
@@ -132,7 +132,7 @@ def test_tube_show_ayumi_converts_caret_to_double_star(
     assert result.exit_code == 0, result.output
     assert 'id: 300B' in result.output
     assert 'source: ayumi' in result.output
-    assert 'tube_type: triode' in result.output
+    assert 'type: triode' in result.output
     assert '.SUBCKT 300B' in result.output
     # 300B model содержит V(P,K)^2 → должно стать V(P,K)**2.
     assert '**2' in result.output
@@ -153,7 +153,7 @@ def test_tube_show_koren_triode_no_conversion_needed(
 
     assert result.exit_code == 0, result.output
     assert 'source: koren' in result.output
-    assert 'tube_type: triode' in result.output
+    assert 'type: triode' in result.output
     assert 'pins: P G K' in result.output
     assert '.SUBCKT 12AX7' in result.output
 
@@ -177,10 +177,10 @@ def test_tube_list_empty_when_library_root_missing(
 ) -> None:
     _setup_env(tmp_path, monkeypatch)
     monkeypatch.setenv(
-        'EFACTORY_TUBE_LIBRARY_ROOT', str(tmp_path / 'empty_tubes'),
+        'EFACTORY_LIBRARY_ROOT', str(tmp_path / 'empty_tubes'),
     )
     monkeypatch.setenv(
-        'EFACTORY_USER_TUBE_LIBRARY_ROOT', str(tmp_path / 'empty_user'),
+        'EFACTORY_USER_LIBRARY_ROOT', str(tmp_path / 'empty_user'),
     )
     runner = CliRunner()
 
@@ -196,12 +196,12 @@ def test_tube_list_user_overlay_adds_custom_model(
     """End-user сценарий: положил `.lib` в user-каталог → видно в list."""
     _setup_env(tmp_path, monkeypatch)
     user_lib = tmp_path / 'user_tubes'
-    custom_dir = user_lib / 'custom'
+    custom_dir = user_lib / 'tubes' / 'custom'
     custom_dir.mkdir(parents=True)
     (custom_dir / 'MY_TUBE.lib').write_text(
         '.SUBCKT MY_TUBE P G K\n.ENDS\n', encoding='utf-8',
     )
-    monkeypatch.setenv('EFACTORY_USER_TUBE_LIBRARY_ROOT', str(user_lib))
+    monkeypatch.setenv('EFACTORY_USER_LIBRARY_ROOT', str(user_lib))
     runner = CliRunner()
 
     list_result = runner.invoke(build_cli_app(), ['tube', 'list'])
@@ -229,13 +229,13 @@ def test_tube_list_user_overlay_overrides_built_in(
     """User-id с тем же именем побеждает built-in (Q3 fix-up acceptance)."""
     _setup_env(tmp_path, monkeypatch)
     user_lib = tmp_path / 'user_tubes'
-    custom_dir = user_lib / 'custom'
+    custom_dir = user_lib / 'tubes' / 'custom'
     custom_dir.mkdir(parents=True)
     (custom_dir / 'GENERIC_TRIODE.lib').write_text(
         '.SUBCKT TUNED_TRIODE P G K\n* my tuned variant\n.ENDS\n',
         encoding='utf-8',
     )
-    monkeypatch.setenv('EFACTORY_USER_TUBE_LIBRARY_ROOT', str(user_lib))
+    monkeypatch.setenv('EFACTORY_USER_LIBRARY_ROOT', str(user_lib))
     runner = CliRunner()
 
     show_result = runner.invoke(

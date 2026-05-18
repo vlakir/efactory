@@ -33,8 +33,8 @@ from adapters.outbound.persistence_sql.repository import (
 from adapters.outbound.session_jsonl.session_logger import (
     FilesystemJsonlSessionLogger,
 )
-from adapters.outbound.tube_models.tube_library import (
-    FilesystemTubeModelLibrary,
+from adapters.outbound.spice_models.spice_library import (
+    FilesystemSpiceModelLibrary,
 )
 from composition.settings import Settings
 
@@ -96,9 +96,9 @@ def build_cli_app() -> typer.Typer:
             settings.session_root,
             session_id,
         ),
-        tube_library=FilesystemTubeModelLibrary(
-            settings.tube_library_root,
-            settings.user_tube_library_root,
+        spice_library=FilesystemSpiceModelLibrary(
+            settings.library_root,
+            settings.user_library_root,
         ),
     )
 
