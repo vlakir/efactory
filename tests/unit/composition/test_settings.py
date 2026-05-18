@@ -21,6 +21,7 @@ _EFACTORY_ENV_VARS = (
     'EFACTORY_PROJECTS_ROOT',
     'EFACTORY_DATABASE_URL',
     'EFACTORY_SESSION_ROOT',
+    'EFACTORY_TUBE_LIBRARY_ROOT',
 )
 
 
@@ -63,6 +64,28 @@ def test_env_overrides_session_root(
     settings = Settings()
 
     assert settings.session_root == custom_sessions
+
+
+def test_tube_library_root_defaults_to_repo_data_dir(tmp_path: 'Path') -> None:
+    """Default — `<repo>/data/models/tubes/` (T006 C1, development mode)."""
+    settings = Settings()
+
+    # Путь не зависит от HOME — это relative от composition module.
+    assert settings.tube_library_root.name == 'tubes'
+    assert settings.tube_library_root.parent.name == 'models'
+    assert settings.tube_library_root.parent.parent.name == 'data'
+
+
+def test_env_overrides_tube_library_root(
+    tmp_path: 'Path',
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    custom = tmp_path / 'custom_tubes'
+    monkeypatch.setenv('EFACTORY_TUBE_LIBRARY_ROOT', str(custom))
+
+    settings = Settings()
+
+    assert settings.tube_library_root == custom
 
 
 def test_defaults_use_xdg_data_home_when_set(

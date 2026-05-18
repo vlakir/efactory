@@ -1,0 +1,185 @@
+"""Integration: FilesystemTubeModelLibrary через tmp_path (T006)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from adapters.outbound.tube_models.tube_library import (
+    FilesystemTubeModelLibrary,
+)
+from domain.spice_model import ModelSource, TubeType
+from ports.outbound.tube_model_library import (
+    TubeModelLibraryDuplicateError,
+    TubeModelNotFoundError,
+)
+
+_TRIODE_LIB = """\
+* Generic Koren-style triode model
+* Pins: P (plate), G (grid), K (cathode)
+.SUBCKT GENERIC_TRIODE P G K
+Bp p 0 V=V(P,K)
+.ENDS
+"""
+
+_PENTODE_INC = """\
+* tube_type: pentode
+* Generic Ayumi-style pentode using `^` exponent
+.SUBCKT GENERIC_PENTODE P G2 G K
+Bp p 0 V=(V(P,K)^1.5)/100
+.ENDS
+"""
+
+_DUAL_LIB = """\
+* tube_type: dual_triode
+.SUBCKT TWIN_TRIODE P1 G1 K1 P2 G2 K2
+Bp1 p1 0 V=V(P1,K1)
+.ENDS
+"""
+
+
+def _seed(root: Path, source: ModelSource, filename: str, content: str) -> Path:
+    target = root / source.value / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding='utf-8')
+    return target
+
+
+async def test_list_empty_when_root_missing(tmp_path: Path) -> None:
+    repo = FilesystemTubeModelLibrary(tmp_path / 'missing')
+
+    assert await repo.list_all() == []
+
+
+async def test_list_empty_when_no_source_dirs(tmp_path: Path) -> None:
+    repo = FilesystemTubeModelLibrary(tmp_path)
+
+    assert await repo.list_all() == []
+
+
+async def test_list_returns_models_sorted_by_id(tmp_path: Path) -> None:
+    _seed(tmp_path, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
+    _seed(tmp_path, ModelSource.AYUMI, 'GENERIC_PENTODE.inc', _PENTODE_INC)
+    repo = FilesystemTubeModelLibrary(tmp_path)
+
+    models = await repo.list_all()
+
+    assert [m.id for m in models] == ['GENERIC_PENTODE', 'GENERIC_TRIODE']
+    assert models[0].source is ModelSource.AYUMI
+    assert models[1].source is ModelSource.KOREN
+
+
+async def test_list_detects_tube_type_from_header(tmp_path: Path) -> None:
+    _seed(tmp_path, ModelSource.AYUMI, 'GENERIC_PENTODE.inc', _PENTODE_INC)
+    repo = FilesystemTubeModelLibrary(tmp_path)
+
+    model = (await repo.list_all())[0]
+
+    assert model.tube_type is TubeType.PENTODE
+
+
+async def test_list_detects_tube_type_by_pin_count_fallback(tmp_path: Path) -> None:
+    _seed(tmp_path, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
+    _seed(tmp_path, ModelSource.CUSTOM, 'TWIN.lib', _DUAL_LIB)
+    repo = FilesystemTubeModelLibrary(tmp_path)
+
+    models = {m.id: m for m in await repo.list_all()}
+
+    assert models['GENERIC_TRIODE'].tube_type is TubeType.TRIODE
+    assert models['TWIN'].tube_type is TubeType.DUAL_TRIODE
+
+
+async def test_list_uses_filename_stem_as_id(tmp_path: Path) -> None:
+    """C3: id = uppercase filename stem (не .SUBCKT name)."""
+    _seed(
+        tmp_path, ModelSource.KOREN, 'el34_koren.lib',
+        '.SUBCKT EL34 P G2 G K\n.ENDS\n',
+    )
+    _seed(
+        tmp_path, ModelSource.AYUMI, 'el34_ayumi.inc',
+        '.SUBCKT EL34 P G2 G K\n.ENDS\n',
+    )
+    repo = FilesystemTubeModelLibrary(tmp_path)
+
+    ids = [m.id for m in await repo.list_all()]
+    assert ids == ['EL34_AYUMI', 'EL34_KOREN']
+
+
+async def test_list_skips_non_spice_extensions(tmp_path: Path) -> None:
+    _seed(tmp_path, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
+    (tmp_path / 'koren' / 'README.md').write_text('not a model')
+    (tmp_path / 'koren' / '.gitkeep').write_text('')
+    repo = FilesystemTubeModelLibrary(tmp_path)
+
+    models = await repo.list_all()
+    assert [m.id for m in models] == ['GENERIC_TRIODE']
+
+
+async def test_duplicate_id_raises(tmp_path: Path) -> None:
+    """Resolved #9: fail-fast при дубликате id."""
+    _seed(tmp_path, ModelSource.KOREN, 'XX.lib', '.SUBCKT XX P G K\n.ENDS\n')
+    _seed(tmp_path, ModelSource.CUSTOM, 'XX.lib', '.SUBCKT XX P G K\n.ENDS\n')
+    repo = FilesystemTubeModelLibrary(tmp_path)
+
+    with pytest.raises(TubeModelLibraryDuplicateError):
+        await repo.list_all()
+
+
+async def test_get_by_id_returns_model(tmp_path: Path) -> None:
+    _seed(tmp_path, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
+    repo = FilesystemTubeModelLibrary(tmp_path)
+
+    model = await repo.get_by_id('GENERIC_TRIODE')
+
+    assert model.name == 'GENERIC_TRIODE'
+    assert model.subckt_pins == ('P', 'G', 'K')
+
+
+async def test_get_by_id_missing_raises(tmp_path: Path) -> None:
+    repo = FilesystemTubeModelLibrary(tmp_path)
+
+    with pytest.raises(TubeModelNotFoundError):
+        await repo.get_by_id('NONEXISTENT')
+
+
+async def test_read_subckt_returns_block(tmp_path: Path) -> None:
+    _seed(tmp_path, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
+    repo = FilesystemTubeModelLibrary(tmp_path)
+
+    block = await repo.read_subckt('GENERIC_TRIODE')
+
+    assert block.startswith('.SUBCKT GENERIC_TRIODE P G K')
+    assert '.ENDS' in block
+    assert '*' not in block.splitlines()[0]  # без комментариев в начале
+
+
+async def test_read_subckt_ayumi_converts_caret_to_double_star(
+    tmp_path: Path,
+) -> None:
+    """Resolved #4: Ayumi `^` → ngspice `**` на чтении."""
+    _seed(tmp_path, ModelSource.AYUMI, 'GENERIC_PENTODE.inc', _PENTODE_INC)
+    repo = FilesystemTubeModelLibrary(tmp_path)
+
+    block = await repo.read_subckt('GENERIC_PENTODE')
+
+    assert '^' not in block
+    assert '**1.5' in block
+
+
+async def test_read_subckt_koren_is_not_converted(tmp_path: Path) -> None:
+    text = '.SUBCKT XX P G K\nBp p 0 V=V(P,K)**2\n.ENDS\n'
+    _seed(tmp_path, ModelSource.KOREN, 'XX.lib', text)
+    repo = FilesystemTubeModelLibrary(tmp_path)
+
+    block = await repo.read_subckt('XX')
+
+    assert '**2' in block  # без изменений
+
+
+def test_convert_ayumi_replaces_caret_globally() -> None:
+    from adapters.outbound.tube_models.conversion import convert_ayumi_to_ngspice
+
+    assert convert_ayumi_to_ngspice('V=x^2 + y^3') == 'V=x**2 + y**3'
+    assert convert_ayumi_to_ngspice('no caret') == 'no caret'
+    assert convert_ayumi_to_ngspice('') == ''
