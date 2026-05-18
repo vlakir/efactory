@@ -771,6 +771,11 @@ def build_app(
         ComponentCategory.LOAD,
         'No load models found.',
     )
+    _register_model_subapp(
+        'diode',
+        ComponentCategory.DIODE,
+        'No diode models found.',
+    )
 
     app_subapp = typer.Typer(no_args_is_help=True, add_completion=False)
     app.add_typer(app_subapp, name='app')

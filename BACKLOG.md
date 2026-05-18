@@ -74,14 +74,7 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   `model_search`.
   Acceptance: можно найти модель в библиотеке и назначить компоненту
   с правильным pin mapping.
-- **T101** — [2026-05-18] Diode SPICE-модели → `SpiceModelLibrary`.
-  Сейчас (T100 Phase 1) параметры 1N4007 захардкожены в
-  `_DIODE_DEFAULT_PROPERTIES` фасада. Распаковать: новая
-  `ComponentCategory.DIODE`, директория `data/models/diodes/{duncan,
-  custom}/`, минимальный bootstrap-набор (1N4007, 1N4148, BAT85,
-  ...). Расширяет T007 generalization. Acceptance:
-  `efactory diode list/show` работает; `facade.add_diode(model='1N4007')`
-  достаёт параметры из библиотеки; default-параметр в фасаде убран.
+<!-- T101 перенесена в BOARD.md → Done (2026-05-19). -->
 <!-- T102 перенесена в BOARD.md → Doing (2026-05-18). -->
 
 <!-- T103 перенесена в BOARD.md → Done (2026-05-19). -->

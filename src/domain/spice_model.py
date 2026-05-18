@@ -27,11 +27,12 @@ SpiceModelId = Annotated[str, AfterValidator(_validate_id)]
 
 
 class ComponentCategory(StrEnum):
-    """Класс электронного компонента (T007 generalization)."""
+    """Класс электронного компонента (T007 generalization, T101 диоды)."""
 
     TUBE = 'tube'
     TRANSFORMER = 'transformer'
     LOAD = 'load'
+    DIODE = 'diode'
 
 
 class TubeType(StrEnum):
@@ -56,6 +57,16 @@ class LoadKind(StrEnum):
 
     SPEAKER = 'speaker'
     RESISTIVE = 'resistive'  # dummy load
+
+
+class DiodeKind(StrEnum):
+    """Подкатегория для category=DIODE (T101)."""
+
+    RECTIFIER = 'rectifier'  # general-purpose / power (1N4007, ...)
+    SIGNAL = 'signal'  # small-signal / switching (1N4148, ...)
+    SCHOTTKY = 'schottky'  # Schottky (BAT85, 1N5817, ...)
+    ZENER = 'zener'  # voltage reference
+    LED = 'led'  # light-emitting
 
 
 class ModelSource(StrEnum):
@@ -114,3 +125,11 @@ class SpiceModel(BaseModel):
             msg = f'load_kind accessor invalid for category={self.category.value}'
             raise ValueError(msg)
         return LoadKind(self.subcategory)
+
+    @property
+    def diode_kind(self) -> DiodeKind:
+        """Typed accessor для category=DIODE; raises иначе."""
+        if self.category is not ComponentCategory.DIODE:
+            msg = f'diode_kind accessor invalid for category={self.category.value}'
+            raise ValueError(msg)
+        return DiodeKind(self.subcategory)

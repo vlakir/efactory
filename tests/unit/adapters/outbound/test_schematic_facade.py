@@ -333,7 +333,7 @@ def test_auto_ref_per_kind_independent() -> None:
     r = sch.add_resistor(value='1k', at=(0.0, 0.0))
     c = sch.add_capacitor(value='1u', at=(10.0, 0.0))
     li = sch.add_inductor(value='1m', at=(20.0, 0.0))
-    d = sch.add_diode(value='D', at=(30.0, 0.0))
+    d = sch.add_diode(value='D', spice_params='Is=1n', at=(30.0, 0.0))
     v = sch.add_v_dc(value='5', at=(40.0, 0.0))
     q = sch.add_bjt(
         value='2N3904', polarity='NPN', model_name='2N3904',
@@ -386,3 +386,85 @@ def test_auto_ref_explicit_overrides() -> None:
     sch = Schematic('t')
     r = sch.add_resistor(reference='Rload', value='100k', at=(0.0, 0.0))
     assert r.reference == 'Rload'
+
+
+# ---------- T101: add_diode with SpiceModel (library) ----------
+
+
+def test_add_diode_with_spice_model_emits_subckt_properties() -> None:
+    """add_diode(spice_model=...) → X-prefix ref + Sim.Device=subckt."""
+    sch = Schematic('t')
+    model = SpiceModel(
+        id='1N4007', name='1N4007',
+        category=ComponentCategory.DIODE, subcategory='rectifier',
+        source=ModelSource.DUNCAN,
+        file_path=Path('/data/diodes/1N4007.lib'),
+        subckt_pins=('A', 'K'),
+    )
+    d = sch.add_diode(spice_model=model, at=(10.0, 10.0))
+    assert d.reference == 'X1'   # auto X-prefix for subckt
+    c = sch.to_spec().components[0]
+    assert c.value == '1N4007'
+    assert c.properties['Sim.Device'] == 'subckt'
+    assert c.properties['Sim.Name'] == '1N4007'
+    assert c.properties['Sim.Library'] == '/data/diodes/1N4007.lib'
+    assert c.properties['Sim.Pins'] == '1=K 2=A'
+
+
+def test_add_diode_with_spice_params_uses_d_prefix_inline() -> None:
+    """add_diode(spice_params=...) → legacy D-primitive inline."""
+    sch = Schematic('t')
+    d = sch.add_diode(
+        value='1N4148',
+        spice_params='Is=2.52n N=1.752 Rs=0.568',
+        at=(10.0, 10.0),
+    )
+    assert d.reference == 'D1'
+    c = sch.to_spec().components[0]
+    assert c.properties['Sim.Device'] == 'D'
+    assert c.properties['Sim.Params'] == 'Is=2.52n N=1.752 Rs=0.568'
+    assert 'Sim.Library' not in c.properties
+
+
+def test_add_diode_rejects_both_spice_model_and_spice_params() -> None:
+    """Нельзя передать оба — фасад просит выбрать один."""
+    sch = Schematic('t')
+    model = SpiceModel(
+        id='1N4007', name='1N4007',
+        category=ComponentCategory.DIODE, subcategory='rectifier',
+        source=ModelSource.DUNCAN,
+        file_path=Path('/data/1N4007.lib'),
+        subckt_pins=('A', 'K'),
+    )
+    with pytest.raises(ValueError, match='только один'):
+        sch.add_diode(
+            spice_model=model, spice_params='Is=1n', at=(0.0, 0.0),
+        )
+
+
+def test_add_diode_rejects_neither() -> None:
+    """Hardcoded default удалён в T101 — нужен spice_model или spice_params."""
+    sch = Schematic('t')
+    with pytest.raises(ValueError, match='spice_model.*spice_params'):
+        sch.add_diode(at=(0.0, 0.0))
+
+
+def test_add_diode_rejects_non_diode_category() -> None:
+    """spice_model должен быть category=DIODE."""
+    sch = Schematic('t')
+    # Намеренно tube model — должен отбраковываться.
+    tube = SpiceModel(
+        id='6P14P', name='6P14P',
+        category=ComponentCategory.TUBE, subcategory='pentode',
+        source=ModelSource.CUSTOM,
+        file_path=Path('/data/6P14P.lib'),
+        subckt_pins=('P', 'G2', 'G', 'K'),
+    )
+    with pytest.raises(ValueError, match='category должна быть DIODE'):
+        sch.add_diode(spice_model=tube, at=(0.0, 0.0))
+
+
+def test_add_diode_spice_params_requires_value() -> None:
+    sch = Schematic('t')
+    with pytest.raises(ValueError, match='укажите value'):
+        sch.add_diode(spice_params='Is=1n', at=(0.0, 0.0))

@@ -1,0 +1,13 @@
+* BAT85 — Schottky barrier diode (Vishay).
+*
+* 30V / 200 mA Schottky — small RF/UHF detector, fast switching,
+* low Vf (~0.3V @ 1mA). SPICE — typical Schottky model (Duncan,
+* Vishay datasheet).
+*
+* subcategory: schottky
+* Pins:
+*   A — anode, K — cathode.
+.SUBCKT BAT85 A K
+D1 A K D_BAT85
+.MODEL D_BAT85 D(Is=300n N=1.04 Rs=2.0 Cjo=10p M=0.5 Bv=30 Ibv=10u Tt=0 Eg=0.69 Xti=2)
+.ENDS BAT85

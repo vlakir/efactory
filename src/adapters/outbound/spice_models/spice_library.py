@@ -86,6 +86,7 @@ _CATEGORY_DIR_NAMES: Final[dict[str, ComponentCategory]] = {
     'tubes': ComponentCategory.TUBE,
     'transformers': ComponentCategory.TRANSFORMER,
     'loads': ComponentCategory.LOAD,
+    'diodes': ComponentCategory.DIODE,
 }
 
 
