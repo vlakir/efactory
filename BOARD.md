@@ -61,6 +61,19 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T100** — [взята 2026-05-18, ветка `T100-kicad-sch-api`,
+  спека `specs/T100-kicad-sch-api/spec.md`] Programmatic schematic
+  generation: внутренний фасад `efactory.schematic`. Pre-spike
+  показал, что `kicad-sch-api` 0.5.6 несовместима с KiCad 10
+  `*.kicad_symdir/` (binary per-symbol). Решение по Q0/Q1 —
+  собственный фасад поверх `sexpdata` (вариант D), fallback на B
+  (bundled freeze KiCad 8/9 + `kicad-sch-api`) при провале Phase 0.
+  Phase 0 = переписать существующий `rc_filter.kicad_sch` через API,
+  ngspice OP/TRAN/AC идентично T008. Дальше — half-wave rectifier,
+  SE-amp 6П14П, переписать все `tests/fixtures/*.kicad_sch`. Acceptance:
+  ERC=0 в `kicad-cli`, валидный SPICE netlist, ngspice не падает,
+  coverage ≥ 80% на новом пакете, ADR T100 в `DECISIONS.md`.
+
 ## Done
 
 - **T008** — [closed 2026-05-18, PR #31] Базовые SPICE-анализы:
