@@ -107,10 +107,12 @@ _GND_CK_AT     = (109.22, 99.06)
 _BPLUS_RAIL_Y  = 50.8                 # horizontal: V_BB.pin_minus → R_p stub → G2 stub
 # T104 output stage (AC coupling): C_out на правом конце plate-wire,
 # R_load моделирует input impedance следующего каскада. /output net
-# свободен от DC offset плате.
-_C_OUT_AT      = (130.0, 88.9)        # rotation=0: pin_a@(130,92.71)→plate wire, pin_b@(130,85.09)=/output
-_R_LOAD_AT     = (140.0, 92.71)       # rotation=0: pin_a@(140,96.52)→GND, pin_b@(140,88.9)→/output via wire
-_GND_RLOAD_AT  = (140.0, 99.06)
+# свободен от DC offset плате. Координаты на стандартной KiCad-сетке
+# 1.27 mm (127 = 100·1.27; 139.7 = 110·1.27) — иначе ERC выдаёт
+# endpoint_off_grid warnings.
+_C_OUT_AT      = (127.0, 88.9)        # rotation=0: pin_a@(127,92.71)→plate wire, pin_b@(127,85.09)=/output
+_R_LOAD_AT     = (139.7, 92.71)       # rotation=0: pin_a@(139.7,96.52)→GND, pin_b@(139.7,88.9)→/output via wire
+_GND_RLOAD_AT  = (139.7, 99.06)
 _PLATE_DETOUR_Y = 92.71               # plate wire идёт под G2 stub (Y=78.74 max) сквозь C_k center (без pin contact)
 
 
@@ -130,19 +132,23 @@ def _build_triode_amp(path: Path) -> Path:
     c_in = sch.add_capacitor(
         reference='C1', value='100n', at=_C_IN_AT, rotation=90,
     )
-    r_g = sch.add_resistor(reference='Rg', value='470k', at=_R_G_AT)
-    r_p = sch.add_resistor(reference='Rp', value='4.7k', at=_R_P_AT)
+    # KiCad annotation requirement: references = <Letter><Number>.
+    # Без trailing цифры (Rg/Rk/Rp/RL/Ck/Cout) KiCad GUI запрашивает
+    # auto-annotate перед simulation. Используем R1..R4, C2/C3 чтобы
+    # схема была "annotated" сразу и Simulator запускался без диалога.
+    r_g = sch.add_resistor(reference='R1', value='470k', at=_R_G_AT)
+    r_p = sch.add_resistor(reference='R2', value='4.7k', at=_R_P_AT)
     xv1 = sch.add_tube(
         spice_model=_tube_6p14p(),
         reference='XV1',
         at=_TUBE_AT,
         symbol='Valve:EL84',          # T104 — реальный пентод вместо Conn_01x04
     )
-    r_k = sch.add_resistor(reference='Rk', value='270', at=_R_K_AT)
-    c_k = sch.add_capacitor(reference='Ck', value='22u', at=_C_K_AT)
+    r_k = sch.add_resistor(reference='R3', value='270', at=_R_K_AT)
+    c_k = sch.add_capacitor(reference='C2', value='22u', at=_C_K_AT)
     # Output stage (T104 — AC coupling)
-    c_out = sch.add_capacitor(reference='Cout', value='220n', at=_C_OUT_AT)
-    r_load = sch.add_resistor(reference='RL', value='100k', at=_R_LOAD_AT)
+    c_out = sch.add_capacitor(reference='C3', value='220n', at=_C_OUT_AT)
+    r_load = sch.add_resistor(reference='R4', value='100k', at=_R_LOAD_AT)
     gnd_vbb = sch.add_ground(at=_GND_VBB_AT)
     gnd_vin = sch.add_ground(at=_GND_VIN_AT)
     gnd_rg = sch.add_ground(at=_GND_RG_AT)
@@ -188,7 +194,7 @@ def _build_triode_amp(path: Path) -> Path:
     sch.connect(xv1.pin('P'), Position(x_mm=101.6, y_mm=_PLATE_DETOUR_Y))
     sch.connect(
         Position(x_mm=101.6, y_mm=_PLATE_DETOUR_Y),
-        c_out.pin_a,  # (130, 92.71)
+        c_out.pin_a,  # (127, 92.71)
     )
     # Output net wire: C_out.pin_b → R_load.pin_b
     sch.connect(c_out.pin_b, r_load.pin_b)
