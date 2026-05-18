@@ -31,6 +31,10 @@ def _default_database_url() -> str:
     return f'sqlite+aiosqlite:///{_default_data_dir() / "efactory.db"}'
 
 
+def _default_session_root() -> Path:
+    return _default_data_dir() / 'sessions'
+
+
 class Settings(BaseSettings):
     """
     Конфигурация приложения.
@@ -52,3 +56,4 @@ class Settings(BaseSettings):
 
     projects_root: Path = Field(default_factory=_default_projects_root)
     database_url: str = Field(default_factory=_default_database_url)
+    session_root: Path = Field(default_factory=_default_session_root)

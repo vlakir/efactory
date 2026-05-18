@@ -85,12 +85,6 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   (управление процессами KiCad/FreeCAD/FEMM).
   Acceptance: запуск/остановка/перезапуск KiCad работает одинаково
   под Linux и Windows.
-- **T010** — [2026-05-15] Логирование (структурное, привязанное к
-  проекту и сессии) + `git init` при создании нового проекта через
-  `/project create`.
-  Acceptance: все tool calls пишутся в `sessions/<id>/log.jsonl`;
-  новый проект — git-репозиторий с initial commit.
-
 ### Фаза 1b — Чат-клиент (+2–3 недели)
 
 - **T011** — [2026-05-15] `kicad-sim-chat`: терминальный UI на Rich
