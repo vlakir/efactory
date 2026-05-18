@@ -61,18 +61,24 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T009** — [taken 2026-05-18] platform_layer + app_manager:
-  абстракция Linux/Windows/macOS (resolve_executable, default
-  install paths, env) + управление процессами внешних приложений
-  (KiCad GUI, FreeCAD, FEMM) — start/stop/restart/status. CLI
-  `efactory app status/start/stop/restart`. PlatformLayer + AppManager
-  ports + NativePlatformLayer + SubprocessAppManager adapters.
-  ApplicationKind enum (kicad/kicad-cli/freecad/femm/ngspice). PID
-  registry in-memory (per-CLI-process, persistence Out of Scope).
-  Спека (Draft, 6 Clarify) — `specs/T009-platform-and-apps/spec.md`.
-  Ветка `T009-platform-and-apps`.
-
 ## Done
+
+- **T009** — [closed 2026-05-18, PR #29] platform_layer +
+  app_manager: фундамент для bridges Phase 1a. Domain.ApplicationKind
+  (kicad/kicad-cli/freecad/femm/ngspice) + Status + OsKind + Info.
+  PlatformLayer: 5-step resolution chain (env → which → .desktop →
+  known paths → KICAD_CLI fallback через KiCad AppImage); поддержка
+  AppImage в `~/kicad/`, `~/Загрузки/`, `~/Applications/`, etc.
+  AppManager: unified `run` (blocking subprocess.run для headless)
+  + `launch` (Popen detach для GUI), `stop` (TERM→5s→KILL),
+  `restart`, in-memory PID registry. CLI `efactory app status/
+  launch/run/stop/restart` + session-log. Live smoke на dev-машине:
+  KiCad+FreeCAD AppImage найдены, `efactory app run kicad-cli --
+  --version` → 10.0.2. Spec Analyzed
+  (`specs/T009-platform-and-apps/spec.md`). Methodology lesson:
+  изначально угадал «KiCad нет», Владимир указал на ошибку,
+  feedback зафиксирован в auto-memory (проверять окружение через
+  `command -v` + `.desktop` файлы). 357 passed, coverage 87.99%.
 
 - **T007** — [closed 2026-05-18, PR #28] Transformer / load SPICE
   model library через **generalization** T006 (Q1 resolved
