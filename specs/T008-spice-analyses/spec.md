@@ -444,8 +444,24 @@ operating point, transient, AC sweep — на трёх минимальных
    под текущее поведение (exit 2 + понятная ошибка) с TODO. 437
    passed, coverage 88.77%, все quality gates зелёные.
 
-4. **Phase 4 — CLI.** Сплит `design-to-sim` на `design-to-netlist` +
-   `sim-run` + новую композицию. SPICE-суффикс парсинг. Session-log.
+4. **Phase 4 — CLI. ✅ Done 2026-05-18.** Use case'ы расщеплены:
+   `design_to_netlist` (только экспорт), `sim_run` (только симуляция
+   готового netlist), `design_to_sim` — композиция export + sim (теперь
+   с обязательным `analysis: AnalysisSpec` и опциональным
+   `timeout_seconds`). SPICE-суффикс parser
+   (`adapters/inbound/cli/spice_units.py`): поддержка `f/p/n/u/m/k/Meg/G/T`
+   + игнор unit-hint после префикса (`20mA`, `1kHz`, `1uF`),
+   case-insensitive, не путает `m` с `Meg`. CLI: новая команда
+   `bridge design-to-netlist`, два sub-sub-app'а `bridge sim-run
+   {op,tran,ac}` и `bridge design-to-sim {op,tran,ac}` (первый случай
+   3-уровневой иерархии typer в efactory). Маппинг ошибок:
+   `ProjectNotFoundError → exit 1`, остальные bridge-ошибки + SPICE
+   parse + pydantic ValidationError → exit 2. Session-логи:
+   `bridge.design_to_netlist`, `bridge.sim_run.{op,tran,ac}`,
+   `bridge.design_to_sim.{op,tran,ac}`. Существующие e2e тесты
+   адаптированы под новый синтаксис (`design-to-sim op rc_test ...`).
+   485 passed (+48), coverage 87.71% (≥80%; снижение из-за новых CLI
+   веток, не покрытых отдельными тестами — закроется в Phase 5).
 5. **Phase 5 — Fixtures + e2e.** **Перво-наперво** — починка
    `rc_filter.kicad_sch` (после Phase 3 reality check: unconnected
    nets); только потом `se_amp.kicad_sch`, `rectifier.kicad_sch`

@@ -72,6 +72,7 @@ def test_design_to_sim_rc_filter_exports_netlist(
         [
             'bridge',
             'design-to-sim',
+            'op',
             'rc_test',
             '--schematic',
             'schematic/rc_filter.kicad_sch',
@@ -106,6 +107,7 @@ def test_design_to_sim_unknown_project_exits_one(
         [
             'bridge',
             'design-to-sim',
+            'op',
             'ghost',
             '--schematic',
             'schematic/x.kicad_sch',
@@ -134,6 +136,7 @@ def test_design_to_sim_invalid_schematic_returns_export_error(
         [
             'bridge',
             'design-to-sim',
+            'op',
             'bad',
             '--schematic',
             'schematic/broken.kicad_sch',
