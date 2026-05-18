@@ -61,6 +61,20 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T102** — [взята 2026-05-18, ветка `T102-tube-pwrs-ngspice`]
+  Tube `.lib` от T006 → ngspice-compatible: заменить PSpice-extension
+  `PWRS(x,y)` на `sgn(x)*pwr(abs(x),y)` в 14 файлах
+  `data/models/tubes/custom/*.lib` (`6P14P`, `6N1P`, `GU50` и др.).
+  Реализация: чистая функция `convert_pwrs_to_ngspice` в
+  `spice_models/conversion.py` (симметрия с `convert_ayumi_to_ngspice`)
+  + тонкий скрипт `scripts/patch_tubes_pwrs.py` (one-shot batch-fix
+  файлов, коммит). Альтернатива `ngspice --compatibility-mode psa`
+  отвергнута без ADR (паттерн mostly-data, не архитектурный выбор).
+  Acceptance: `test_facade_se_amp_tran_shows_amplification` снят со
+  `skip` и проходит (gain ≥ 5× на plate), unit-тесты на конвертер
+  (типичные паттерны, вложенные скобки, идемпотентность), 5 гейтов
+  зелёные.
+
 ## Done
 
 - **T100** — [closed 2026-05-18, PR #32] Programmatic schematic

@@ -75,19 +75,23 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   ...). Расширяет T007 generalization. Acceptance:
   `efactory diode list/show` работает; `facade.add_diode(model='1N4007')`
   достаёт параметры из библиотеки; default-параметр в фасаде убран.
-- **T102** — [2026-05-18] T006 tube .lib → ngspice-compatible `PWRS()`
-  → `sgn()*pwr(abs(), ...)`. Сейчас все custom лампы (`6P14P`, `6N1P`,
-  `GU50` и ещё ~12) используют PSpice-extension `PWRS(x,y)` в Koren-
-  формулах G-источников; ngspice 45 без `--compatibility-mode=psa`
-  валится с `no such function 'pwrs'`. Скрипт-патчер пробегает по
-  `data/models/tubes/custom/*.lib`, делает функционально-эквивалентную
-  замену через `sgn(x)*pwr(abs(x),y)`. Acceptance: T100 SE-amp TRAN
-  test (`test_facade_se_amp_tran_shows_amplification`) снят со
-  `skip` и проходит — ngspice TRAN для 6П14П SE-amp работает без
-  PSpice-mode. Обнаружено в T100 Phase 2; до фикса T006-модели не
-  годны для прогона в pure ngspice. Альтернатива — собирать ngspice с
-  `--enable-pspice` или включить `--compatibility-mode psa` в нашем
-  `NgspiceSimulator` (отдельное решение в ADR).
+<!-- T102 перенесена в BOARD.md → Doing (2026-05-18). -->
+
+- **T103** — [2026-05-18] SE-amp wire-router: фикс T100 W2 risk
+  realized. Обнаружено в T102: в `tests/integration/adapters/
+  schematic_kicad/test_se_amp_facade.py` B+ rail-стубы
+  (X=93.98 → tube.G2, X=127.0 → OPT.P2) проходят через `tube.P` и
+  `OPT.P1` без явных `(junction)` — KiCad merg`ит net `/plate` со
+  screen / OPT-primary / B+. SE-amp tube → plate → OPT pin layout
+  переписать через «канальные коридоры» (горизонтальные/вертикальные
+  rail-row'ы между рядами grid'а), либо вручную развести B+ так,
+  чтобы wire не пересекал чужие pin'ы. Acceptance:
+  `test_facade_se_amp_tran_shows_amplification` снят со skip,
+  ngspice TRAN даёт plate AC swing ≥ 5× от input. Альтернатива —
+  расширить wire-router в `facade.py` (≤50 LOC по T100 §Analyze W2)
+  чтобы при `connect()` мимо чужих pin'ов ставился explicit
+  junction-избегающий обход. **Не блокирует фазу 1b** — SE-amp не
+  на критическом пути LLM chat-client.
 
 ### Фаза 1b — Чат-клиент (+2–3 недели)
 

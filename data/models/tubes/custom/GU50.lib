@@ -7,8 +7,8 @@
 .SUBCKT GU50 P G2 G K
 * Koren parameters: MU=6 EX=1.35 KG1=380 KG2=4500 KP=24 KVB=12
 E1 7 0 VALUE={V(G2,K)/24*LN(1+EXP(24*(1/6+V(G,K)/V(G2,K))))}
-G1 P K VALUE={(PWRS(V(7),1.35)+PWRS(V(7),1.35))/380 * ATAN(V(P,K)/12)}
-G2 G2 K VALUE={(PWRS(V(7),1.35)+PWRS(V(7),1.35))/4500}
+G1 P K VALUE={(sgn(V(7))*pwr(abs(V(7)),1.35)+sgn(V(7))*pwr(abs(V(7)),1.35))/380 * ATAN(V(P,K)/12)}
+G2 G2 K VALUE={(sgn(V(7))*pwr(abs(V(7)),1.35)+sgn(V(7))*pwr(abs(V(7)),1.35))/4500}
 C1 G K 16p
 C2 G P 0.06p
 C3 P K 9p

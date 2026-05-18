@@ -6,6 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from adapters.outbound.spice_models.conversion import (
+    convert_pwrs_to_ngspice,
+)
 from adapters.outbound.spice_models.spice_library import (
     FilesystemSpiceModelLibrary,
 )
@@ -190,6 +193,85 @@ def test_convert_ayumi_replaces_caret_globally() -> None:
     assert convert_ayumi_to_ngspice('V=x^2 + y^3') == 'V=x**2 + y**3'
     assert convert_ayumi_to_ngspice('no caret') == 'no caret'
     assert convert_ayumi_to_ngspice('') == ''
+
+
+# ---------- T102: PWRS → sgn()*pwr() конвертер ----------
+
+
+def test_convert_pwrs_simple_call() -> None:
+    """Простейший случай: PWRS(V(7),1.4) → sgn(V(7))*pwr(abs(V(7)),1.4)."""
+    src = 'G1 P K VALUE={PWRS(V(7),1.4)/1060}'
+    expected = 'G1 P K VALUE={sgn(V(7))*pwr(abs(V(7)),1.4)/1060}'
+    assert convert_pwrs_to_ngspice(src) == expected
+
+
+def test_convert_pwrs_nested_parens_in_arg() -> None:
+    """Вложенные скобки в первом аргументе: PWRS(V(P,K),2) корректен."""
+    src = 'V={PWRS(V(P,K),2)}'
+    expected = 'V={sgn(V(P,K))*pwr(abs(V(P,K)),2)}'
+    assert convert_pwrs_to_ngspice(src) == expected
+
+
+def test_convert_pwrs_multiple_in_one_expression() -> None:
+    """Реальный паттерн из 6N1P: два PWRS в одном выражении."""
+    src = 'G1 P K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/450}'
+    expected = (
+        'G1 P K VALUE={(sgn(V(7))*pwr(abs(V(7)),1.4)'
+        '+sgn(V(7))*pwr(abs(V(7)),1.4))/450}'
+    )
+    assert convert_pwrs_to_ngspice(src) == expected
+
+
+def test_convert_pwrs_no_pwrs_returned_as_is() -> None:
+    """Текст без PWRS возвращается без изменений (no-op fast path)."""
+    src = 'Bp p 0 V=V(P,K)\n.ENDS\n'
+    assert convert_pwrs_to_ngspice(src) == src
+
+
+def test_convert_pwrs_empty_string() -> None:
+    assert convert_pwrs_to_ngspice('') == ''
+
+
+def test_convert_pwrs_idempotent() -> None:
+    """f(f(x)) == f(x): повторное применение ничего не меняет."""
+    src = 'G1 P K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/1060}'
+    once = convert_pwrs_to_ngspice(src)
+    twice = convert_pwrs_to_ngspice(once)
+    assert once == twice
+
+
+def test_convert_pwrs_case_insensitive_match() -> None:
+    """ngspice case-insensitive; PWRS / pwrs / Pwrs — все одинаково."""
+    assert (
+        convert_pwrs_to_ngspice('pwrs(x,2)') == 'sgn(x)*pwr(abs(x),2)'
+    )
+    assert (
+        convert_pwrs_to_ngspice('Pwrs(x,2)') == 'sgn(x)*pwr(abs(x),2)'
+    )
+
+
+def test_convert_pwrs_does_not_match_identifier_suffix() -> None:
+    """`mypwrs(` — не PWRS-вызов; не должен трогаться."""
+    src = 'foo mypwrs(1,2) bar'
+    assert convert_pwrs_to_ngspice(src) == src
+
+
+def test_convert_pwrs_handles_whitespace_around_args() -> None:
+    """`PWRS( V(7) , 1.4 )` — пробелы внутри скобок, аргументы strip'нуты."""
+    src = 'PWRS( V(7) , 1.4 )'
+    expected = 'sgn(V(7))*pwr(abs(V(7)),1.4)'
+    assert convert_pwrs_to_ngspice(src) == expected
+
+
+def test_convert_pwrs_recursive_nested_pwrs() -> None:
+    """PWRS внутри PWRS обрабатывается рекурсивно (защита, не реальный кейс)."""
+    src = 'PWRS(PWRS(x,2),3)'
+    # внутренняя: sgn(x)*pwr(abs(x),2)
+    # внешняя: sgn(<inner>)*pwr(abs(<inner>),3)
+    expected = (
+        'sgn(sgn(x)*pwr(abs(x),2))*pwr(abs(sgn(x)*pwr(abs(x),2)),3)'
+    )
+    assert convert_pwrs_to_ngspice(src) == expected
 
 
 # ---------- User overlay (Q3 fix-up) ----------

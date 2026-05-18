@@ -80,6 +80,7 @@ exclude = [
     "build",
     "dist",
     "tests",
+    "scripts",
     "src/adapters/outbound/persistence_sql/migrations",
 ]
 

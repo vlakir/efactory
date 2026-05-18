@@ -224,9 +224,11 @@ async def test_facade_se_amp_writes_subckt_instances_and_includes(
 @needs_ngspice
 @pytest.mark.skip(
     reason=(
-        'T006 tube models используют PSpice-extension PWRS(); '
-        'ngspice 45 без compat-mode (psa) не распознаёт. Отдельная задача '
-        'на patching T006 .lib (PWRS → sgn()*pwr()) — см. BACKLOG T102.'
+        'T100 W2 risk realized: B+ rail wires (X=93.98 → tube.G2, X=127.0 → '
+        'OPT.P2) проходят через tube.P / OPT.P1 без явных junction; KiCad '
+        'merg`ит /plate с screen/OPT-primary/B+ через visual touch — '
+        'plate AC swing = 0. PWRS subst (T102) сработал, ngspice прогоняет '
+        'до конца. Layout-фикс — отдельная задача T103.'
     ),
 )
 async def test_facade_se_amp_tran_shows_amplification(tmp_path: Path) -> None:
