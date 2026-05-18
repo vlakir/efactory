@@ -63,6 +63,16 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T105 Phase 0** — [closed 2026-05-19, PR #39] Extend Valve registry
+  4 valves (EL84 + ECC81 + ECC88 + EC92). Writer `_collect_lib_symbols`
+  с topological sort + auto-load parent через `(extends ...)` — готов
+  для derived symbols, но KiCad pin resolution для derived требует
+  доработки (отложено в T105 Phase 1). Маппинг советских tubes →
+  western (6Н1П → ECC81, 6Н2П → ECC81, 6Н23П → ECC88, и т.д.; SPICE
+  модели T006 определяют µ, физическая геометрия одинаковая). Demo:
+  6Н2П common-cathode amp через Valve:ECC81, ngspice TRAN gain ≥ 10×.
+  567 passed (+3), coverage 88.92%, 5 гейтов зелёные.
+
 - **T101** — [closed 2026-05-19, PR #38] Diode SPICE-модели в
   `SpiceModelLibrary` — расширение T007 generalization на 4-ю
   категорию. `domain.ComponentCategory.DIODE` + `DiodeKind` (rectifier/
