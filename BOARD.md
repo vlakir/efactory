@@ -61,18 +61,23 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T010** — [taken 2026-05-18] Открытие Фазы 1a (MVP-ядро):
-  `git init` + initial commit при `project create` + structured
-  session log (`<session_root>/<session_id>/log.jsonl`). Новые
-  outbound порты `GitRepository` + `SessionLogger`; subprocess
-  git adapter и filesystem JSONL adapter. CLI команды
-  оборачиваются session-log декоратором. Готовит канал для будущих
-  bridges (Phase 1a T004+) и для chat-клиента tool_use событий
-  (Phase 1b). Спека (Draft, 10 Clarify) —
-  `specs/T010-git-init-and-logging/spec.md`. Ветка
-  `T010-git-init-and-logging`.
-
 ## Done
+
+- **T010** — [closed 2026-05-18, PR #23] Открытие Фазы 1a (MVP-
+  ядро): `git init` + initial commit при `project create` +
+  structured session log (`<session_root>/<session_id>/log.jsonl`).
+  Новые outbound порты `GitRepository` (subprocess adapter c env-
+  override AUTHOR/COMMITTER и `--no-gpg-sign` — initial commit
+  независим от глобального git config) и `SessionLogger`
+  (filesystem JSONL, best-effort, `ensure_ascii=False`). `Settings.
+  session_root` + `EFACTORY_SESSION_ID` env override (для группировки
+  CLI команд в одну сессию — пригодится chat-клиенту Phase 1b).
+  `CreateProjectResult{project, git_initialized}` — application
+  слой не зависит от логирования (N9). CLI helper `_log_command[T]`
+  обернул все 9 команд (project.* + decision.*). 259 passed,
+  coverage 94.53%. Spec Analyzed
+  (`specs/T010-git-init-and-logging/spec.md`).
+
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
