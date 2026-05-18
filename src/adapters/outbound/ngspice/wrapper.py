@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from domain.simulation import AcAnalysis, OpAnalysis, TranAnalysis
@@ -10,6 +11,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from domain.simulation import AnalysisSpec
+
+# KiCad SPICE export использует power-symbol Value как net name (`GND`).
+# ngspice ожидает ground node = `0`. Делаем substitution token-wise,
+# чтобы пользователь мог использовать стандартный KiCad GND symbol.
+_GND_TOKEN_RE = re.compile(r'\bGND\b')
 
 
 _WRAPPER_TEMPLATE = """* efactory ngspice wrapper (T008)
@@ -33,13 +39,18 @@ def build_wrapper(
     raw_path: Path,
 ) -> str:
     """Сформировать текст wrapper-файла для `ngspice -b`."""
-    cleaned = _strip_dot_end(netlist_content)
+    cleaned = _normalize_ground(_strip_dot_end(netlist_content))
     directive = _format_directive(analysis)
     return _WRAPPER_TEMPLATE.format(
         netlist=cleaned,
         directive=directive,
         raw_path=raw_path,
     )
+
+
+def _normalize_ground(text: str) -> str:
+    """Заменить SPICE-токен `GND` на `0` (ngspice ground node)."""
+    return _GND_TOKEN_RE.sub('0', text)
 
 
 def _strip_dot_end(text: str) -> str:

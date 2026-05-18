@@ -158,6 +158,31 @@ def test_build_wrapper_strips_dot_end_from_netlist() -> None:
     assert wrapper.rstrip().endswith('.END')
 
 
+def test_build_wrapper_substitutes_gnd_token_with_zero() -> None:
+    """KiCad SPICE export даёт ground как `GND`; ngspice требует `0`."""
+    netlist = '* rc\nV1 GND /in dc=1\nR1 /in /out 1k\nC1 /out GND 1u\n'
+    raw = Path('/tmp/out.raw')
+
+    wrapper = build_wrapper(netlist, OpAnalysis(), raw)
+
+    assert 'V1 0 /in dc=1' in wrapper
+    assert 'C1 /out 0 1u' in wrapper
+    # Не должно остаться bare GND как net-токена.
+    assert ' GND ' not in wrapper
+    assert wrapper.count('GND') == 0  # nothing GND-related leftover
+
+
+def test_build_wrapper_does_not_substitute_gnd_inside_other_words() -> None:
+    """`AGND` / `DGND` / `IGNDR1` остаются неизменными — substitute только bare `GND`."""
+    netlist = '* sample\nV1 AGND /in dc=1\nR1 /in DGND 1k\n'
+    raw = Path('/tmp/out.raw')
+
+    wrapper = build_wrapper(netlist, OpAnalysis(), raw)
+
+    assert 'AGND' in wrapper
+    assert 'DGND' in wrapper
+
+
 # ---------- adapter с FakeAppManager ----------
 
 

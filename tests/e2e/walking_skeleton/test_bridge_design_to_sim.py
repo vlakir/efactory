@@ -45,15 +45,7 @@ def test_design_to_sim_rc_filter_exports_netlist(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """E2E: RC-фильтр → SPICE netlist через kicad-cli (T004) → ngspice (T008).
-
-    Фикстура `rc_filter.kicad_sch` пока экспортируется со всеми unconnected
-    nets (`unconnected-_R1-Pad1_` и т.п.) — wires в s-expr не реально
-    соединяют pins. T008 Phase 5 чинит фикстуры (issue C-1 в spec).
-    До тех пор ngspice падает на этом netlist'е → exit 2 + понятная
-    диагностика. Сам факт того, что netlist создаётся, всё ещё
-    подтверждает работоспособность KiCad → SPICE pipeline (T004).
-    """
+    """E2E: RC-фильтр → SPICE netlist через kicad-cli → ngspice OP (T008)."""
     projects_root = _setup_env(tmp_path, monkeypatch)
     runner = CliRunner()
 
@@ -79,19 +71,15 @@ def test_design_to_sim_rc_filter_exports_netlist(
         ],
     )
 
-    # Netlist всегда создаётся — это часть T004 KiCad pipeline.
+    assert bridge_result.exit_code == 0, bridge_result.output
+    assert 'Simulation: completed' in bridge_result.output
+
     netlist_path = project_path / 'sim' / 'rc_filter.cir'
     assert netlist_path.is_file()
     content = netlist_path.read_text(encoding='utf-8')
     assert 'R1' in content
     assert 'C1' in content
     assert 'V1' in content
-
-    # T008 Phase 5 TODO: после починки фикстуры тест должен ожидать
-    # exit 0 + 'Simulation: completed'. Сейчас фикстура криво
-    # экспортируется (unconnected nets) → ngspice фейлится.
-    assert bridge_result.exit_code == 2
-    assert 'ngspice' in bridge_result.output.lower()
 
 
 @needs_kicad
