@@ -1,0 +1,14 @@
+* DUMMY_LOAD_8R — 8Ω power resistor (для измерения выходной мощности).
+*
+* Эквивалент power resistor (например, MP930 в bench setup).
+* Резистор без реактивности, для измерения P_max, THD, clipping
+* behaviour без артефактов speaker'а.
+*
+* Идентичен SPEAKER_8OHM_RES, но логически другой компонент —
+* пользователь явно выбирает «dummy load» а не «speaker».
+*
+* subcategory: resistive
+* Pins: LP, LN — load terminals.
+.SUBCKT DUMMY_LOAD_8R LP LN
+RL LP LN 8
+.ENDS DUMMY_LOAD_8R

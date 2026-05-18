@@ -67,10 +67,6 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   `model_search`.
   Acceptance: можно найти модель в библиотеке и назначить компоненту
   с правильным pin mapping.
-- **T007** — [2026-05-15] Модели обобщённых трансформаторов:
-  `OPT_GENERIC` (выходной), `SPEAKER_8OHM`.
-  Acceptance: .subckt-файлы лежат в `models/`, SE-усилитель
-  моделируется до получения АЧХ.
 - **T008** — [2026-05-15] Базовые анализы в bridge: OP, tran, AC
   через SPICEBridge.
   Acceptance: все три анализа отрабатывают на тестовых проектах

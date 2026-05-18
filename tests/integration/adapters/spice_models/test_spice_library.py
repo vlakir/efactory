@@ -1,4 +1,4 @@
-"""Integration: FilesystemTubeModelLibrary через tmp_path (T006)."""
+"""Integration: FilesystemSpiceModelLibrary через tmp_path (T006)."""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from adapters.outbound.tube_models.tube_library import (
-    FilesystemTubeModelLibrary,
+from adapters.outbound.spice_models.spice_library import (
+    FilesystemSpiceModelLibrary,
 )
 from domain.spice_model import ModelSource, TubeType
-from ports.outbound.tube_model_library import (
-    TubeModelLibraryDuplicateError,
-    TubeModelNotFoundError,
+from ports.outbound.spice_model_library import (
+    SpiceModelLibraryDuplicateError,
+    SpiceModelNotFoundError,
 )
 
 _TRIODE_LIB = """\
@@ -39,21 +39,28 @@ Bp1 p1 0 V=V(P1,K1)
 """
 
 
-def _seed(root: Path, source: ModelSource, filename: str, content: str) -> Path:
-    target = root / source.value / filename
+def _seed(
+    root: Path,
+    source: ModelSource,
+    filename: str,
+    content: str,
+    category: str = 'tubes',
+) -> Path:
+    """Создать файл по схеме `<root>/<category>/<source>/<filename>`."""
+    target = root / category / source.value / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding='utf-8')
     return target
 
 
 async def test_list_empty_when_root_missing(tmp_path: Path) -> None:
-    repo = FilesystemTubeModelLibrary(tmp_path / 'missing')
+    repo = FilesystemSpiceModelLibrary(tmp_path / 'missing')
 
     assert await repo.list_all() == []
 
 
 async def test_list_empty_when_no_source_dirs(tmp_path: Path) -> None:
-    repo = FilesystemTubeModelLibrary(tmp_path)
+    repo = FilesystemSpiceModelLibrary(tmp_path)
 
     assert await repo.list_all() == []
 
@@ -61,7 +68,7 @@ async def test_list_empty_when_no_source_dirs(tmp_path: Path) -> None:
 async def test_list_returns_models_sorted_by_id(tmp_path: Path) -> None:
     _seed(tmp_path, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
     _seed(tmp_path, ModelSource.AYUMI, 'GENERIC_PENTODE.inc', _PENTODE_INC)
-    repo = FilesystemTubeModelLibrary(tmp_path)
+    repo = FilesystemSpiceModelLibrary(tmp_path)
 
     models = await repo.list_all()
 
@@ -72,7 +79,7 @@ async def test_list_returns_models_sorted_by_id(tmp_path: Path) -> None:
 
 async def test_list_detects_tube_type_from_header(tmp_path: Path) -> None:
     _seed(tmp_path, ModelSource.AYUMI, 'GENERIC_PENTODE.inc', _PENTODE_INC)
-    repo = FilesystemTubeModelLibrary(tmp_path)
+    repo = FilesystemSpiceModelLibrary(tmp_path)
 
     model = (await repo.list_all())[0]
 
@@ -82,7 +89,7 @@ async def test_list_detects_tube_type_from_header(tmp_path: Path) -> None:
 async def test_list_detects_tube_type_by_pin_count_fallback(tmp_path: Path) -> None:
     _seed(tmp_path, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
     _seed(tmp_path, ModelSource.CUSTOM, 'TWIN.lib', _DUAL_LIB)
-    repo = FilesystemTubeModelLibrary(tmp_path)
+    repo = FilesystemSpiceModelLibrary(tmp_path)
 
     models = {m.id: m for m in await repo.list_all()}
 
@@ -100,7 +107,7 @@ async def test_list_uses_filename_stem_as_id(tmp_path: Path) -> None:
         tmp_path, ModelSource.AYUMI, 'el34_ayumi.inc',
         '.SUBCKT EL34 P G2 G K\n.ENDS\n',
     )
-    repo = FilesystemTubeModelLibrary(tmp_path)
+    repo = FilesystemSpiceModelLibrary(tmp_path)
 
     ids = [m.id for m in await repo.list_all()]
     assert ids == ['EL34_AYUMI', 'EL34_KOREN']
@@ -108,9 +115,9 @@ async def test_list_uses_filename_stem_as_id(tmp_path: Path) -> None:
 
 async def test_list_skips_non_spice_extensions(tmp_path: Path) -> None:
     _seed(tmp_path, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
-    (tmp_path / 'koren' / 'README.md').write_text('not a model')
-    (tmp_path / 'koren' / '.gitkeep').write_text('')
-    repo = FilesystemTubeModelLibrary(tmp_path)
+    (tmp_path / 'tubes' / 'koren' / 'README.md').write_text('not a model')
+    (tmp_path / 'tubes' / 'koren' / '.gitkeep').write_text('')
+    repo = FilesystemSpiceModelLibrary(tmp_path)
 
     models = await repo.list_all()
     assert [m.id for m in models] == ['GENERIC_TRIODE']
@@ -120,15 +127,15 @@ async def test_duplicate_id_raises(tmp_path: Path) -> None:
     """Resolved #9: fail-fast при дубликате id."""
     _seed(tmp_path, ModelSource.KOREN, 'XX.lib', '.SUBCKT XX P G K\n.ENDS\n')
     _seed(tmp_path, ModelSource.CUSTOM, 'XX.lib', '.SUBCKT XX P G K\n.ENDS\n')
-    repo = FilesystemTubeModelLibrary(tmp_path)
+    repo = FilesystemSpiceModelLibrary(tmp_path)
 
-    with pytest.raises(TubeModelLibraryDuplicateError):
+    with pytest.raises(SpiceModelLibraryDuplicateError):
         await repo.list_all()
 
 
 async def test_get_by_id_returns_model(tmp_path: Path) -> None:
     _seed(tmp_path, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
-    repo = FilesystemTubeModelLibrary(tmp_path)
+    repo = FilesystemSpiceModelLibrary(tmp_path)
 
     model = await repo.get_by_id('GENERIC_TRIODE')
 
@@ -137,15 +144,15 @@ async def test_get_by_id_returns_model(tmp_path: Path) -> None:
 
 
 async def test_get_by_id_missing_raises(tmp_path: Path) -> None:
-    repo = FilesystemTubeModelLibrary(tmp_path)
+    repo = FilesystemSpiceModelLibrary(tmp_path)
 
-    with pytest.raises(TubeModelNotFoundError):
+    with pytest.raises(SpiceModelNotFoundError):
         await repo.get_by_id('NONEXISTENT')
 
 
 async def test_read_subckt_returns_block(tmp_path: Path) -> None:
     _seed(tmp_path, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
-    repo = FilesystemTubeModelLibrary(tmp_path)
+    repo = FilesystemSpiceModelLibrary(tmp_path)
 
     block = await repo.read_subckt('GENERIC_TRIODE')
 
@@ -159,7 +166,7 @@ async def test_read_subckt_ayumi_converts_caret_to_double_star(
 ) -> None:
     """Resolved #4: Ayumi `^` → ngspice `**` на чтении."""
     _seed(tmp_path, ModelSource.AYUMI, 'GENERIC_PENTODE.inc', _PENTODE_INC)
-    repo = FilesystemTubeModelLibrary(tmp_path)
+    repo = FilesystemSpiceModelLibrary(tmp_path)
 
     block = await repo.read_subckt('GENERIC_PENTODE')
 
@@ -170,7 +177,7 @@ async def test_read_subckt_ayumi_converts_caret_to_double_star(
 async def test_read_subckt_koren_is_not_converted(tmp_path: Path) -> None:
     text = '.SUBCKT XX P G K\nBp p 0 V=V(P,K)**2\n.ENDS\n'
     _seed(tmp_path, ModelSource.KOREN, 'XX.lib', text)
-    repo = FilesystemTubeModelLibrary(tmp_path)
+    repo = FilesystemSpiceModelLibrary(tmp_path)
 
     block = await repo.read_subckt('XX')
 
@@ -178,7 +185,7 @@ async def test_read_subckt_koren_is_not_converted(tmp_path: Path) -> None:
 
 
 def test_convert_ayumi_replaces_caret_globally() -> None:
-    from adapters.outbound.tube_models.conversion import convert_ayumi_to_ngspice
+    from adapters.outbound.spice_models.conversion import convert_ayumi_to_ngspice
 
     assert convert_ayumi_to_ngspice('V=x^2 + y^3') == 'V=x**2 + y**3'
     assert convert_ayumi_to_ngspice('no caret') == 'no caret'
@@ -197,7 +204,7 @@ async def test_user_overlay_adds_new_model(tmp_path: Path) -> None:
         user, ModelSource.CUSTOM, 'MY_TUBE.lib',
         '.SUBCKT MY_TUBE P G K\n.ENDS\n',
     )
-    repo = FilesystemTubeModelLibrary(built_in, user)
+    repo = FilesystemSpiceModelLibrary(built_in, user)
 
     models = {m.id: m for m in await repo.list_all()}
 
@@ -213,7 +220,7 @@ async def test_user_overlay_overrides_built_in_by_id(tmp_path: Path) -> None:
     _seed(built_in, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
     user_content = '.SUBCKT MY_OWN_TRIODE P G K\n* tuned for my V12 stock\n.ENDS\n'
     _seed(user, ModelSource.CUSTOM, 'GENERIC_TRIODE.lib', user_content)
-    repo = FilesystemTubeModelLibrary(built_in, user)
+    repo = FilesystemSpiceModelLibrary(built_in, user)
 
     model = await repo.get_by_id('GENERIC_TRIODE')
 
@@ -229,7 +236,7 @@ async def test_user_overlay_missing_dir_falls_back_to_built_in(
 ) -> None:
     built_in = tmp_path / 'built_in'
     _seed(built_in, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
-    repo = FilesystemTubeModelLibrary(built_in, tmp_path / 'no_user_dir')
+    repo = FilesystemSpiceModelLibrary(built_in, tmp_path / 'no_user_dir')
 
     models = await repo.list_all()
     assert [m.id for m in models] == ['GENERIC_TRIODE']
@@ -242,16 +249,16 @@ async def test_duplicate_within_user_root_still_fails(tmp_path: Path) -> None:
     user = tmp_path / 'user'
     _seed(user, ModelSource.KOREN, 'XX.lib', '.SUBCKT XX P G K\n.ENDS\n')
     _seed(user, ModelSource.CUSTOM, 'XX.lib', '.SUBCKT XX P G K\n.ENDS\n')
-    repo = FilesystemTubeModelLibrary(built_in, user)
+    repo = FilesystemSpiceModelLibrary(built_in, user)
 
-    with pytest.raises(TubeModelLibraryDuplicateError):
+    with pytest.raises(SpiceModelLibraryDuplicateError):
         await repo.list_all()
 
 
 async def test_user_overlay_none_argument_works(tmp_path: Path) -> None:
     """user_library_root=None — поведение как до fix-up (только built-in)."""
     _seed(tmp_path, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
-    repo = FilesystemTubeModelLibrary(tmp_path, None)
+    repo = FilesystemSpiceModelLibrary(tmp_path, None)
 
     models = await repo.list_all()
     assert [m.id for m in models] == ['GENERIC_TRIODE']
@@ -283,7 +290,7 @@ D1 A K DIODE_HW
 async def test_rectifier_full_wave_detected_via_header(tmp_path: Path) -> None:
     """3-pin SUBCKT с `* tube_type: rectifier` header → RECTIFIER (не TRIODE)."""
     _seed(tmp_path, ModelSource.KOREN, 'TEST_RECT.lib', _RECTIFIER_LIB)
-    repo = FilesystemTubeModelLibrary(tmp_path)
+    repo = FilesystemSpiceModelLibrary(tmp_path)
 
     model = (await repo.list_all())[0]
 
@@ -294,7 +301,7 @@ async def test_rectifier_full_wave_detected_via_header(tmp_path: Path) -> None:
 async def test_rectifier_half_wave_detected_by_pin_count(tmp_path: Path) -> None:
     """2-pin SUBCKT → RECTIFIER (fallback heuristic, без header)."""
     _seed(tmp_path, ModelSource.KOREN, 'HALFWAVE.lib', _HALF_WAVE_LIB)
-    repo = FilesystemTubeModelLibrary(tmp_path)
+    repo = FilesystemSpiceModelLibrary(tmp_path)
 
     model = (await repo.list_all())[0]
 
@@ -304,7 +311,7 @@ async def test_rectifier_half_wave_detected_by_pin_count(tmp_path: Path) -> None
 
 async def test_rectifier_read_subckt_includes_model_directive(tmp_path: Path) -> None:
     _seed(tmp_path, ModelSource.KOREN, 'TEST_RECT.lib', _RECTIFIER_LIB)
-    repo = FilesystemTubeModelLibrary(tmp_path)
+    repo = FilesystemSpiceModelLibrary(tmp_path)
 
     block = await repo.read_subckt('TEST_RECT')
 

@@ -39,10 +39,11 @@ from application.update_project import (
 )
 from domain.decision import DecisionStatus
 from domain.phase import PhaseName, PhaseStatus
+from domain.spice_model import ComponentCategory
 from ports.outbound.decision_repository import DecisionNotFoundError
 from ports.outbound.git_repository import GitOperationError
 from ports.outbound.session_logger import SessionEventStatus
-from ports.outbound.tube_model_library import TubeModelNotFoundError
+from ports.outbound.spice_model_library import SpiceModelNotFoundError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -60,7 +61,7 @@ if TYPE_CHECKING:
         ProjectManifestRepository,
     )
     from ports.outbound.session_logger import SessionLogger
-    from ports.outbound.tube_model_library import TubeModelLibrary
+    from ports.outbound.spice_model_library import SpiceModelLibrary
 
 
 async def _log_command[T](
@@ -101,7 +102,7 @@ def build_app(
     decision_repository: DecisionRepository,
     git_repository: GitRepository,
     session_logger: SessionLogger,
-    tube_library: TubeModelLibrary,
+    spice_library: SpiceModelLibrary,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -642,70 +643,101 @@ def build_app(
         if decision.evidence is not None:
             typer.echo(f'\nEvidence: {decision.evidence}')
 
-    tube_app = typer.Typer(no_args_is_help=True, add_completion=False)
-    app.add_typer(tube_app, name='tube')
-
-    @tube_app.command('list')
-    def tube_list() -> None:
-        async def _run() -> list[SpiceModel]:
-            return await tube_library.list_all()
-
-        models = asyncio.run(
-            _log_command(
-                session_logger,
-                'tube.list',
-                project=None,
-                payload=None,
-                fn=_run,
-            ),
-        )
-        if not models:
-            typer.echo('No tube models found.')
-            return
-        for m in models:
-            library = 'user' if m.is_user else 'built-in'
-            typer.echo(
-                f'{m.id}\t{library}\t{m.source.value}\t'
-                f'{m.tube_type.value}\t{m.file_path}',
-            )
-
-    @tube_app.command('show')
-    def tube_show(
-        *,
-        model_id: Annotated[
-            str,
-            typer.Option('--id', help='ID модели (uppercase filename stem)'),
-        ],
+    def _register_model_subapp(
+        name: str,
+        category: ComponentCategory,
+        empty_message: str,
     ) -> None:
-        async def _run_model() -> SpiceModel:
-            return await tube_library.get_by_id(model_id)
+        sub = typer.Typer(no_args_is_help=True, add_completion=False)
+        app.add_typer(sub, name=name)
 
-        async def _run_subckt() -> str:
-            return await tube_library.read_subckt(model_id)
+        @sub.command('list')
+        def list_models() -> None:
+            async def _run() -> list[SpiceModel]:
+                models = await spice_library.list_all()
+                return [m for m in models if m.category is category]
 
-        try:
-            model = asyncio.run(
+            models = asyncio.run(
                 _log_command(
                     session_logger,
-                    'tube.show',
+                    f'{name}.list',
                     project=None,
-                    payload={'id': model_id},
-                    fn=_run_model,
+                    payload=None,
+                    fn=_run,
                 ),
             )
-            subckt = asyncio.run(_run_subckt())
-        except TubeModelNotFoundError as exc:
-            typer.echo(str(exc), err=True)
-            raise typer.Exit(code=1) from exc
+            if not models:
+                typer.echo(empty_message)
+                return
+            for m in models:
+                library = 'user' if m.is_user else 'built-in'
+                typer.echo(
+                    f'{m.id}\t{library}\t{m.source.value}\t'
+                    f'{m.subcategory}\t{m.file_path}',
+                )
 
-        typer.echo(f'id: {model.id}')
-        typer.echo(f'name: {model.name}')
-        typer.echo(f'library: {"user" if model.is_user else "built-in"}')
-        typer.echo(f'source: {model.source.value}')
-        typer.echo(f'tube_type: {model.tube_type.value}')
-        typer.echo(f'pins: {" ".join(model.subckt_pins)}')
-        typer.echo(f'file_path: {model.file_path}')
-        typer.echo('')
-        typer.echo(subckt)
+        @sub.command('show')
+        def show_model(
+            *,
+            model_id: Annotated[
+                str,
+                typer.Option('--id', help='ID модели (uppercase filename stem)'),
+            ],
+        ) -> None:
+            async def _run_model() -> SpiceModel:
+                model = await spice_library.get_by_id(model_id)
+                if model.category is not category:
+                    msg = (
+                        f"Model '{model_id}' has category={model.category.value}, "
+                        f'not {category.value}. Try `efactory '
+                        f'{model.category.value} show --id {model_id}`.'
+                    )
+                    raise SpiceModelNotFoundError(msg)
+                return model
+
+            async def _run_subckt() -> str:
+                return await spice_library.read_subckt(model_id)
+
+            try:
+                model = asyncio.run(
+                    _log_command(
+                        session_logger,
+                        f'{name}.show',
+                        project=None,
+                        payload={'id': model_id},
+                        fn=_run_model,
+                    ),
+                )
+                subckt = asyncio.run(_run_subckt())
+            except SpiceModelNotFoundError as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(code=1) from exc
+
+            typer.echo(f'id: {model.id}')
+            typer.echo(f'name: {model.name}')
+            typer.echo(f'library: {"user" if model.is_user else "built-in"}')
+            typer.echo(f'category: {model.category.value}')
+            typer.echo(f'source: {model.source.value}')
+            typer.echo(f'type: {model.subcategory}')
+            typer.echo(f'pins: {" ".join(model.subckt_pins)}')
+            typer.echo(f'file_path: {model.file_path}')
+            typer.echo('')
+            typer.echo(subckt)
+
+    _register_model_subapp(
+        'tube',
+        ComponentCategory.TUBE,
+        'No tube models found.',
+    )
+    _register_model_subapp(
+        'transformer',
+        ComponentCategory.TRANSFORMER,
+        'No transformer models found.',
+    )
+    _register_model_subapp(
+        'load',
+        ComponentCategory.LOAD,
+        'No load models found.',
+    )
 
     return app

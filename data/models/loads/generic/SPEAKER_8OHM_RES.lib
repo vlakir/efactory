@@ -1,0 +1,13 @@
+* SPEAKER_8OHM_RES — simple 8Ω resistive load (no mechanical resonance).
+*
+* Используется для базового AC sweep и измерения максимальной выходной
+* мощности — даёт чистую R impedance, не маскирует особенности
+* output stage частотными артефактами speaker'а.
+*
+* Для реалистичной impedance curve с резонансом см. SPEAKER_8OHM.lib.
+*
+* subcategory: resistive
+* Pins: SP, SN — load terminals.
+.SUBCKT SPEAKER_8OHM_RES SP SN
+RL SP SN 8
+.ENDS SPEAKER_8OHM_RES

@@ -1,0 +1,20 @@
+* SPEAKER_8OHM — typical 8Ω hi-fi speaker model with mechanical resonance.
+*
+* Voice coil DCR + L + parallel RLC резонатор (~70 Hz mechanical
+* resonance, Qts ≈ 0.4, sensitivity ~88 dB/W/m). Подходит для AC
+* sweep моделирования output stage с реалистичной impedance curve.
+*
+* Для simple resistive load (без резонанса) см. SPEAKER_8OHM_RES.lib.
+*
+* subcategory: speaker
+* Pins: SP, SN — speaker terminals.
+.SUBCKT SPEAKER_8OHM SP SN
+* Voice coil: 6.4Ω DC resistance + 0.4 mH inductance.
+Rdc SP A 6.4
+Lvc A SN 0.4m
+* Mechanical resonance (parallel RLC at ~70 Hz, peak ~20Ω):
+*   fr = 1/(2π·sqrt(L·C)) = 1/(2π·sqrt(12m·430u)) ≈ 70 Hz.
+Rcm SP B 20
+Lcm B C 12m
+Ccm C SN 430u
+.ENDS SPEAKER_8OHM

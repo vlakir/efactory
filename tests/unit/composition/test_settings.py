@@ -21,8 +21,8 @@ _EFACTORY_ENV_VARS = (
     'EFACTORY_PROJECTS_ROOT',
     'EFACTORY_DATABASE_URL',
     'EFACTORY_SESSION_ROOT',
-    'EFACTORY_TUBE_LIBRARY_ROOT',
-    'EFACTORY_USER_TUBE_LIBRARY_ROOT',
+    'EFACTORY_LIBRARY_ROOT',
+    'EFACTORY_USER_LIBRARY_ROOT',
 )
 
 
@@ -67,48 +67,46 @@ def test_env_overrides_session_root(
     assert settings.session_root == custom_sessions
 
 
-def test_tube_library_root_defaults_to_repo_data_dir(tmp_path: 'Path') -> None:
-    """Default — `<repo>/data/models/tubes/` (T006 C1, development mode)."""
+def test_library_root_defaults_to_repo_data_models_dir(tmp_path: 'Path') -> None:
+    """Default — `<repo>/data/models/` (T007 generalization)."""
     settings = Settings()
 
-    # Путь не зависит от HOME — это relative от composition module.
-    assert settings.tube_library_root.name == 'tubes'
-    assert settings.tube_library_root.parent.name == 'models'
-    assert settings.tube_library_root.parent.parent.name == 'data'
+    assert settings.library_root.name == 'models'
+    assert settings.library_root.parent.name == 'data'
 
 
-def test_env_overrides_tube_library_root(
+def test_env_overrides_library_root(
     tmp_path: 'Path',
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    custom = tmp_path / 'custom_tubes'
-    monkeypatch.setenv('EFACTORY_TUBE_LIBRARY_ROOT', str(custom))
+    custom = tmp_path / 'custom_library'
+    monkeypatch.setenv('EFACTORY_LIBRARY_ROOT', str(custom))
 
     settings = Settings()
 
-    assert settings.tube_library_root == custom
+    assert settings.library_root == custom
 
 
-def test_user_tube_library_defaults_to_storage_root_models_tubes(
+def test_user_library_defaults_to_storage_root_models(
     tmp_path: 'Path',
 ) -> None:
-    """T006 fix-up Q3: default user-каталог = <storage>/models/tubes/."""
+    """T007: default user-каталог = <storage>/models/ (общий для всех category)."""
     settings = Settings()
 
-    expected = tmp_path / '.local' / 'share' / 'efactory' / 'models' / 'tubes'
-    assert settings.user_tube_library_root == expected
+    expected = tmp_path / '.local' / 'share' / 'efactory' / 'models'
+    assert settings.user_library_root == expected
 
 
-def test_env_overrides_user_tube_library_root(
+def test_env_overrides_user_library_root(
     tmp_path: 'Path',
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    custom = tmp_path / 'my_user_tubes'
-    monkeypatch.setenv('EFACTORY_USER_TUBE_LIBRARY_ROOT', str(custom))
+    custom = tmp_path / 'my_user_library'
+    monkeypatch.setenv('EFACTORY_USER_LIBRARY_ROOT', str(custom))
 
     settings = Settings()
 
-    assert settings.user_tube_library_root == custom
+    assert settings.user_library_root == custom
 
 
 def test_defaults_use_xdg_data_home_when_set(
