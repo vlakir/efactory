@@ -1,0 +1,13 @@
+* 6SN7 — Duncan fit (альтернатива Koren-fit'у в koren/6SN7.lib).
+*
+* tube_type: triode
+* Pins: P (plate), G (grid), K (cathode).
+.SUBCKT 6SN7_DUNCAN P G K
+* Duncan/Cigna parameters: MU=20.7 EX=1.461 KG1=1858 KP=83 KVB=300
+E1 7 0 VALUE={V(P,K)/83*LN(1+EXP(83*(1/20.7+V(G,K)/SQRT(300+V(P,K)*V(P,K)))))}
+G1 P K VALUE={(PWRS(V(7),1.461)+PWRS(V(7),1.461))/1858}
+C1 G K 2.6p
+C2 G P 4p
+C3 P K 1.0p
+RGI G K 1MEG
+.ENDS 6SN7_DUNCAN

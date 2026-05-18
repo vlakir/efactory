@@ -27,56 +27,95 @@ def _setup_env(
     # подтянуться 2 generic примера.
 
 
-def test_tube_list_shows_built_in_set(
+_EXPECTED_BUILTIN_MIN = 40  # smoke threshold (53+ моделей фактически)
+
+
+def _list_built_in_ids(runner: CliRunner) -> list[str]:
+    """Получить список built-in id'ов через `efactory tube list`."""
+    result = runner.invoke(build_cli_app(), ['tube', 'list'])
+    assert result.exit_code == 0, result.output
+    ids: list[str] = []
+    for line in result.output.splitlines():
+        parts = line.split('\t')
+        if len(parts) >= 2 and parts[1] == 'built-in':  # noqa: PLR2004
+            ids.append(parts[0])
+    return ids
+
+
+def test_tube_list_covers_all_categories(
     tmp_path: 'Path', monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Built-in библиотека ≥10 моделей (T006 fix-up real models)."""
+    """Built-in библиотека покрывает triodes / pentodes / rectifiers
+    из всех 4 источников (koren / ayumi / duncan / custom).
+    """
     _setup_env(tmp_path, monkeypatch)
     runner = CliRunner()
 
     result = runner.invoke(build_cli_app(), ['tube', 'list'])
 
     assert result.exit_code == 0, result.output
-    # Koren-источник: классические триоды + пентоды.
-    for expected in ('12AX7', '12AU7', '6SN7', 'EL34', '6L6', '6V6', 'KT88'):
+    # Знаковые модели каждого класса должны присутствовать.
+    must_have = (
+        '12AX7', '12AU7', '12AT7', '12BH7', '6SN7', '6CG7', 'EF86',  # koren triodes/pentodes
+        'EL34', '6L6', 'KT88', '5881', '7591', '7027',  # koren pentodes
+        '5AR4', '5U4G', '5Y3GT', 'EZ80', 'EZ81',  # koren rectifiers
+        '300B', '845', '211', '2A3', '6080', '6C33C', '6DJ8',  # ayumi triodes
+        '12AX7_DUNCAN', '6SN7_DUNCAN', 'EL34_DUNCAN', '300B_DUNCAN',  # duncan fits
+        '6SL7', '6AS7G', 'KT66', 'KT77', 'KT90', '6BM8',  # duncan unique
+        '6N1P', '6N2P', '6N3P', '6N6P', '6N8S', '6N9S',  # советские triodes
+        '6P1P', '6P3S', '6P14P', '6P15P', '6P18P', '6P45S',  # советские pentodes
+        'GU50', 'GM70',  # советские transmitting
+        '5C3S', '5C4S', '6C4P',  # советские rectifiers
+        'GENERIC_TRIODE', 'GENERIC_PENTODE',  # formatting references
+    )
+    for expected in must_have:
         assert expected in result.output, f'missing {expected} in tube list'
-    # Ayumi-источник: с `^` оператором.
-    assert '300B' in result.output
-    assert '6DJ8' in result.output
-    # Советские (custom): аналоги западных.
-    for expected in ('6N2P', '6N3P', '6P14P', '6P3S'):
-        assert expected in result.output, f'missing {expected} in tube list'
-    # Generic-форматы как documentation.
-    assert 'GENERIC_TRIODE' in result.output
-    assert 'GENERIC_PENTODE' in result.output
-    # source/type tab-separated.
-    assert 'ayumi' in result.output
-    assert 'koren' in result.output
-    assert 'custom' in result.output
+    # Все три типа представлены.
+    assert 'rectifier' in result.output
     assert 'pentode' in result.output
     assert 'triode' in result.output
+    # Все четыре источника.
+    assert 'koren' in result.output
+    assert 'ayumi' in result.output
+    assert 'duncan' in result.output
+    assert 'custom' in result.output
 
 
-def test_tube_show_real_models_parse_correctly(
+def test_tube_show_all_built_in_models_parse(
     tmp_path: 'Path', monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Smoke: каждая built-in модель парсится без ошибок (`tube show` exit 0)."""
+    """Smoke: каждая built-in модель парсится без ошибок."""
     _setup_env(tmp_path, monkeypatch)
     runner = CliRunner()
 
-    builtin_ids = (
-        '12AX7', '12AU7', '6SN7', 'EL34', '6L6', '6V6', 'KT88',
-        '300B', '6DJ8',
-        '6N2P', '6N3P', '6P14P', '6P3S',
-        'GENERIC_TRIODE', 'GENERIC_PENTODE',
+    ids = _list_built_in_ids(runner)
+    assert len(ids) >= _EXPECTED_BUILTIN_MIN, (
+        f'expected ≥{_EXPECTED_BUILTIN_MIN} built-in models, got {len(ids)}'
     )
-    for model_id in builtin_ids:
+
+    for model_id in ids:
         result = runner.invoke(
             build_cli_app(), ['tube', 'show', '--id', model_id],
         )
         assert result.exit_code == 0, f'show {model_id} failed: {result.output}'
         assert f'id: {model_id}' in result.output
         assert '.SUBCKT' in result.output
+
+
+def test_tube_show_rectifier_5ar4(
+    tmp_path: 'Path', monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rectifier модели — новый класс, проверяем форматирование."""
+    _setup_env(tmp_path, monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(build_cli_app(), ['tube', 'show', '--id', '5AR4'])
+
+    assert result.exit_code == 0, result.output
+    assert 'tube_type: rectifier' in result.output
+    assert 'pins: A1 A2 K' in result.output
+    assert '.SUBCKT 5AR4' in result.output
+    assert '.MODEL DIODE_5AR4' in result.output
 
 
 def test_tube_show_ayumi_converts_caret_to_double_star(

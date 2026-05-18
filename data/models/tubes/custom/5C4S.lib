@@ -1,0 +1,11 @@
+* 5Ц4С (5C4S) — советский full-wave directly-heated rectifier, аналог 5Y3.
+*
+* Малый ток (~125 mA), большое падение.
+*
+* tube_type: rectifier
+* Pins: A1 (plate 1), A2 (plate 2), K (cathode, filament center-tap).
+.SUBCKT 5C4S A1 A2 K
+D1 A1 K DIODE_5C4S
+D2 A2 K DIODE_5C4S
+.MODEL DIODE_5C4S D(IS=2.5m RS=250 N=2.0 BV=1400 CJO=10p)
+.ENDS 5C4S

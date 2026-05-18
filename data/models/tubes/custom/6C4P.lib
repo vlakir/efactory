@@ -1,0 +1,11 @@
+* 6Ц4П (6C4P) — советский full-wave indirectly-heated rectifier, аналог EZ81.
+*
+* Indirectly-heated; популярна в советской аппаратуре среднего уровня.
+*
+* tube_type: rectifier
+* Pins: A1 (plate 1), A2 (plate 2), K (cathode).
+.SUBCKT 6C4P A1 A2 K
+D1 A1 K DIODE_6C4P
+D2 A2 K DIODE_6C4P
+.MODEL DIODE_6C4P D(IS=5m RS=110 N=2.0 BV=1300 CJO=8p)
+.ENDS 6C4P

@@ -1,0 +1,15 @@
+* 6SL7 — high-mu dual triode (audiophile preamp, 8-pin octal).
+*
+* Duncan's Amp Pages collection (Dave Cigna fit). Близкий к 12AX7
+* по mu, но octal формфактор; популярен в hi-end preamp.
+* tube_type: triode
+* Pins: P (plate), G (grid), K (cathode) — single section.
+.SUBCKT 6SL7 P G K
+* Koren parameters: MU=70 EX=1.4 KG1=1900 KP=400 KVB=300
+E1 7 0 VALUE={V(P,K)/400*LN(1+EXP(400*(1/70+V(G,K)/SQRT(300+V(P,K)*V(P,K)))))}
+G1 P K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/1900}
+C1 G K 3p
+C2 G P 2.8p
+C3 P K 3p
+RGI G K 1MEG
+.ENDS 6SL7

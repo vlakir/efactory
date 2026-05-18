@@ -1,0 +1,16 @@
+* 6П15П — советский ВЧ-пентод, аналог EF184 / 6EJ7.
+*
+* Koren pentode model. Высокая крутизна, используется в ВЧ-усилителях,
+* sweep-схемах TV.
+* tube_type: pentode
+* Pins: P (plate), G2 (screen), G (grid 1), K (cathode).
+.SUBCKT 6P15P P G2 G K
+* Koren parameters: MU=70 EX=1.4 KG1=400 KG2=4500 KP=250 KVB=20
+E1 7 0 VALUE={V(G2,K)/250*LN(1+EXP(250*(1/70+V(G,K)/V(G2,K))))}
+G1 P K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/400 * ATAN(V(P,K)/20)}
+G2 G2 K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/4500}
+C1 G K 10p
+C2 G P 0.05p
+C3 P K 3.4p
+RGI G K 1MEG
+.ENDS 6P15P

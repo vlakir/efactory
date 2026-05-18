@@ -1,0 +1,16 @@
+* 7027 / 7027A — beam tetrode (RCA, Ampeg / hi-power audio variant of 6L6).
+*
+* Norman Koren pentode model. По параметрам близок к 6L6GC, но Pa выше.
+* Используется в Ampeg SVT (~25 W per tube).
+* tube_type: pentode
+* Pins: P (plate), G2 (screen), G (grid 1), K (cathode).
+.SUBCKT 7027 P G2 G K
+* Koren parameters: MU=8.7 EX=1.35 KG1=1460 KG2=4500 KP=48 KVB=12
+E1 7 0 VALUE={V(G2,K)/48*LN(1+EXP(48*(1/8.7+V(G,K)/V(G2,K))))}
+G1 P K VALUE={(PWRS(V(7),1.35)+PWRS(V(7),1.35))/1460 * ATAN(V(P,K)/12)}
+G2 G2 K VALUE={(PWRS(V(7),1.35)+PWRS(V(7),1.35))/4500}
+C1 G K 10p
+C2 G P 0.6p
+C3 P K 6.5p
+RGI G K 1MEG
+.ENDS 7027

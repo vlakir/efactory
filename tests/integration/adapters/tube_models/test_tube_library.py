@@ -256,3 +256,58 @@ async def test_user_overlay_none_argument_works(tmp_path: Path) -> None:
     models = await repo.list_all()
     assert [m.id for m in models] == ['GENERIC_TRIODE']
     assert models[0].is_user is False
+
+
+# ---------- Rectifier support (expanded library) ----------
+
+_RECTIFIER_LIB = """\
+* 5AR4 — full-wave indirectly-heated rectifier.
+* tube_type: rectifier
+* Pins: A1, A2, K.
+.SUBCKT TEST_RECT A1 A2 K
+D1 A1 K DIODE_TEST
+D2 A2 K DIODE_TEST
+.MODEL DIODE_TEST D(IS=8m RS=75 N=2.0 BV=1500)
+.ENDS TEST_RECT
+"""
+
+_HALF_WAVE_LIB = """\
+* Half-wave rectifier (2 pin: anode + cathode).
+.SUBCKT HALFWAVE A K
+D1 A K DIODE_HW
+.MODEL DIODE_HW D(IS=2m RS=200 N=2.0 BV=800)
+.ENDS HALFWAVE
+"""
+
+
+async def test_rectifier_full_wave_detected_via_header(tmp_path: Path) -> None:
+    """3-pin SUBCKT с `* tube_type: rectifier` header → RECTIFIER (не TRIODE)."""
+    _seed(tmp_path, ModelSource.KOREN, 'TEST_RECT.lib', _RECTIFIER_LIB)
+    repo = FilesystemTubeModelLibrary(tmp_path)
+
+    model = (await repo.list_all())[0]
+
+    assert model.tube_type is TubeType.RECTIFIER
+    assert model.subckt_pins == ('A1', 'A2', 'K')
+
+
+async def test_rectifier_half_wave_detected_by_pin_count(tmp_path: Path) -> None:
+    """2-pin SUBCKT → RECTIFIER (fallback heuristic, без header)."""
+    _seed(tmp_path, ModelSource.KOREN, 'HALFWAVE.lib', _HALF_WAVE_LIB)
+    repo = FilesystemTubeModelLibrary(tmp_path)
+
+    model = (await repo.list_all())[0]
+
+    assert model.tube_type is TubeType.RECTIFIER
+    assert model.subckt_pins == ('A', 'K')
+
+
+async def test_rectifier_read_subckt_includes_model_directive(tmp_path: Path) -> None:
+    _seed(tmp_path, ModelSource.KOREN, 'TEST_RECT.lib', _RECTIFIER_LIB)
+    repo = FilesystemTubeModelLibrary(tmp_path)
+
+    block = await repo.read_subckt('TEST_RECT')
+
+    assert '.SUBCKT TEST_RECT' in block
+    assert '.MODEL DIODE_TEST' in block
+    assert '.ENDS TEST_RECT' in block

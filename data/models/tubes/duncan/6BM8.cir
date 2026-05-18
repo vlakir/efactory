@@ -1,0 +1,17 @@
+* 6BM8 / ECL82 — pentode + triode в одном баллоне (compactron, мини-усилители).
+*
+* Здесь моделируется ТОЛЬКО pentode-секция. Triode-секция требует
+* отдельной модели; в SPICE-схеме инстанцируются две раздельные модели.
+*
+* tube_type: pentode
+* Pins: P (plate), G2 (screen), G (grid 1), K (cathode) — pentode section.
+.SUBCKT 6BM8 P G2 G K
+* Pentode parameters: MU=15 EX=1.38 KG1=700 KG2=4200 KP=70 KVB=20
+E1 7 0 VALUE={V(G2,K)/70*LN(1+EXP(70*(1/15+V(G,K)/V(G2,K))))}
+G1 P K VALUE={(PWRS(V(7),1.38)+PWRS(V(7),1.38))/700 * ATAN(V(P,K)/20)}
+G2 G2 K VALUE={(PWRS(V(7),1.38)+PWRS(V(7),1.38))/4200}
+C1 G K 8p
+C2 G P 0.4p
+C3 P K 5.5p
+RGI G K 1MEG
+.ENDS 6BM8

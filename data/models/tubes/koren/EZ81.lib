@@ -1,0 +1,11 @@
+* EZ81 / 6CA4 — full-wave indirectly-heated rectifier (~150 mA, 9-pin).
+*
+* Больший ток чем EZ80; популярна в mid-power аудио. Indirectly-heated.
+*
+* tube_type: rectifier
+* Pins: A1 (plate 1), A2 (plate 2), K (cathode).
+.SUBCKT EZ81 A1 A2 K
+D1 A1 K DIODE_EZ81
+D2 A2 K DIODE_EZ81
+.MODEL DIODE_EZ81 D(IS=5m RS=110 N=2.0 BV=1300 CJO=8p)
+.ENDS EZ81

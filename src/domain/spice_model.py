@@ -31,6 +31,7 @@ class TubeType(StrEnum):
     TETRODE = 'tetrode'
     PENTODE = 'pentode'
     DUAL_TRIODE = 'dual_triode'
+    RECTIFIER = 'rectifier'  # выпрямительный диод (2-pin half-wave или 3-pin full-wave)
 
 
 class ModelSource(StrEnum):
