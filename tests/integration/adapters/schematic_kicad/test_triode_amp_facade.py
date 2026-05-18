@@ -1,24 +1,30 @@
 """T104 Phase 0 acceptance: common-cathode пентод 6П14П через Valve:EL84.
 
-Минимальный R-loaded усилитель без OPT: V_BB → R_p → P → K → R_k ∥ C_k
-→ GND. Управляющая сетка G через R_g → GND (grid-leak bias), вход V_in
-(10 mV @ 1 kHz) → C_in → G. Screen G2 — напрямую на B+ rail (без
-R_screen).
+Минимальный R-loaded усилитель + output coupling cap: V_BB → R_p → P
+(plate, ~Vbb/2 DC) → C_out → /output → R_load → GND. Cathode auto-bias:
+K → R_k ∥ C_k → GND. Управляющая сетка G через R_g → GND (grid-leak),
+вход V_in (10 mV @ 1 kHz) → C_in → G. Screen G2 — напрямую на B+ rail.
+
+**C_out (220 nF) + R_load (100 kΩ)** убирают plate DC offset (~100-180 V)
+из /output net, оставляя только AC-усиленный сигнал. Так /input и
+/output сравнимы напрямую (оба around 0 V).
 
 **Acceptance:**
 
   * Netlist содержит `XV1 ... 6P14P` + `.include 6P14P.lib`; lib_id =
-    `Valve:EL84` (не `Connector_Generic:Conn_01x04`).
-  * ngspice TRAN: gain ≥ 15× на /plate. **Замечание:** реальный gain
-    в нашей T006 Koren-модели 6П14П ≈ 18–19× с Rp=4.7k (физический
-    потолок R-loaded common-cathode pentode без OPT). 15× = buffer от
-    measured ≈19. Для 30+ gain нужен SE-amp с OPT (impedance match) —
-    SE-amp фикстура существует в `test_se_amp_facade.py`, но
-    заблокирована T100 W2 layout risk (см. T103).
+    `Valve:EL84`.
+  * ngspice TRAN: |V(/output)|_pp / |V(/input)|_pp ≥ 15×.
+  * V(/output) DC mean ≈ 0 (|mean| < 0.1 V): output coupling cap
+    блокирует DC компонент с plate.
 
-**Без OPT** — обходим T100 W2 risk (T103 layout fix не нужен). Только
-4 вертикальных wire'а + 1 горизонтальный B+ rail; пересечений с
-чужими pin'ами нет.
+**Замечание:** реальный gain в нашей T006 Koren-модели 6П14П ≈ 19×
+(физический потолок R-loaded common-cathode pentode без OPT). Для 30+
+gain нужен SE-amp с OPT (impedance match) — см. T103 (W2 layout).
+
+**Wire routing:** plate→C_out wire идёт вертикально из P вниз через тело
+лампы (без pin-contact), затем горизонтально на Y=92.71 через C_k body
+(пины C_k на Y=88.9 и Y=96.52, центр 92.71 свободен). Визуально wire
+overlap'ит symbol bodies, но электрически чисто. ERC clean.
 """
 
 from __future__ import annotations
@@ -99,6 +105,13 @@ _GND_RK_AT     = (99.06, 99.06)
 _C_K_AT        = (109.22, 92.71)      # pin_a@(109.22,96.52)→GND, pin_b@(109.22,88.9)→cathode rail
 _GND_CK_AT     = (109.22, 99.06)
 _BPLUS_RAIL_Y  = 50.8                 # horizontal: V_BB.pin_minus → R_p stub → G2 stub
+# T104 output stage (AC coupling): C_out на правом конце plate-wire,
+# R_load моделирует input impedance следующего каскада. /output net
+# свободен от DC offset плате.
+_C_OUT_AT      = (130.0, 88.9)        # rotation=0: pin_a@(130,92.71)→plate wire, pin_b@(130,85.09)=/output
+_R_LOAD_AT     = (140.0, 92.71)       # rotation=0: pin_a@(140,96.52)→GND, pin_b@(140,88.9)→/output via wire
+_GND_RLOAD_AT  = (140.0, 99.06)
+_PLATE_DETOUR_Y = 92.71               # plate wire идёт под G2 stub (Y=78.74 max) сквозь C_k center (без pin contact)
 
 
 def _app_manager() -> SubprocessAppManager:
@@ -127,11 +140,15 @@ def _build_triode_amp(path: Path) -> Path:
     )
     r_k = sch.add_resistor(reference='Rk', value='270', at=_R_K_AT)
     c_k = sch.add_capacitor(reference='Ck', value='22u', at=_C_K_AT)
+    # Output stage (T104 — AC coupling)
+    c_out = sch.add_capacitor(reference='Cout', value='220n', at=_C_OUT_AT)
+    r_load = sch.add_resistor(reference='RL', value='100k', at=_R_LOAD_AT)
     gnd_vbb = sch.add_ground(at=_GND_VBB_AT)
     gnd_vin = sch.add_ground(at=_GND_VIN_AT)
     gnd_rg = sch.add_ground(at=_GND_RG_AT)
     gnd_rk = sch.add_ground(at=_GND_RK_AT)
     gnd_ck = sch.add_ground(at=_GND_CK_AT)
+    gnd_rload = sch.add_ground(at=_GND_RLOAD_AT)
     flg = sch.add_pwr_flag(at=_FLG_AT, rotation=180)
 
     # === Wires ===
@@ -165,6 +182,18 @@ def _build_triode_amp(path: Path) -> Path:
     sch.connect(xv1.pin('K'), c_k.pin_b)
     sch.junction(at=(_R_K_AT[0], 88.9))
 
+    # Output stage (T104): plate → C_out → /output → R_load → GND.
+    # Plate wire идёт DOWN из P, под G2 stub (Y > 78.74), потом RIGHT к
+    # C_out.pin_a. Manhattan-corner = (101.6, _PLATE_DETOUR_Y).
+    sch.connect(xv1.pin('P'), Position(x_mm=101.6, y_mm=_PLATE_DETOUR_Y))
+    sch.connect(
+        Position(x_mm=101.6, y_mm=_PLATE_DETOUR_Y),
+        c_out.pin_a,  # (130, 92.71)
+    )
+    # Output net wire: C_out.pin_b → R_load.pin_b
+    sch.connect(c_out.pin_b, r_load.pin_b)
+    sch.connect(r_load.pin_a, gnd_rload.pin)
+
     # GND-стержни
     sch.connect(v_bb.pin_plus, gnd_vbb.pin)
     sch.connect(v_in.pin_plus, gnd_vin.pin)
@@ -175,7 +204,8 @@ def _build_triode_amp(path: Path) -> Path:
 
     # SPICE-trace labels (для assertions)
     sch.label('input', at=v_in.pin_minus)
-    sch.label('plate', at=xv1.pin('P'))
+    sch.label('plate', at=xv1.pin('P'))         # DC + AC (для diagnostics)
+    sch.label('output', at=c_out.pin_b)         # AC only (для сравнения с /input)
 
     sch.spice_directive('.tran 10u 5m', at=(50.8, 105.41))
 
@@ -236,14 +266,26 @@ async def test_facade_triode_amp_tran_shows_amplification(
     n = len(ts.time)
     skip = int(n * 0.7)
     vin = ts.traces['v(/input)'][skip:]
-    vp = ts.traces['v(/plate)'][skip:]
+    vout = ts.traces['v(/output)'][skip:]
 
     vin_pp = max(vin) - min(vin)
-    vp_pp = max(vp) - min(vp)
+    vout_pp = max(vout) - min(vout)
     assert vin_pp > 0.005, f'Input swing too low: {vin_pp}'
-    gain = vp_pp / vin_pp
+    gain = vout_pp / vin_pp
     # 15× = buffer от реально достигаемых ~19× для R-loaded common-
     # cathode 6П14П. Выше — нужен SE-amp с OPT, см. docstring.
     assert gain >= 15.0, (
-        f'Plate gain {gain:.1f}× ниже порога 15× — лампа не усиливает'
+        f'Output gain {gain:.1f}× ниже порога 15× — лампа не усиливает'
+    )
+
+    # T104: проверяем, что C_out снимает DC offset с /output net.
+    # На /plate DC mean ≈ 100-180V (quiescent V_p), на /output должен
+    # быть ≈ 0 (свежий AC-сигнал). |mean(/output)| < 0.1V с большим
+    # запасом подтверждает, что output coupling cap работает.
+    vout_mean = sum(vout) / len(vout)
+    vplate = ts.traces['v(/plate)'][skip:]
+    vplate_mean = sum(vplate) / len(vplate)
+    assert abs(vout_mean) < 0.1, (
+        f'|V(/output) DC mean| = {abs(vout_mean):.3f} V — coupling cap '
+        f'не блокирует DC (для сравнения V(/plate) mean = {vplate_mean:.2f} V)'
     )
