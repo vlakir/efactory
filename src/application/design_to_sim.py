@@ -1,4 +1,4 @@
-"""design_to_sim — KiCad → SPICE netlist (+ stub simulation) (T004 split-scope)."""
+"""design_to_sim — KiCad → SPICE netlist (+ OP simulation) (T004 / T008)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from application.get_project import get_project
-from domain.simulation import Simulation, SimulationStatus
+from domain.simulation import OpAnalysis, Simulation, SimulationStatus
 from ports.outbound.simulator import SimulatorUnavailableError
 
 if TYPE_CHECKING:
@@ -78,9 +78,10 @@ async def design_to_sim(
     )
 
     try:
-        result = await simulator.run_op(netlist_path)
+        result = await simulator.run(netlist_path, OpAnalysis())
     except SimulatorUnavailableError:
-        # T004 split-scope: stub бросает; status остаётся NETLIST_READY.
+        # T008 Phase 2: пока StubSimulator бросает; status остаётся
+        # NETLIST_READY. В Phase 3 NgspiceSimulator заменит stub.
         return sim
 
     return sim.model_copy(

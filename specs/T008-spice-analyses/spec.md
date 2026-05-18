@@ -373,9 +373,16 @@ operating point, transient, AC sweep — на трёх минимальных
 1. (W-1, W-2) Оставляем как known limits, проверяем на ходу в Phase 3.
 2. (W-3) Атомарность миграции callers `run_op` — Phase 2 одним
    коммитом.
-3. (W-4) **Согласовано 2026-05-18:** `StubSimulator` удаляется в
-   Phase 2, `InMemorySimulator` въезжает в `tests/doubles/` для
-   unit-тестов use case `design_to_sim`. `composition.main` инжектит
+3. (W-4) **Согласовано 2026-05-18 (с корректировкой в Phase 2):**
+   `StubSimulator` удаляется в Phase **3** (одновременно с
+   появлением `NgspiceSimulator`, иначе `composition.main`
+   разваливается). В Phase 2 — `StubSimulator` переписан под новый
+   контракт `run(netlist, analysis, *, timeout_seconds=60.0)`,
+   бросает `SimulatorUnavailableError` с message `"T008 Phase 3:
+   ngspice adapter not implemented yet"`. `InMemorySimulator` в
+   `tests/doubles/` — **отменён (YAGNI)**: `FakeSimulator` нужен
+   только в одном test-файле, остаётся inline в
+   `test_design_to_sim.py`. В Phase 3 `composition.main` инжектит
    `NgspiceSimulator` как default.
 4. (C-1) **Согласовано 2026-05-18:** Phase 5 стартует с пилота
    `se_amp_minimal.kicad_sch` (ручной s-expr) → kicad-cli +
@@ -407,9 +414,15 @@ operating point, transient, AC sweep — на трёх минимальных
    одна заполнена», audit callers (только domain-уровень, миграция
    port/adapter — Phase 2). 39 новых тестов; 413 passed, coverage
    88.73% (≥80%). Все 4 quality gates зелёные.
-2. **Phase 2 — Port.** Расширение `Simulator` (`run(netlist, analysis)`),
-   удаление `run_op`. `StubSimulator` под новый контракт.
-   Миграция `design_to_sim` use case под новый порт.
+2. **Phase 2 — Port. ✅ Done 2026-05-18.** `Simulator.run(netlist,
+   analysis, *, timeout_seconds=60.0) → SimulationResult` (вместо
+   `run_op`). `StubSimulator` переписан под новый контракт (бросает
+   `SimulatorUnavailableError` с пометкой «Phase 3»). Миграция
+   `design_to_sim` use case (`run(netlist, OpAnalysis())`).
+   `FakeSimulator` inline в `test_design_to_sim.py` переписан под
+   новый контракт. `composition.main` не тронут — StubSimulator на
+   месте до Phase 3. 415 passed, coverage 88.73%, все quality gates
+   зелёные.
 3. **Phase 3 — Adapter.** `NgspiceSimulator` — wrapper generation,
    `AppManager.run`, ASCII raw parser. Unit-тесты на парсере с
    фиксированной фикстурой raw. Contract-тест на реальный ngspice под

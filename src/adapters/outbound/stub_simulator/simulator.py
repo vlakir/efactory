@@ -1,9 +1,8 @@
 """
-StubSimulator — placeholder для Simulator port (T004 split-scope).
+StubSimulator — placeholder для Simulator port (T008 Phase 2).
 
-T008 заменит реальной реализацией через PySpice / ngspice. Сейчас
-любой вызов бросает `SimulatorUnavailableError` с явной пометкой
-«ngspice integration scheduled for T008».
+В Phase 3 будет заменён реальным `NgspiceSimulator`; пока любой вызов
+бросает `SimulatorUnavailableError` с явной пометкой про Phase 3.
 """
 
 from __future__ import annotations
@@ -15,17 +14,23 @@ from ports.outbound.simulator import SimulatorUnavailableError
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from domain.simulation import SimulationResult
+    from domain.simulation import AnalysisSpec, SimulationResult
 
 
 _NOT_AVAILABLE_MSG = (
-    'Simulator not available in current build (T004 split-scope). '
-    'ngspice integration scheduled for T008.'
+    'Simulator not available in current build. '
+    'T008 Phase 3: ngspice adapter not implemented yet.'
 )
 
 
 class StubSimulator:
-    async def run_op(self, netlist: Path) -> SimulationResult:  # noqa: ARG002
+    async def run(
+        self,
+        netlist: Path,  # noqa: ARG002
+        analysis: AnalysisSpec,  # noqa: ARG002
+        *,
+        timeout_seconds: float = 60.0,  # noqa: ARG002
+    ) -> SimulationResult:
         raise SimulatorUnavailableError(_NOT_AVAILABLE_MSG)
 
 
