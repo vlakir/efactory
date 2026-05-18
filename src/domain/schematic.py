@@ -109,6 +109,21 @@ class LabelSpec(BaseModel):
     position: Position
 
 
+class TextSpec(BaseModel):
+    """
+    Schematic-text node — несёт SPICE-директивы (`.tran`, `.ac`, `.op` ...).
+
+    Если `text` начинается с `.`, KiCad SPICE-writer включает его в
+    netlist как директиву. `exclude_from_sim no` (всегда выставляется
+    writer'ом) обязателен — иначе текст считается декоративным.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    text: str
+    position: Position
+
+
 class SchematicSpec(BaseModel):
     """
     Полное содержимое одного листа `.kicad_sch`.
@@ -124,3 +139,4 @@ class SchematicSpec(BaseModel):
     wires: tuple[WireSpec, ...] = ()
     junctions: tuple[JunctionSpec, ...] = ()
     labels: tuple[LabelSpec, ...] = ()
+    texts: tuple[TextSpec, ...] = ()

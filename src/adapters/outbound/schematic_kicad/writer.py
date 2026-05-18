@@ -35,6 +35,7 @@ if TYPE_CHECKING:
         LabelSpec,
         Position,
         SchematicSpec,
+        TextSpec,
         WireSpec,
     )
 
@@ -145,6 +146,24 @@ def _label_block(depth: int, label: LabelSpec) -> list[str]:
         _t(depth) + f'(label "{label.text}"',
         _t(depth + 1)
         + f'(at {_fmt(label.position.x_mm)} {_fmt(label.position.y_mm)} 0)',
+        *_font_effects(depth + 1, 'left bottom'),
+        _t(depth + 1) + f'(uuid "{_new_uuid()}")',
+        _t(depth) + ')',
+    ]
+
+
+def _text_block(depth: int, text: TextSpec) -> list[str]:
+    """
+    Schematic text node (SPICE-директива при leading `.`).
+
+    `exclude_from_sim no` — обязательно, иначе KiCad считает текст
+    декоративным и не включает в netlist.
+    """
+    escaped = text.text.replace('"', '\\"')
+    return [
+        _t(depth) + f'(text "{escaped}"',
+        _t(depth + 1) + '(exclude_from_sim no)',
+        _t(depth + 1) + f'(at {_fmt(text.position.x_mm)} {_fmt(text.position.y_mm)} 0)',
         *_font_effects(depth + 1, 'left bottom'),
         _t(depth + 1) + f'(uuid "{_new_uuid()}")',
         _t(depth) + ')',
@@ -288,6 +307,8 @@ class KicadSchematicWriter:
             lines.extend(_junction_block(1, junction))
         for label in spec.labels:
             lines.extend(_label_block(1, label))
+        for text in spec.texts:
+            lines.extend(_text_block(1, text))
         for component in spec.components:
             lines.extend(_symbol_block(1, component, sheet_uuid, spec.name))
         lines.extend(_sheet_instances(1))

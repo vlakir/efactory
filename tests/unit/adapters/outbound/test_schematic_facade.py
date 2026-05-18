@@ -97,6 +97,15 @@ def test_label_records_position() -> None:
     assert labels[0].position == Position(x_mm=5.0, y_mm=6.0)
 
 
+def test_spice_directive_recorded_as_text_node() -> None:
+    sch = Schematic('t')
+    sch.spice_directive('.tran 100u 80m', at=(50.8, 80.0))
+    texts = sch.to_spec().texts
+    assert len(texts) == 1
+    assert texts[0].text == '.tran 100u 80m'
+    assert texts[0].position == Position(x_mm=50.8, y_mm=80.0)
+
+
 def test_to_spec_carries_name_and_all_components() -> None:
     sch = Schematic('rc')
     sch.add_v_dc(reference='V1', value='1', at=(0.0, 0.0))

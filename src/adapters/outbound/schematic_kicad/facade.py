@@ -25,6 +25,7 @@ from domain.schematic import (
     LabelSpec,
     Position,
     SchematicSpec,
+    TextSpec,
     WireSpec,
 )
 
@@ -57,15 +58,23 @@ class _LabelOffsets:
 
 _RESISTOR_PINS = (_PinLayout('1', (0.0, 3.81)), _PinLayout('2', (0.0, -3.81)))
 _CAPACITOR_PINS = (_PinLayout('1', (0.0, 3.81)), _PinLayout('2', (0.0, -3.81)))
+_INDUCTOR_PINS = (_PinLayout('1', (0.0, 3.81)), _PinLayout('2', (0.0, -3.81)))
 _VDC_PINS = (_PinLayout('1', (0.0, 5.08)), _PinLayout('2', (0.0, -5.08)))
+_VAC_PINS = (_PinLayout('1', (0.0, 5.08)), _PinLayout('2', (0.0, -5.08)))
+# Diode (Simulation_SPICE:D) — horizontal: pin 1 K слева, pin 2 A справа.
+_DIODE_PINS = (_PinLayout('1', (-3.81, 0.0)), _PinLayout('2', (3.81, 0.0)))
 _GND_PINS = (_PinLayout('1', (0.0, 0.0)),)
 _PWR_FLAG_PINS = (_PinLayout('1', (0.0, 0.0)),)
 
-# R/C Reference/Value — справа от horizontal-rendered body, разнесены по Y.
+# R/C/L Reference/Value — справа от horizontal-rendered body, разнесены по Y.
 # Числа взяты из user-perfected layout (T100 Phase 0 final, KiCad 10 PPA save).
 _RC_LABEL_OFFSETS = _LabelOffsets(ref=(1.016, -4.572), value=(1.016, -2.54))
-# VDC — Reference/Value справа сбоку (canonical V1 in T008 fixture).
+_INDUCTOR_LABEL_OFFSETS = _RC_LABEL_OFFSETS  # тот же 2-pin вертикальный layout
+# VDC/VAC — Reference/Value справа сбоку (canonical V1 in T008 fixture).
 _VDC_LABEL_OFFSETS = _LabelOffsets(ref=(5.08, -1.27), value=(5.08, 1.27))
+_VAC_LABEL_OFFSETS = _VDC_LABEL_OFFSETS
+# Diode (horizontal symbol) — Reference над, Value под телом (canonical lib).
+_DIODE_LABEL_OFFSETS = _LabelOffsets(ref=(0.0, -2.54), value=(0.0, 2.54))
 _GND_LABEL_OFFSETS = _LabelOffsets(ref=(0.0, 6.35), value=(0.0, 3.81))
 # PWR_FLAG offsets под user-perfected layout (PWR_FLAG at rotation 180 на
 # уровне GND): Reference над, Value под перевёрнутым символом.
@@ -77,6 +86,24 @@ _VDC_DEFAULT_PROPERTIES = {
     'Sim.Device': 'SPICE',
     'Sim.Library': '',
     'Sim.Params': 'dc=1 ac=1',
+}
+
+# Diode: built-in ngspice D primitive с inline-параметрами через Sim.Params.
+# Pin convention KiCad: 1=K (cathode), 2=A (anode) — Sim.Pins фиксирует это
+# для SPICE-writer'а вне зависимости от visual rotation.
+_DIODE_DEFAULT_PROPERTIES = {
+    'Sim.Device': 'D',
+    'Sim.Pins': '1=K 2=A',
+    'Sim.Params': 'Is=14.11n N=1.984 Rs=33.89m Cjo=51.17p Bv=1000 Ibv=10u Tt=4.32u',
+}
+
+# VSIN: sin-источник (Sim.Type=SIN) с встроенным Sim.Params в формате KiCad
+# (`dc=0 ampl=X f=Y ac=1`). KiCad SPICE writer эмитит `Vn n+ n- SIN(...)`.
+_VAC_DEFAULT_PROPERTIES = {
+    'Sim.Pins': '1=+ 2=-',
+    'Sim.Type': 'SIN',
+    'Sim.Device': 'V',
+    'Sim.Params': 'dc=0 ampl=1 f=1k ac=1',
 }
 
 
@@ -138,7 +165,42 @@ class Capacitor(_ComponentHandle):
 
 
 @dataclass(frozen=True)
+class Inductor(_ComponentHandle):
+    @property
+    def pin_a(self) -> Position:
+        return self.pin_positions['1']
+
+    @property
+    def pin_b(self) -> Position:
+        return self.pin_positions['2']
+
+
+@dataclass(frozen=True)
+class Diode(_ComponentHandle):
+    """Sim.Pins='1=K 2=A' — pin_k = катод, pin_a = анод."""
+
+    @property
+    def pin_k(self) -> Position:
+        return self.pin_positions['1']
+
+    @property
+    def pin_a(self) -> Position:
+        return self.pin_positions['2']
+
+
+@dataclass(frozen=True)
 class VoltageSourceDc(_ComponentHandle):
+    @property
+    def pin_plus(self) -> Position:
+        return self.pin_positions['1']
+
+    @property
+    def pin_minus(self) -> Position:
+        return self.pin_positions['2']
+
+
+@dataclass(frozen=True)
+class VoltageSourceAc(_ComponentHandle):
     @property
     def pin_plus(self) -> Position:
         return self.pin_positions['1']
@@ -202,6 +264,7 @@ class Schematic:
     _wires: list[WireSpec] = field(default_factory=list)
     _junctions: list[JunctionSpec] = field(default_factory=list)
     _labels: list[LabelSpec] = field(default_factory=list)
+    _texts: list[TextSpec] = field(default_factory=list)
     _pwr_counter: int = 0
     _flg_counter: int = 0
 
@@ -263,6 +326,74 @@ class Schematic:
             pin_positions=_pin_positions(position, rotation, _CAPACITOR_PINS),
         )
 
+    def add_inductor(
+        self,
+        *,
+        reference: str,
+        value: str,
+        at: tuple[float, float] | Position,
+        rotation: float = 0.0,
+    ) -> Inductor:
+        position = _to_position(at)
+        ref_pos, value_pos = _label_positions(position, _INDUCTOR_LABEL_OFFSETS)
+        self._components.append(
+            ComponentSpec(
+                lib_id='Device:L',
+                reference=reference,
+                value=value,
+                position=position,
+                rotation=rotation,
+                pins=tuple(p.name for p in _INDUCTOR_PINS),
+                ref_position=ref_pos,
+                value_position=value_pos,
+                ref_rotation=rotation,
+                value_rotation=rotation,
+            ),
+        )
+        return Inductor(
+            reference=reference,
+            pin_positions=_pin_positions(position, rotation, _INDUCTOR_PINS),
+        )
+
+    def add_diode(
+        self,
+        *,
+        reference: str,
+        value: str,
+        at: tuple[float, float] | Position,
+        rotation: float = 0.0,
+        spice_params: str | None = None,
+    ) -> Diode:
+        """
+        Диод (Simulation_SPICE:D) с inline SPICE-параметрами.
+
+        `spice_params` — строка в формате KiCad/ngspice `Param=Value ...`
+        (например, Duncan-модель 1N4007). Если None — используется default
+        из библиотеки (generic Si: Is=14.11n N=1.984 ... 1N4007-like).
+        """
+        position = _to_position(at)
+        properties = dict(_DIODE_DEFAULT_PROPERTIES)
+        if spice_params is not None:
+            properties['Sim.Params'] = spice_params
+        ref_pos, value_pos = _label_positions(position, _DIODE_LABEL_OFFSETS)
+        self._components.append(
+            ComponentSpec(
+                lib_id='Simulation_SPICE:D',
+                reference=reference,
+                value=value,
+                position=position,
+                rotation=rotation,
+                properties=properties,
+                pins=tuple(p.name for p in _DIODE_PINS),
+                ref_position=ref_pos,
+                value_position=value_pos,
+            ),
+        )
+        return Diode(
+            reference=reference,
+            pin_positions=_pin_positions(position, rotation, _DIODE_PINS),
+        )
+
     def add_v_dc(
         self,
         *,
@@ -291,6 +422,46 @@ class Schematic:
         return VoltageSourceDc(
             reference=reference,
             pin_positions=_pin_positions(position, rotation, _VDC_PINS),
+        )
+
+    def add_v_ac(
+        self,
+        *,
+        reference: str,
+        value: str,
+        at: tuple[float, float] | Position,
+        amplitude: float,
+        frequency: float,
+        dc_offset: float = 0.0,
+        rotation: float = 0.0,
+    ) -> VoltageSourceAc:
+        """
+        VSIN — синусоидальный источник напряжения.
+
+        `amplitude` — амплитуда (peak), В. `frequency` — Гц. `dc_offset` —
+        DC-смещение, В. Sim.Params строится как
+        `dc={dc_offset} ampl={amplitude} f={frequency} ac=1`.
+        """
+        position = _to_position(at)
+        properties = dict(_VAC_DEFAULT_PROPERTIES)
+        properties['Sim.Params'] = f'dc={dc_offset} ampl={amplitude} f={frequency} ac=1'
+        ref_pos, value_pos = _label_positions(position, _VAC_LABEL_OFFSETS)
+        self._components.append(
+            ComponentSpec(
+                lib_id='Simulation_SPICE:VSIN',
+                reference=reference,
+                value=value,
+                position=position,
+                rotation=rotation,
+                properties=properties,
+                pins=tuple(p.name for p in _VAC_PINS),
+                ref_position=ref_pos,
+                value_position=value_pos,
+            ),
+        )
+        return VoltageSourceAc(
+            reference=reference,
+            pin_positions=_pin_positions(position, rotation, _VAC_PINS),
         )
 
     def add_ground(
@@ -381,6 +552,20 @@ class Schematic:
     def label(self, text: str, *, at: tuple[float, float] | Position) -> None:
         self._labels.append(LabelSpec(text=text, position=_to_position(at)))
 
+    def spice_directive(
+        self,
+        text: str,
+        *,
+        at: tuple[float, float] | Position,
+    ) -> None:
+        """
+        Положить SPICE-директиву (`.tran`, `.ac`, `.op`, `.include`, ...).
+
+        KiCad GUI Simulator подхватывает её при Open → Run; распознаётся
+        по leading `.`. Координата `at` — куда поставить text node в схеме.
+        """
+        self._texts.append(TextSpec(text=text, position=_to_position(at)))
+
     def to_spec(self) -> SchematicSpec:
         return SchematicSpec(
             name=self.name,
@@ -388,6 +573,7 @@ class Schematic:
             wires=tuple(self._wires),
             junctions=tuple(self._junctions),
             labels=tuple(self._labels),
+            texts=tuple(self._texts),
         )
 
     def save(self, path: Path) -> Path:
@@ -396,8 +582,12 @@ class Schematic:
 
 __all__ = [
     'Capacitor',
+    'Diode',
     'Ground',
+    'Inductor',
+    'PwrFlag',
     'Resistor',
     'Schematic',
+    'VoltageSourceAc',
     'VoltageSourceDc',
 ]
