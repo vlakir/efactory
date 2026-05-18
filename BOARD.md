@@ -63,6 +63,15 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T103** — [closed 2026-05-19, PR #37] SE-amp wire-router fix через
+  re-layout. Переписан SE-amp с использованием Valve:EL84 (T104) —
+  plate-к-OPT.P1 wire идёт **выше** B+ rail, что исключает
+  пересечения с G2/P2 stub'ами (W2 risk closed). Auto-numbering refs
+  (T104). `.tran 10u 80m uic` для надёжного bias settling. Acceptance:
+  test_facade_se_amp_tran_shows_amplification снят со skip, измеренный
+  plate gain **48.5×** (threshold ≥5×); speaker swing 39 mV p-p после
+  OPT 25:1 step-down; ERC 0 errors. 558 passed (+1), coverage 89.25%.
+
 - **T104** — [closed 2026-05-18, PR #35] Phase 0: красивые tube
   symbols в `efactory.schematic` (закрывает T100 Q4 compromise через
   стандартный KiCad `Valve.kicad_sym`). Реализация: (а)
