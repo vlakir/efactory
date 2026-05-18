@@ -43,6 +43,9 @@ if TYPE_CHECKING:
 _MODEL_EXTS: Final = ('.lib', '.inc', '.cir')
 
 # Pin-count → tube type fallback (N8). Header override приоритет.
+# Rectifier 3-pin (full-wave: A1 A2 K) неотличим от triode по count —
+# для rectifier обязателен header `* tube_type: rectifier`.
+_PINS_RECTIFIER_HALF: Final = 2  # half-wave: 1 anode + 1 cathode
 _PINS_TRIODE: Final = 3
 _PINS_PENTODE_RANGE: Final = (4, 5)
 _PINS_DUAL_TRIODE_MIN: Final = 6
@@ -55,7 +58,7 @@ _TUBE_TYPE_HEADER_RE = re.compile(
     re.IGNORECASE,
 )
 _SUBCKT_BLOCK_RE = re.compile(
-    r'(\.subckt\s.*?\.ends)',
+    r'(\.subckt\s.*?\.ends[ \t]*\S*)',
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -71,6 +74,8 @@ def _detect_tube_type(
         except ValueError:
             pass  # неизвестный header — fallback на heuristic
     n = len(pins)
+    if n == _PINS_RECTIFIER_HALF:
+        return TubeType.RECTIFIER
     if n == _PINS_TRIODE:
         return TubeType.TRIODE
     if n in _PINS_PENTODE_RANGE:

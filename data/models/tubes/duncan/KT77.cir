@@ -1,0 +1,15 @@
+* KT77 — beam tetrode (GEC, "British EL34", classic Hi-Fi 25 W output).
+*
+* Duncan's Amp Pages collection. По параметрам ближе к EL34 чем к 6L6.
+* tube_type: pentode
+* Pins: P (plate), G2 (screen), G (grid 1), K (cathode).
+.SUBCKT KT77 P G2 G K
+* Koren parameters: MU=10.5 EX=1.35 KG1=800 KG2=4500 KP=55 KVB=22
+E1 7 0 VALUE={V(G2,K)/55*LN(1+EXP(55*(1/10.5+V(G,K)/V(G2,K))))}
+G1 P K VALUE={(PWRS(V(7),1.35)+PWRS(V(7),1.35))/800 * ATAN(V(P,K)/22)}
+G2 G2 K VALUE={(PWRS(V(7),1.35)+PWRS(V(7),1.35))/4500}
+C1 G K 14p
+C2 G P 1.0p
+C3 P K 8p
+RGI G K 1MEG
+.ENDS KT77

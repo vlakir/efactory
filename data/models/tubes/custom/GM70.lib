@@ -1,0 +1,17 @@
+* ГМ-70 (GM70) — советский передающий триод (~125 W Pa, hi-end DHT).
+*
+* Ayumi-style triode model. Аналог 845 по мощности, но с thoriated-
+* tungsten directly-heated cathode (как 211/845). Va ~1000-1250V.
+* Культовая для high-end SE усилителей.
+* Capacitances из datasheet: Cgk=8p, Cga=12p, Cak=4p.
+* tube_type: triode
+* Pins: P (plate), G (grid), K (cathode, filament center-tap).
+.SUBCKT GM70 P G K
+* Koren parameters: MU=4 EX=1.4 KG1=1700 KP=80 KVB=300
+E1 7 0 VALUE={V(P,K)/80*LN(1+EXP(80*(1/4+V(G,K)/SQRT(300+V(P,K)*V(P,K)))))}
+G1 P K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/1700}
+C1 G K 8p
+C2 G P 12p
+C3 P K 4p
+RGI G K 1MEG
+.ENDS GM70

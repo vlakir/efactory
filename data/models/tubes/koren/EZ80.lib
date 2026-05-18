@@ -1,0 +1,12 @@
+* EZ80 / 6V4 — full-wave indirectly-heated rectifier (~90 mA, miniature 9-pin).
+*
+* Малая выпрямительная для preamp / low-power аудио. Indirectly-heated
+* (нет sag от прогрева филамента).
+*
+* tube_type: rectifier
+* Pins: A1 (plate 1), A2 (plate 2), K (cathode).
+.SUBCKT EZ80 A1 A2 K
+D1 A1 K DIODE_EZ80
+D2 A2 K DIODE_EZ80
+.MODEL DIODE_EZ80 D(IS=2m RS=180 N=2.0 BV=1000 CJO=6p)
+.ENDS EZ80

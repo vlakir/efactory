@@ -1,0 +1,14 @@
+* EL34 — Duncan fit (альтернатива Koren-fit'у в koren/EL34.lib).
+*
+* tube_type: pentode
+* Pins: P (plate), G2 (screen), G (grid 1), K (cathode).
+.SUBCKT EL34_DUNCAN P G2 G K
+* Duncan/Cigna parameters: MU=11.2 EX=1.314 KG1=620 KG2=4200 KP=68 KVB=24
+E1 7 0 VALUE={V(G2,K)/68*LN(1+EXP(68*(1/11.2+V(G,K)/V(G2,K))))}
+G1 P K VALUE={(PWRS(V(7),1.314)+PWRS(V(7),1.314))/620 * ATAN(V(P,K)/24)}
+G2 G2 K VALUE={(PWRS(V(7),1.314)+PWRS(V(7),1.314))/4200}
+C1 G K 15p
+C2 G P 1.1p
+C3 P K 8.4p
+RGI G K 1MEG
+.ENDS EL34_DUNCAN

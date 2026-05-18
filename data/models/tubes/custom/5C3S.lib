@@ -1,0 +1,11 @@
+* 5Ц3С (5C3S) — советский full-wave directly-heated rectifier, аналог 5U4G.
+*
+* Параметры близкие к 5U4G (тот же класс «soft» rectifier).
+*
+* tube_type: rectifier
+* Pins: A1 (plate 1), A2 (plate 2), K (cathode, filament center-tap).
+.SUBCKT 5C3S A1 A2 K
+D1 A1 K DIODE_5C3S
+D2 A2 K DIODE_5C3S
+.MODEL DIODE_5C3S D(IS=4m RS=180 N=2.0 BV=1700 CJO=12p)
+.ENDS 5C3S

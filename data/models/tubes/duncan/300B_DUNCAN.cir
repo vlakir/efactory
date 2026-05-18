@@ -1,0 +1,15 @@
+* 300B — Duncan fit (альтернатива Ayumi-fit'у в ayumi/300B.inc).
+*
+* Те же Koren-style equations, но без `^` (Duncan style — сразу ngspice-
+* совместимый). Параметры из Duncan/Cigna collection.
+* tube_type: triode
+* Pins: P (plate), G (grid), K (cathode, filament center-tap).
+.SUBCKT 300B_DUNCAN P G K
+* Duncan/Cigna parameters: MU=3.81 EX=1.4 KG1=1768 KP=87 KVB=300
+E1 7 0 VALUE={V(P,K)/87*LN(1+EXP(87*(1/3.81+V(G,K)/SQRT(300+V(P,K)*V(P,K)))))}
+G1 P K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/1768}
+C1 G K 8.5p
+C2 G P 14p
+C3 P K 4.3p
+RGI G K 1MEG
+.ENDS 300B_DUNCAN

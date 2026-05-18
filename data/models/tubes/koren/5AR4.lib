@@ -1,0 +1,15 @@
+* 5AR4 / GZ34 — full-wave indirectly-heated rectifier (~250 mA, ~17V drop).
+*
+* Каждый плейт моделируется как ngspice diode с vacuum-tube-style I-V
+* (high IS, средний N, RS определяет drop).
+*
+* Approximation: ignored cathode warm-up delay (sag) — для design
+* simulation несущественно; точная модель — Duncan DULEREC через T031.
+*
+* tube_type: rectifier
+* Pins: A1 (plate 1), A2 (plate 2), K (cathode).
+.SUBCKT 5AR4 A1 A2 K
+D1 A1 K DIODE_5AR4
+D2 A2 K DIODE_5AR4
+.MODEL DIODE_5AR4 D(IS=8m RS=75 N=2.0 BV=1500 CJO=10p)
+.ENDS 5AR4

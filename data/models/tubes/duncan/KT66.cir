@@ -1,0 +1,16 @@
+* KT66 — beam tetrode (GEC/Marconi, "British 6L6", классика McIntosh / Hi-Fi).
+*
+* Duncan's Amp Pages collection. По параметрам близок к 6L6GC, но
+* «более британский» характер звучания.
+* tube_type: pentode
+* Pins: P (plate), G2 (screen), G (grid 1), K (cathode).
+.SUBCKT KT66 P G2 G K
+* Koren parameters: MU=8 EX=1.35 KG1=1500 KG2=4800 KP=50 KVB=12
+E1 7 0 VALUE={V(G2,K)/50*LN(1+EXP(50*(1/8+V(G,K)/V(G2,K))))}
+G1 P K VALUE={(PWRS(V(7),1.35)+PWRS(V(7),1.35))/1500 * ATAN(V(P,K)/12)}
+G2 G2 K VALUE={(PWRS(V(7),1.35)+PWRS(V(7),1.35))/4800}
+C1 G K 11p
+C2 G P 0.8p
+C3 P K 8.5p
+RGI G K 1MEG
+.ENDS KT66

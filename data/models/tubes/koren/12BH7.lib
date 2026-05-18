@@ -1,0 +1,15 @@
+* 12BH7 / 12BH7A — medium-mu dual triode (heavy-duty driver / cathode follower).
+*
+* Norman Koren triode model. Часто используется как «12AU7 на стероидах»
+* для драйверов 300B/2A3 (большая Ia, выше Pa).
+* tube_type: triode
+* Pins: P (plate), G (grid), K (cathode) — single section.
+.SUBCKT 12BH7 P G K
+* Koren parameters: MU=16.5 EX=1.4 KG1=300 KP=200 KVB=300
+E1 7 0 VALUE={V(P,K)/200*LN(1+EXP(200*(1/16.5+V(G,K)/SQRT(300+V(P,K)*V(P,K)))))}
+G1 P K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/300}
+C1 G K 3.2p
+C2 G P 2.6p
+C3 P K 0.5p
+RGI G K 1MEG
+.ENDS 12BH7
