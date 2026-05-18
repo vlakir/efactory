@@ -74,6 +74,10 @@ def _build_rc_filter(path: Path) -> Path:
     sch.connect(r1.pin_b, c1.pin_a)
     sch.connect(c1.pin_b, gnd_c.pin)
     sch.connect(v1.pin_minus, gnd_v.pin)
+    # PWR_FLAG на уровне GND (rotation 180 — стрелка вниз) → удовлетворяет
+    # ERC `power_pin_not_driven`. Layout согласован с user-perfected fixture.
+    flg = sch.add_pwr_flag(at=(45.72, 68.58), rotation=180)
+    sch.connect(flg.pin, v1.pin_minus)
     sch.label('in', at=(68.58, 55.88))
     sch.label('out', at=(101.6, 55.88))
     return sch.save(path)

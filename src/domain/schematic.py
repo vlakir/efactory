@@ -53,6 +53,16 @@ class ComponentSpec(BaseModel):
     rotation: float = 0.0
     properties: dict[str, str] = Field(default_factory=dict)
     pins: tuple[str, ...]
+    # Координаты Reference/Value текста (absolute). Если None — writer
+    # ставит на `position` (overlap с символом). Фасад заполняет через
+    # `_LabelOffsets` под каждый component kind.
+    ref_position: Position | None = None
+    value_position: Position | None = None
+    # Rotation в `(property ... (at x y rot))` — KiCad GUI ставит =
+    # symbol rotation. Безопасные значения {0, 90, 180, 270}; отрицательные
+    # вешают GUI с OOM (T100 incident).
+    ref_rotation: float = 0.0
+    value_rotation: float = 0.0
 
 
 class WireSpec(BaseModel):

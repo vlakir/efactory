@@ -29,14 +29,14 @@ def test_resistor_pins_at_rotation_90_ccw() -> None:
 
 
 def test_vdc_pins_at_rotation_180() -> None:
-    """180° инвертирует Y: (0, +2.54) → (0, -2.54)."""
+    """180° инвертирует Y: (0, +5.08) → (0, -5.08) (KiCad 9 VDC layout)."""
     sch = Schematic('t')
     v = sch.add_v_dc(
         reference='V1', value='1', at=(50.8, 62.23), rotation=180.0,
     )
     assert v.pin_plus.x_mm == pytest.approx(50.8)
-    assert v.pin_plus.y_mm == pytest.approx(62.23 - 2.54)
-    assert v.pin_minus.y_mm == pytest.approx(62.23 + 2.54)
+    assert v.pin_plus.y_mm == pytest.approx(62.23 - 5.08)
+    assert v.pin_minus.y_mm == pytest.approx(62.23 + 5.08)
 
 
 def test_vdc_default_sim_properties_include_value_in_params() -> None:

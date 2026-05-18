@@ -1,18 +1,21 @@
 """
-KicadSchematicWriter — `SchematicSpec` → `.kicad_sch` (KiCad 10 s-expr).
+KicadSchematicWriter — `SchematicSpec` → `.kicad_sch` (KiCad 10 multiline).
 
-Реализует `SchematicWriter` port. Формат файла соответствует выводу
-KiCad eeschema 10.0 (version 20240128): root `kicad_sch` с секциями
-`lib_symbols`, `wire`, `junction`, `symbol`, `label`, `sheet_instances`.
+Реализует `SchematicWriter` port. Формат файла — `(version 20260306)`,
+текущий KiCad 10 eeschema output (multiline expanded s-expression).
 
-`lib_symbols` собирается из embedded snippets — frozen-copy секций
-`(symbol "X:Y" ...)` из стандартной библиотеки KiCad (`Device:R`,
-`Device:C`, `Simulation_SPICE:VDC`, `power:GND`, ...). Это позволяет
-сгенерированному файлу открываться на машине без настроенного
-`KICAD_SYMBOL_DIR`.
+`lib_symbols` собирается из embedded snippets (single-file KiCad-library
+format, совпадают с тем что лежит в /usr/share/kicad/symbols/*.kicad_sym
+у apt-installed KiCad). Это позволяет сгенерированному файлу
+открываться на машине без настроенного `KICAD_SYMBOL_DIR` и не
+получать `lib_symbol_mismatch` warning'ов в ERC.
 
-Tab-индентация специально подогнана под формат eeschema, чтобы diff
-между ручной и programmatic фикстурой оставался читабельным.
+Tab-индентация и набор обязательных полей (`body_style`, `in_pos_files`,
+`Description` property, `fields_autoplaced`, `embedded_fonts`, justify
+у visible Reference/Value) совпадают с тем, что KiCad 10 GUI пишет
+после save. Без них GUI при повторном save может уйти в OOM/reset
+(T100 incident 2026-05-18; в итоге причина оказалась в AppImage
+сборке, но canonical-формат всё равно желателен для стабильности).
 """
 
 from __future__ import annotations
@@ -37,14 +40,12 @@ if TYPE_CHECKING:
 
 
 _LIB_SYMBOLS_PACKAGE = 'adapters.outbound.schematic_kicad.lib_symbols'
-_KICAD_FILE_VERSION = '20240128'
+_KICAD_FILE_VERSION = '20260306'
 _KICAD_GENERATOR = 'efactory'
 _KICAD_GENERATOR_VERSION = '10.0'
-_DEFAULT_EFFECT = '(effects (font (size 1.27 1.27)) (hide yes))'
 
 
 def _fmt(value: float) -> str:
-    """KiCad использует фикс-формат вида `50.8`/`62.23` (без trailing zeros)."""
     formatted = f'{value:.6g}'
     return formatted if formatted != '-0' else '0'
 
@@ -53,13 +54,11 @@ def _new_uuid() -> str:
     return str(uuid_module.uuid4())
 
 
-def _load_lib_symbol(lib_id: str) -> str:
-    """
-    Прочитать embedded snippet для `lib_id` (`Device:R` → Device.R.sexp).
+def _t(depth: int) -> str:
+    return '\t' * depth
 
-    Включает уже tab-отступленный `(symbol ...)` блок — кладётся внутрь
-    `(lib_symbols ...)` без дополнительной обработки.
-    """
+
+def _load_lib_symbol(lib_id: str) -> str:
     fname = lib_id.replace(':', '.') + '.sexp'
     try:
         resource = resources.files(_LIB_SYMBOLS_PACKAGE) / fname
@@ -72,91 +71,186 @@ def _load_lib_symbol(lib_id: str) -> str:
         raise SchematicWriteError(msg) from exc
 
 
-def _at_fragment(position: Position, rotation: float = 0.0) -> str:
-    return f'(at {_fmt(position.x_mm)} {_fmt(position.y_mm)} {_fmt(rotation)})'
-
-
-def _wire_block(wire: WireSpec) -> str:
-    return (
-        f'\t(wire (pts (xy {_fmt(wire.start.x_mm)} {_fmt(wire.start.y_mm)}) '
-        f'(xy {_fmt(wire.end.x_mm)} {_fmt(wire.end.y_mm)})) '
-        f'(stroke (width 0) (type default)) (uuid "{_new_uuid()}"))'
-    )
-
-
-def _junction_block(junction: JunctionSpec) -> str:
-    return (
-        f'\t(junction (at {_fmt(junction.at.x_mm)} {_fmt(junction.at.y_mm)}) '
-        f'(diameter 0) (color 0 0 0 0) (uuid "{_new_uuid()}"))'
-    )
-
-
-def _label_block(label: LabelSpec) -> str:
-    return (
-        f'\t(label "{label.text}" {_at_fragment(label.position)}\n'
-        f'\t\t(effects (font (size 1.27 1.27)) (justify left bottom))\n'
-        f'\t\t(uuid "{_new_uuid()}")\n'
-        f'\t)'
-    )
-
-
 def _is_power_symbol(component: ComponentSpec) -> bool:
-    """`power:*` symbols пишутся без Footprint/Datasheet (KiCad convention)."""
     return component.lib_id.startswith('power:')
 
 
-def _base_property_lines(component: ComponentSpec) -> list[str]:
-    px, py = _fmt(component.position.x_mm), _fmt(component.position.y_mm)
-    if _is_power_symbol(component):
-        return [
-            (
-                f'\t\t(property "Reference" "{component.reference}" '
-                f'(at {px} {py} 0) {_DEFAULT_EFFECT})'
-            ),
-            (
-                f'\t\t(property "Value" "{component.value}" (at {px} {py} 0) '
-                f'(effects (font (size 1.27 1.27))))'
-            ),
-        ]
-    return [
-        f'\t\t(property "Reference" "{component.reference}" (at {px} {py} 0))',
-        f'\t\t(property "Value" "{component.value}" (at {px} {py} 0))',
-        f'\t\t(property "Footprint" "" (at {px} {py} 0) {_DEFAULT_EFFECT})',
-        f'\t\t(property "Datasheet" "" (at {px} {py} 0) {_DEFAULT_EFFECT})',
+def _font_effects(depth: int, justify: str | None = None) -> list[str]:
+    lines = [
+        _t(depth) + '(effects',
+        _t(depth + 1) + '(font',
+        _t(depth + 2) + '(size 1.27 1.27)',
+        _t(depth + 1) + ')',
     ]
+    if justify is not None:
+        lines.append(_t(depth + 1) + f'(justify {justify})')
+    lines.append(_t(depth) + ')')
+    return lines
+
+
+def _property_block(
+    depth: int,
+    name: str,
+    value: str,
+    position: Position,
+    *,
+    rotation: float = 0.0,
+    hidden: bool = False,
+    justify: str | None = None,
+) -> list[str]:
+    lines = [
+        _t(depth) + f'(property "{name}" "{value}"',
+        _t(depth + 1)
+        + f'(at {_fmt(position.x_mm)} {_fmt(position.y_mm)} {_fmt(rotation)})',
+    ]
+    if hidden:
+        lines.append(_t(depth + 1) + '(hide yes)')
+    lines.append(_t(depth + 1) + '(show_name no)')
+    lines.append(_t(depth + 1) + '(do_not_autoplace no)')
+    lines.extend(_font_effects(depth + 1, justify))
+    lines.append(_t(depth) + ')')
+    return lines
+
+
+def _wire_block(depth: int, wire: WireSpec) -> list[str]:
+    return [
+        _t(depth) + '(wire',
+        _t(depth + 1) + '(pts',
+        _t(depth + 2)
+        + f'(xy {_fmt(wire.start.x_mm)} {_fmt(wire.start.y_mm)}) '
+        + f'(xy {_fmt(wire.end.x_mm)} {_fmt(wire.end.y_mm)})',
+        _t(depth + 1) + ')',
+        _t(depth + 1) + '(stroke',
+        _t(depth + 2) + '(width 0)',
+        _t(depth + 2) + '(type default)',
+        _t(depth + 1) + ')',
+        _t(depth + 1) + f'(uuid "{_new_uuid()}")',
+        _t(depth) + ')',
+    ]
+
+
+def _junction_block(depth: int, junction: JunctionSpec) -> list[str]:
+    return [
+        _t(depth) + '(junction',
+        _t(depth + 1) + f'(at {_fmt(junction.at.x_mm)} {_fmt(junction.at.y_mm)})',
+        _t(depth + 1) + '(diameter 0)',
+        _t(depth + 1) + '(color 0 0 0 0)',
+        _t(depth + 1) + f'(uuid "{_new_uuid()}")',
+        _t(depth) + ')',
+    ]
+
+
+def _label_block(depth: int, label: LabelSpec) -> list[str]:
+    return [
+        _t(depth) + f'(label "{label.text}"',
+        _t(depth + 1)
+        + f'(at {_fmt(label.position.x_mm)} {_fmt(label.position.y_mm)} 0)',
+        *_font_effects(depth + 1, 'left bottom'),
+        _t(depth + 1) + f'(uuid "{_new_uuid()}")',
+        _t(depth) + ')',
+    ]
+
+
+def _base_properties(depth: int, component: ComponentSpec) -> list[str]:
+    """Reference/Value/Footprint/Datasheet/Description — KiCad 10 obligatory."""
+    ref_pos = component.ref_position or component.position
+    value_pos = component.value_position or component.position
+    pos = component.position
+    is_power = _is_power_symbol(component)
+    # У не-power Reference/Value visible с (justify left); у power Reference
+    # hidden, Value visible без justify (canonical KiCad save).
+    visible_justify = None if is_power else 'left'
+    lines = []
+    lines.extend(
+        _property_block(
+            depth,
+            'Reference',
+            component.reference,
+            ref_pos,
+            rotation=component.ref_rotation,
+            hidden=is_power,
+            justify=visible_justify,
+        ),
+    )
+    lines.extend(
+        _property_block(
+            depth,
+            'Value',
+            component.value,
+            value_pos,
+            rotation=component.value_rotation,
+            justify=visible_justify,
+        ),
+    )
+    # Footprint/Datasheet — hidden у не-power; у power тоже hidden (canonical).
+    lines.extend(
+        _property_block(depth, 'Footprint', '', pos, hidden=not is_power),
+    )
+    lines.extend(
+        _property_block(depth, 'Datasheet', '', pos, hidden=not is_power),
+    )
+    # Description ВСЕГДА hidden в instance.
+    lines.extend(_property_block(depth, 'Description', '', pos, hidden=True))
+    return lines
 
 
 def _symbol_block(
+    depth: int,
     component: ComponentSpec,
-    project_name: str,
     sheet_uuid: str,
-) -> str:
-    px, py = _fmt(component.position.x_mm), _fmt(component.position.y_mm)
-    rot = _fmt(component.rotation)
+    project_name: str,
+) -> list[str]:
+    pos = component.position
     lines: list[str] = [
-        (
-            f'\t(symbol (lib_id "{component.lib_id}") '
-            f'(at {px} {py} {rot}) '
-            f'(unit 1) (exclude_from_sim no) (in_bom yes) (on_board yes) '
-            f'(dnp no) (uuid "{_new_uuid()}")'
-        ),
-        *_base_property_lines(component),
+        _t(depth) + '(symbol',
+        _t(depth + 1) + f'(lib_id "{component.lib_id}")',
+        _t(depth + 1)
+        + f'(at {_fmt(pos.x_mm)} {_fmt(pos.y_mm)} {_fmt(component.rotation)})',
+        _t(depth + 1) + '(unit 1)',
+        _t(depth + 1) + '(body_style 1)',
+        _t(depth + 1) + '(exclude_from_sim no)',
+        _t(depth + 1) + '(in_bom yes)',
+        _t(depth + 1) + '(on_board yes)',
+        _t(depth + 1) + '(in_pos_files yes)',
+        _t(depth + 1) + '(dnp no)',
+        # `(fields_autoplaced yes)` — Reference/Value поставлены пользователем;
+        # без него KiCad GUI пересчитывает layout при save (T100 incident).
+        _t(depth + 1) + '(fields_autoplaced yes)',
+        _t(depth + 1) + f'(uuid "{_new_uuid()}")',
     ]
+    lines.extend(_base_properties(depth + 1, component))
     for key, value in component.properties.items():
-        lines.append(
-            f'\t\t(property "{key}" "{value}" (at {px} {py} 0) {_DEFAULT_EFFECT})',
+        lines.extend(
+            _property_block(depth + 1, key, value, pos, hidden=True),
         )
+    for pin_number in component.pins:
+        lines.append(_t(depth + 1) + f'(pin "{pin_number}"')
+        lines.append(_t(depth + 2) + f'(uuid "{_new_uuid()}")')
+        lines.append(_t(depth + 1) + ')')
     lines.extend(
-        f'\t\t(pin "{pin_number}" (uuid "{_new_uuid()}"))'
-        for pin_number in component.pins
+        [
+            _t(depth + 1) + '(instances',
+            _t(depth + 2) + f'(project "{project_name}"',
+            _t(depth + 3) + f'(path "/{sheet_uuid}"',
+            _t(depth + 4) + f'(reference "{component.reference}")',
+            _t(depth + 4) + '(unit 1)',
+            _t(depth + 3) + ')',
+            _t(depth + 2) + ')',
+            _t(depth + 1) + ')',
+            _t(depth) + ')',
+        ]
     )
-    lines.append(
-        f'\t\t(instances (project "{project_name}" '
-        f'(path "/{sheet_uuid}" (reference "{component.reference}") '
-        f'(unit 1))))',
-    )
-    lines.append('\t)')
-    return '\n'.join(lines)
+    return lines
+
+
+def _sheet_instances(depth: int) -> list[str]:
+    return [
+        _t(depth) + '(sheet_instances',
+        _t(depth + 1) + '(path "/"',
+        _t(depth + 2) + '(page "1")',
+        _t(depth + 1) + ')',
+        _t(depth) + ')',
+    ]
 
 
 class KicadSchematicWriter:
@@ -174,12 +268,12 @@ class KicadSchematicWriter:
         sheet_uuid = _new_uuid()
         lines: list[str] = [
             '(kicad_sch',
-            f'\t(version {_KICAD_FILE_VERSION})',
-            f'\t(generator "{_KICAD_GENERATOR}")',
-            f'\t(generator_version "{_KICAD_GENERATOR_VERSION}")',
-            f'\t(uuid "{sheet_uuid}")',
-            '\t(paper "A4")',
-            '\t(lib_symbols',
+            _t(1) + f'(version {_KICAD_FILE_VERSION})',
+            _t(1) + f'(generator "{_KICAD_GENERATOR}")',
+            _t(1) + f'(generator_version "{_KICAD_GENERATOR_VERSION}")',
+            _t(1) + f'(uuid "{sheet_uuid}")',
+            _t(1) + '(paper "A4")',
+            _t(1) + '(lib_symbols',
         ]
         seen: set[str] = set()
         for component in spec.components:
@@ -187,14 +281,18 @@ class KicadSchematicWriter:
                 continue
             seen.add(component.lib_id)
             lines.append(_load_lib_symbol(component.lib_id))
-        lines.append('\t)')
-        lines.extend(_wire_block(w) for w in spec.wires)
-        lines.extend(_junction_block(j) for j in spec.junctions)
-        lines.extend(_symbol_block(c, spec.name, sheet_uuid) for c in spec.components)
-        lines.extend(_label_block(label) for label in spec.labels)
-        lines.append('\t(sheet_instances')
-        lines.append('\t\t(path "/" (page "1"))')
-        lines.append('\t)')
+        lines.append(_t(1) + ')')
+        for wire in spec.wires:
+            lines.extend(_wire_block(1, wire))
+        for junction in spec.junctions:
+            lines.extend(_junction_block(1, junction))
+        for label in spec.labels:
+            lines.extend(_label_block(1, label))
+        for component in spec.components:
+            lines.extend(_symbol_block(1, component, sheet_uuid, spec.name))
+        lines.extend(_sheet_instances(1))
+        # `(embedded_fonts no)` — обязательное root-поле KiCad 10.
+        lines.append(_t(1) + '(embedded_fonts no)')
         lines.append(')')
         return '\n'.join(lines) + '\n'
 
