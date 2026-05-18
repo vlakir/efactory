@@ -1,6 +1,6 @@
 ## Spec: T004 — KiCad → SPICE pipeline (split-scope, без ngspice)
 
-**Статус:** Draft (готов к Clarify)
+**Статус:** Analyzed
 **Дата создания:** 2026-05-18
 **Связанные документы:**
 - `CONCEPT.md` §2.1 (kicad-sch-api), §2.3 (SPICEBridge), §4 (структура
@@ -314,4 +314,126 @@ exit 0 («exported, simulation pending T008»). Это **не ошибка**,
 
 ---
 
-### Analyze (после Clarify)
+### Resolved
+
+Все 7 дефолтов подтверждены (2026-05-18).
+
+1. Simulation runtime-only (без persistence).
+2. RC-фильтр fixture — вручную составить минимальный валидный
+   `.kicad_sch`. Если не пройдёт через `kicad-cli sch export
+   netlist` — оставить как known issue, integration test через
+   mock app_manager.
+3. CLI: `efactory bridge design-to-sim`.
+4. `--netlist-output` опциональный (default
+   `<project>/sim/<schematic.stem>.cir`).
+5. `<project>/sim/` создаётся mkdir parents=True.
+6. Один phase.
+7. SimulatorUnavailableError → exit 0 + info-message (intended
+   состояние Phase 1a).
+
+---
+
+### Analyze
+
+#### 🔴 Critical
+
+##### C1. RC fixture vs kicad-cli compatibility
+
+`kicad-cli sch export netlist --format spice` требует валидный
+`.kicad_sch` в формате KiCad 10 (`version 20240128`). Минимальный
+валидный schematic требует полные `lib_symbols` определения для
+каждого использованного символа (Device:R, Device:C,
+Simulation_SPICE:VDC) — это ~50 строк на каждый.
+
+**Резолюция:** делаю двухуровневый подход.
+
+- **Уровень 1 (всегда зелёный):** unit-тесты адаптера
+  `KicadCliSchematicExporter` через mocked `app_manager.run`. Проверяют
+  argv формат, обработку returncode, error mapping. Не требуют ни
+  KiCad, ни fixture.
+- **Уровень 2 (e2e реальный):** попробую составить minimal valid
+  `.kicad_sch`. Если получится — e2e работает реально, иначе skip
+  с TODO и unit покрытия достаточно для T004 acceptance в split-
+  scope. Реальный RC fixture можно добавить позже через
+  kicad-sch-api (T005) когда мы умеем создавать схемы программно.
+
+##### C2. SchematicExportError mapping
+
+`kicad-cli` exit code != 0 → `SchematicExportError`. Текст ошибки
+— из `result.stderr` (или stdout если stderr пустой). KiCad
+обычно пишет ошибки в stdout (не stderr) — нужно fallback.
+
+##### C3. Application слой не должен импортировать ApplicationKind
+
+Application use case `design_to_sim` принимает `SchematicExporter`
+(port). Внутри port'а нет упоминания KiCad. Адаптер
+`KicadCliSchematicExporter` (в layer adapters) импортирует
+`ApplicationKind.KICAD_CLI` и зовёт `app_manager.run(...)`.
+Layered contract сохраняется.
+
+#### 🟡 Warning
+
+##### W1. Schematic path: absolute vs относительный к проекту
+
+Пользователь даёт `--schematic schematic/SE-amp.kicad_sch`
+(относительный). Use case resolve'ит в `<project_path>/schematic/
+SE-amp.kicad_sch`.
+
+**Резолюция:** если `Path(schematic).is_absolute()` — используем
+как есть; иначе `<project_path> / schematic`. Тест на оба случая.
+
+##### W2. Concurrent design_to_sim с тем же netlist_output
+
+Два CLI вызова с одним output → race на запись файла. Не защищаем
+в T004 (single-user). Документируется.
+
+##### W3. kicad-cli может молча overwrite existing netlist
+
+Если `--output` существует, kicad-cli перезапишет (default
+поведение). Это OK для idempotency design_to_sim, но потенциально
+теряет результаты предыдущих симуляций.
+
+**Резолюция:** documented как expected. Если станет проблемой —
+добавим `--no-overwrite` опцию.
+
+#### 🟢 Note
+
+##### N1. CLI вывод
+
+```
+$ efactory bridge design-to-sim demo --schematic schematic/rc.kicad_sch
+Exported netlist: /home/u/.local/share/efactory/projects/demo/sim/rc.cir
+Simulation: not yet implemented (T008 — ngspice integration)
+```
+
+##### N2. Session-log payload
+
+`{project, schematic, netlist_output}` — минимум.
+
+##### N3. Adapter sub-package naming
+
+`adapters/outbound/kicad_cli/` для exporter + `adapters/outbound/
+stub_simulator/` для stub. Independence contract расширяется.
+
+##### N4. Тестовый KiCad fixture — попробую с `Simulation_SPICE` symbol library
+
+KiCad 10 содержит `Simulation_SPICE` либу с готовыми VDC/IDC/PULSE
+sources, оптимизированными для ngspice. Это легче чем Device:R+
+custom SPICE attributes.
+
+##### N5. Composition wire
+
+```python
+exporter = KicadCliSchematicExporter(app_manager)
+simulator = StubSimulator()
+build_app(..., schematic_exporter=exporter, simulator=simulator)
+```
+
+##### N6. Use case дополняет Session с `bridge.design_to_sim`
+
+Аналогично остальным CLI командам (T010 pattern).
+
+##### N7. Domain.Simulation.id — UUID
+
+Generated в use case (uuid4 default_factory). Не persist'ится в
+SQL (Resolved #1), но позволяет lookup в session log по id.
