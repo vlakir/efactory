@@ -53,6 +53,11 @@ class ComponentSpec(BaseModel):
     rotation: float = 0.0
     properties: dict[str, str] = Field(default_factory=dict)
     pins: tuple[str, ...]
+    # Multi-unit symbol index. Default 1 — single-unit символы и тело
+    # multi-unit (например, EL84 unit 1 = пентод-body, unit 2 = filament).
+    # Headless-SPICE без накала: используем только unit 1, filament не
+    # инстанцируется и не рисуется.
+    unit: int = 1
     # Координаты Reference/Value текста (absolute). Если None — writer
     # ставит на `position` (overlap с символом). Фасад заполняет через
     # `_LabelOffsets` под каждый component kind.

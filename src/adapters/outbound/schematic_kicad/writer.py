@@ -225,7 +225,7 @@ def _symbol_block(
         _t(depth + 1) + f'(lib_id "{component.lib_id}")',
         _t(depth + 1)
         + f'(at {_fmt(pos.x_mm)} {_fmt(pos.y_mm)} {_fmt(component.rotation)})',
-        _t(depth + 1) + '(unit 1)',
+        _t(depth + 1) + f'(unit {component.unit})',
         _t(depth + 1) + '(body_style 1)',
         _t(depth + 1) + '(exclude_from_sim no)',
         _t(depth + 1) + '(in_bom yes)',
