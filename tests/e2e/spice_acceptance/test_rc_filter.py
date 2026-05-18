@@ -1,8 +1,11 @@
 """T008 Phase 5 acceptance: RC-фильтр через полный pipeline.
 
 Покрывает T008 §4 Success criteria для RC-фильтра (OP / TRAN / AC).
-SE-amp и rectifier фикстуры — отложены в T100 (после интеграции
-`kicad-sch-api`, чтобы не делать руками s-expr для tube symbols).
+SE-amp и rectifier фикстуры — закрыты в T100 (после T100 Phase 0–3:
+фасад `efactory.schematic` строит все нужные `.kicad_sch` программно).
+
+С T100 Phase 3 фикстура `tests/fixtures/rc_filter.kicad_sch` удалена;
+строится через фасад в `tests/conftest.py::rc_filter_schematic_path`.
 """
 
 from __future__ import annotations
@@ -25,10 +28,6 @@ from adapters.outbound.subprocess_apps.app_manager import (
 )
 from domain.simulation import AcAnalysis, OpAnalysis, TranAnalysis
 
-_RC_FIXTURE = (
-    Path(__file__).resolve().parents[2] / 'fixtures' / 'rc_filter.kicad_sch'
-)
-
 _KICAD_AVAILABLE = any(
     (Path.home() / 'kicad').glob('kicad*.AppImage'),
 ) or shutil.which('kicad-cli') is not None
@@ -49,19 +48,20 @@ def _app_manager() -> SubprocessAppManager:
     return SubprocessAppManager(NativePlatformLayer())
 
 
-async def _export_rc_netlist(tmp_path: Path) -> Path:
+async def _export_rc_netlist(schematic_path: Path, tmp_path: Path) -> Path:
     exporter = KicadCliSchematicExporter(_app_manager())
     netlist_out = tmp_path / 'rc_filter.cir'
-    return await exporter.export_spice_netlist(_RC_FIXTURE, netlist_out)
+    return await exporter.export_spice_netlist(schematic_path, netlist_out)
 
 
 @needs_kicad
 @needs_ngspice
 async def test_rc_filter_op_yields_unit_voltage_on_input_and_output(
+    rc_filter_schematic_path: Path,
     tmp_path: Path,
 ) -> None:
     """OP: DC 1V → V(in)=V(out)=1V (ток через ёмкость в DC = 0)."""
-    netlist = await _export_rc_netlist(tmp_path)
+    netlist = await _export_rc_netlist(rc_filter_schematic_path, tmp_path)
     simulator = NgspiceSimulator(_app_manager())
 
     result = await simulator.run(netlist, OpAnalysis())
@@ -76,10 +76,11 @@ async def test_rc_filter_op_yields_unit_voltage_on_input_and_output(
 @needs_kicad
 @needs_ngspice
 async def test_rc_filter_tran_holds_dc_steady_across_time(
+    rc_filter_schematic_path: Path,
     tmp_path: Path,
 ) -> None:
     """TRAN: DC source → V(in)/V(out) держатся постоянными во времени."""
-    netlist = await _export_rc_netlist(tmp_path)
+    netlist = await _export_rc_netlist(rc_filter_schematic_path, tmp_path)
     simulator = NgspiceSimulator(_app_manager())
 
     result = await simulator.run(
@@ -100,10 +101,11 @@ async def test_rc_filter_tran_holds_dc_steady_across_time(
 @needs_kicad
 @needs_ngspice
 async def test_rc_filter_ac_yields_minus_three_db_at_cutoff(
+    rc_filter_schematic_path: Path,
     tmp_path: Path,
 ) -> None:
     """AC: на fc = 1 / (2π·R·C) ≈ 159 Hz → |H(fc)| ≈ 1/√2 ≈ 0.707."""
-    netlist = await _export_rc_netlist(tmp_path)
+    netlist = await _export_rc_netlist(rc_filter_schematic_path, tmp_path)
     simulator = NgspiceSimulator(_app_manager())
 
     result = await simulator.run(
@@ -125,10 +127,11 @@ async def test_rc_filter_ac_yields_minus_three_db_at_cutoff(
 @needs_kicad
 @needs_ngspice
 async def test_rc_filter_ac_yields_unity_gain_far_below_cutoff(
+    rc_filter_schematic_path: Path,
     tmp_path: Path,
 ) -> None:
     """AC: на f << fc → |H(f)| ≈ 1 (passband)."""
-    netlist = await _export_rc_netlist(tmp_path)
+    netlist = await _export_rc_netlist(rc_filter_schematic_path, tmp_path)
     simulator = NgspiceSimulator(_app_manager())
 
     result = await simulator.run(

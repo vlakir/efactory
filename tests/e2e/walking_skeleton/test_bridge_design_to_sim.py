@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     pass
 
 
-_RC_FIXTURE = Path(__file__).resolve().parents[2] / 'fixtures' / 'rc_filter.kicad_sch'
 _KICAD_AVAILABLE = any(
     (Path.home() / 'kicad').glob('kicad*.AppImage'),
 ) or shutil.which('kicad-cli') is not None
@@ -42,6 +41,7 @@ def _setup_env(
 
 @needs_kicad
 def test_design_to_sim_rc_filter_exports_netlist(
+    rc_filter_schematic_path: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -57,7 +57,7 @@ def test_design_to_sim_rc_filter_exports_netlist(
     project_path = projects_root / 'rc_test'
     schematic_dir = project_path / 'schematic'
     schematic_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy(_RC_FIXTURE, schematic_dir / 'rc_filter.kicad_sch')
+    shutil.copy(rc_filter_schematic_path, schematic_dir / 'rc_filter.kicad_sch')
 
     bridge_result = runner.invoke(
         build_cli_app(),

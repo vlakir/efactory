@@ -25,6 +25,100 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-05-18 — Programmatic schematic generation: собственный фасад `efactory.schematic` поверх `sexpdata` (вариант D)
+
+- **Контекст:** для T011–T014 (LLM chat-client фазы 1b) и для
+  всех SPICE-сценариев (RC, выпрямитель, SE-amp на 6П14П) нужен
+  программный способ строить `.kicad_sch`. Ручной s-expr на T008
+  оказался хрупким (Y-down vs Y-up, кастомные `lib_symbols` валят
+  KiCad GUI, GND через power-symbol с substitution на net 0, KiCad
+  SPICE pin-order quirks) — каждая фикстура превращалась в
+  микропроект «обучения» Гвидо. Pre-spike (2026-05-18):
+  `kicad-sch-api` 0.5.6 **читает** наш KiCad 10 файл, но
+  `components.add(lib_id='Device:R', ...)` падает с
+  `LibraryError: Symbol 'Device:R' not found` — в KiCad 10 файлы
+  библиотек переехали в `*.kicad_symdir/` директории с бинарными
+  per-symbol `.kicad_sym`, парсер 0.5.6 ожидает легаси текстовый
+  формат «один `Device.kicad_sym` со всеми символами» (KiCad ≤8).
+  Дополнительно: библиотека втягивает 78 транзитивных пакетов
+  (mcp/fastmcp/uvicorn) — нам не нужен встроенный MCP-сервер.
+- **Решение:** **вариант D из спеки T100** — собственный фасад
+  `adapters.outbound.schematic_kicad` поверх `sexpdata`. API: класс
+  `Schematic(name)` с методами `add_resistor / add_capacitor /
+  add_inductor / add_diode / add_v_dc / add_v_ac / add_v_sin /
+  add_v_pulse / add_bjt_npn / add_bjt_pnp / add_mosfet_nmos /
+  add_mosfet_pmos / add_tube_subcircuit / add_transformer_subcircuit
+  / add_ground / add_pwr_flag / connect(pin_a, pin_b) / label /
+  save(path)`. Embedded `lib_symbols` snippets (14 шт., text
+  `.sexp` под `src/adapters/outbound/schematic_kicad/lib_symbols/`,
+  force-include в wheel) — `.kicad_sch` self-contained, не зависит
+  от глобальной `KICAD_SYMBOL_DIR` машины-получателя. Hexagonal:
+  port `ports.outbound.schematic_writer.SchematicWriter` + adapter
+  `KicadSchematicWriter` + domain VO в `domain.schematic` (Pin /
+  ComponentSpec / WireSpec / etc.). GND-convention сохранена как
+  в T004: фасад ставит `power:GND`-instance, `GND → 0` substitution
+  делает `KicadCliSchematicExporter`.
+- **Альтернативы:**
+  - **(A) Форк `kicad-sch-api`** с поддержкой `*.kicad_symdir/`
+    (binary per-symbol) формата KiCad 10. MIT-лицензия разрешает.
+    Отвергли: параллельный maintenance чужого кода + 78-deps
+    цепочка с MCP-балластом остаётся, а winnings — лишь чтение
+    бинарного формата, которое нам не нужно (мы пишем
+    самодостаточные snippets).
+  - **(B) Bundled freeze KiCad 8/9 текстовых `.kicad_sym` + `kicad-
+    sch-api` как backend.** Положить рядом с фасадом «freeze»-копию
+    легаси-библиотек (Device, Simulation_SPICE, power) и feed-ить
+    их в cache `kicad-sch-api`. Отвергли: библиотеки KiCad 8 ≠
+    KiCad 10 (UUID, properties), на load в KiCad 10 могут быть
+    warnings; всё ещё 78-deps балласт. Оставлен как **kill-switch
+    fallback** на случай провала Phase 0 (не понадобился).
+  - **(C) Bypass cache** через monkey-patch / subclass
+    `Components`, чтобы `add()` не валидировал существование
+    символа в cache. Минимально инвазивно, но хрупко на upgrade
+    `kicad-sch-api`.
+  - **(E) Подождать upstream `kicad-python` IPC API для схем.** На
+    2026-05-18: `kicad-python` 0.7.1 покрывает только PCB, GitLab
+    issue #2077 «Schematic Editor Python API» открыт с 28.10.2017
+    (8.5 лет) без milestone, реалистичный горизонт KiCad 11
+    (~2027) или KiCad 12 (~2028). IPC требует running KiCad с API
+    server — плохо ложится на headless CI / batch-LLM / kicad-cli
+    pipeline. Будет уместен для T026 (staged-modifications при
+    открытом GUI) и для части T079 (Phase 8), но **рядом** с
+    генератором, а не вместо.
+  - **SKiDL.** Отвергли в pre-spike: генерирует netlist для PCB, а
+    не `.kicad_sch` — теряется визуальная схема, KiCad GUI не
+    нужен.
+- **Последствия:**
+  - **Полный контроль над API под наш use case.** Phase 1b
+    (LLM-driven design) — функции под LLM-тулчейн, не под чужого
+    мейнтейнера. Hexagonal port позволяет подменить backend
+    (например, на upstream IPC в Phase 8) без слома
+    пользовательского фасада `efactory.schematic`.
+  - **Zero лишних deps.** Единственная новая runtime-зависимость —
+    `sexpdata` (уже была у `kicad-sch-api`, MIT, чистый Python).
+    Не пришли 78 транзитивных пакетов с MCP-стеком.
+  - **Self-contained `.kicad_sch`.** Embedded lib_symbols snippets
+    (14 шт.) делают файлы переносимыми между машинами без
+    `KICAD_SYMBOL_DIR` синхронизации.
+  - **Acceptance достигнут.** Фазы 0–2 закрыли RC-фильтр /
+    half-wave rectifier / common-emitter BJT / SE-amp 6П14П
+    (через T006 tube subckt). ERC = 0 в `kicad-cli`, валидный
+    SPICE netlist, ngspice прогоняет OP/TRAN/AC ожидаемо. Coverage
+    на `src/adapters/outbound/schematic_kicad/`: facade 97%, writer
+    100%. Старая ручная фикстура `tests/fixtures/rc_filter.kicad_sch`
+    (149 строк s-expr) удалена в Phase 3 — строится фасадом через
+    `tests/conftest.py::rc_filter_schematic_path`.
+  - **Цена.** Мы поддерживаем собственный s-expr serializer и
+    embedded `lib_symbols` snippets. **План миграции на KiCad 11
+    / 12:** при выходе новой версии открыть фикстуру в новом KiCad
+    GUI, пересохранить, обновить snippets (1–2 часа на minor).
+    Тесты через `kicad-cli erc` ловят несовместимость немедленно
+    при апгрейде CI.
+  - **Не закрытые направления (вынесены в BACKLOG).** Многолистные
+    иерархические схемы (Phase 2 концепта), wire-router для >10
+    компонентов (если SE-amp начнёт давать ложные junction'ы),
+    рендер SVG для LLM-vision (T032), upstream IPC API (T079).
+
 ### 2026-05-17 — Domain expansion direction: D (Phase VO → Manifest primary → Decision aggregate)
 
 - **Контекст:** после 0.2.0 у нас закрыт минимальный CRUD по
