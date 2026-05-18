@@ -1,6 +1,6 @@
 ## Spec: T009 — platform_layer + app_manager (infrastructure для bridges)
 
-**Статус:** Draft (готов к Clarify)
+**Статус:** Analyzed
 **Дата создания:** 2026-05-18
 **Связанные документы:**
 - `CONCEPT.md` §2 (внешние тулчейны: KiCad, ngspice, FreeCAD, FEMM),
@@ -318,4 +318,199 @@ monkeypatched subprocess дают тот же coverage.
 
 ---
 
-### Analyze (после Clarify)
+### Resolved
+
+Разработчик ответил 2026-05-18, поправил Q1 и Q5, плюс важная
+поправка: KiCad и FreeCAD на dev-машине реально установлены как
+**AppImage** (Гвидо угадал что их нет — было предположение, не
+проверка; feedback сохранён в auto-memory).
+
+1. **AppManager scope** — **Headless unified** вместо GUI-only
+   (Q1 (A) → (B)). Два метода:
+   - `run(kind, args, timeout) -> CompletedProcess` — blocking
+     headless вызов (для `kicad-cli`, `ngspice batch`).
+   - `launch(kind, args) -> ApplicationInfo` — detach background
+     (для GUI: KiCad, FreeCAD).
+   - `status` / `stop` / `restart` — работают для `launched` apps.
+2. **PID registry** — **(A) in-memory**.
+3. **ApplicationKind** — все 5: KICAD, KICAD_CLI, FREECAD, FEMM, NGSPICE.
+4. **CLI** — **(B) positional** `efactory app launch <kind>` /
+   `app run <kind> [-- args...]` etc.
+5. **Acceptance** — **(B) mock subprocess** (без PYTHON в enum).
+   Integration через `/bin/sleep` или подобное Unix-builtin.
+6. **Phasing** — **(A) один phase**.
+
+#### Реальное окружение dev-машины (проверено command -v + find)
+
+- KiCad: `/home/vlakir/kicad/kicad.AppImage` (→
+  `kicad-10.0.2-x86_64.AppImage`). `.desktop` Exec:
+  `/home/vlakir/kicad/kicad.AppImage %f`.
+- FreeCAD: `/home/vlakir/Загрузки/freecad.AppImage` (→
+  `FreeCAD_1.1.1-Linux-x86_64-py311.AppImage`). `.desktop` Exec:
+  `'/home/vlakir/Загрузки/freecad.AppImage' - --single-instance %F`.
+- FEMM: не установлен (Windows-only).
+- ngspice: не установлен (`apt install` либо через PySpice).
+- kicad-cli: внутри KiCad AppImage; синтаксис вызова проверим
+  integration тестом.
+
+#### Resolution стратегия для PlatformLayer
+
+`resolve_executable(kind)` пробует в порядке:
+
+1. **Env override** — `EFACTORY_<KIND>_PATH` (например,
+   `EFACTORY_KICAD_PATH=/path/to/kicad.AppImage`).
+2. **`shutil.which(binary_name)`** — для apt/snap installs в PATH.
+3. **`.desktop` файл** — парсим `~/.local/share/applications/
+   <kind>.desktop`, извлекаем первый non-flag path из `Exec=`.
+4. **Known install paths** — список по платформе (см. ниже).
+
+#### Known install paths
+
+- **Linux:**
+  - PATH-style: `/usr/bin/`, `/usr/local/bin/`, `~/.local/bin/`,
+    `/opt/<vendor>/`.
+  - AppImage locations (only one-level deep scan):
+    `~/Applications/`, `~/Downloads/`, `~/Загрузки/`,
+    `~/AppImages/`, `~/<app>/` (например, `~/kicad/`).
+  - Pattern: `<app>*.AppImage` либо `<app>.AppImage`.
+- **Windows:**
+  - `C:\Program Files\KiCad\<ver>\bin\kicad.exe`,
+    `C:\Program Files\FreeCAD <ver>\bin\freecad.exe`,
+    `C:\femm42\bin\femm.exe`, `C:\Program Files\ngspice\bin\ngspice.exe`.
+- **macOS:** Out of Scope (можно добавить позже).
+
+---
+
+### Analyze
+
+#### 🔴 Critical
+
+##### C1. AppImage resolution через `.desktop`
+
+`Exec=` содержит флаги (`%f`, `%F`, `--single-instance`, etc.).
+PlatformLayer должен `shlex.split(exec_line)`, отфильтровать
+`%[fFuU]` placeholder'ы и `--*` flags, взять первый существующий
+absolute path.
+
+**Резолюция:** реализуется в helper `_parse_desktop_exec(line)
+-> Path | None`. Tested на реальных KiCad/FreeCAD `.desktop`
+файлах.
+
+##### C2. KiCad-CLI inside AppImage
+
+`kicad-cli` — отдельный binary, но внутри KiCad AppImage. Прямого
+PATH'а нет. Проверка integration:
+- `~/kicad/kicad.AppImage` — multi-call binary? Если да, может
+  быть синтаксис `kicad.AppImage cli args...` или
+  `kicad.AppImage --appimage-extract-and-run kicad-cli args...`.
+- Если нет — нужно extract AppImage и запускать
+  `<extracted>/usr/bin/kicad-cli`.
+
+**Резолюция:** PlatformLayer для KICAD_CLI возвращает
+`tuple[Path, list[str]]` (executable + command prefix). Узнаём
+синтаксис integration-тестом и фиксируем mapping. Если AppImage
+не поддерживает multi-command — Out of Scope, kicad-cli получит
+статус `not_installed` через AppImage; реальное использование —
+после установки KiCad через apt либо отдельной задачи extract.
+
+##### C3. Detach semantics — POSIX vs Windows
+
+- **POSIX:** `subprocess.Popen(..., start_new_session=True)` —
+  процесс отвязан от tty CLI, не убивается при выходе CLI.
+- **Windows:** `subprocess.CREATE_NEW_PROCESS_GROUP` +
+  `DETACHED_PROCESS` flags.
+
+**Резолюция:** Adapter helper `_detach_kwargs() -> dict` который
+возвращает platform-specific kwargs. Тесты — mocked Popen, проверка
+переданных kwargs.
+
+#### 🟡 Warning
+
+##### W1. Stale PID detection
+
+Между `launch()` и `status()` процесс мог завершиться (crash, user
+kill). `status()` зовёт `process.poll()`; если `None` — running,
+если int — exit code, помечаем `installed_stopped`, убираем из
+registry.
+
+##### W2. Concurrent launch — два инстанса
+
+CLI не защищает от двух `launch kicad` подряд из одного процесса.
+Второй создаст второй KiCad instance (KiCad сам решит multi-window
+vs reject). In-memory registry перезапишет PID на второй — первый
+KiCad станет «orphan» (запущен, но AppManager не знает PID).
+
+**Резолюция:** для Phase 1a не защищаем. Документируется. CLI
+команда `launch` может проверять `status(kind) == RUNNING` и
+warning'ить.
+
+##### W3. `.desktop` файл устаревший
+
+Пользователь удалил AppImage, `.desktop` остался. После extract —
+проверка `Path.is_file()`; если нет — fallback на следующий шаг
+resolution.
+
+#### 🟢 Note
+
+##### N1. CLI `app status` — TSV таблица всех known apps
+
+```
+kicad        installed_stopped  /home/vlakir/kicad/kicad.AppImage
+kicad-cli    not_installed      —
+freecad      installed_stopped  /home/vlakir/Загрузки/freecad.AppImage
+femm         not_installed      —
+ngspice      not_installed      —
+```
+
+##### N2. Integration test через `/bin/sleep`
+
+Acceptance: `SubprocessAppManager` с stubbed `PlatformLayer`
+возвращающим `Path('/bin/sleep')` для тестового KIND. Launch с
+args `['5']`, status RUNNING, stop, status INSTALLED_STOPPED.
+
+##### N3. CLI: 5 команд
+
+- `efactory app status [--kind KIND]`.
+- `efactory app launch KIND [-- args...]` — GUI launch.
+- `efactory app run KIND [-- args...]` — headless blocking
+  (печатает stdout, exit code).
+- `efactory app stop KIND`.
+- `efactory app restart KIND`.
+
+Session-log: `app.status`, `app.launch`, `app.run`, `app.stop`,
+`app.restart`.
+
+##### N4. Independence contract
+
+`adapters.outbound.platform_native` + `adapters.outbound.subprocess_apps`
+— два новых sub-package. Добавляются в independence contract.
+
+##### N5. Composition
+
+```python
+platform = NativePlatformLayer()
+app_manager = SubprocessAppManager(platform)
+build_app(..., platform_layer=platform, app_manager=app_manager)
+```
+
+##### N6. Stop timing: TERM → 5s → KILL
+
+```python
+proc.terminate()
+try:
+    proc.wait(timeout=5)
+except TimeoutExpired:
+    proc.kill()
+    proc.wait()
+```
+
+##### N7. AppImage glob depth
+
+Не делаем `~/**` сканирование. Только level-1 children в known
+locations (`~/Applications/<file>.AppImage`, не `~/Documents/foo/
+bar/baz.AppImage`).
+
+##### N8. Env override format
+
+`EFACTORY_<KIND>_PATH`. Для kebab-case kind'ов (`kicad-cli`)
+преобразуем в `EFACTORY_KICAD_CLI_PATH`.
