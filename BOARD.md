@@ -61,6 +61,17 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T006** — [taken 2026-05-18] Tube SPICE model library (framework).
+  Domain.SpiceModel + TubeType + ModelSource; outbound port
+  `TubeModelLibrary` + filesystem adapter (сканирует
+  `data/models/tubes/{koren,ayumi,duncan,custom}/`, парсит
+  `.SUBCKT ... .ENDS`); конвертер `^ → **` для Ayumi-формата;
+  CLI `efactory tube list / show`; 2 generic example models
+  (Koren-style triode + Ayumi-style pentode). Out of scope:
+  скачивание upstream (T002/T003 bootstrap), русские лампы,
+  ngspice smoke (T008). Спека (Draft, 10 Clarify) —
+  `specs/T006-tube-library/spec.md`. Ветка `T006-tube-library`.
+
 ## Done
 
 - **T010** — [closed 2026-05-18, PR #23] Открытие Фазы 1a (MVP-

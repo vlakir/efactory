@@ -67,11 +67,6 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   `model_search`.
   Acceptance: можно найти модель в библиотеке и назначить компоненту
   с правильным pin mapping.
-- **T006** — [2026-05-15] Библиотека SPICE-моделей: импорт Koren
-  + Ayumi (конвертация `^` → `**`), российские лампы (6Н2П, 6Н3П,
-  6П14П, 6П3С и др.), обобщённые модели.
-  Acceptance: модели лежат в `models/tubes/{koren,ayumi,custom}/`,
-  индексированы в `models/index.json`, проходят smoke-симуляцию.
 - **T007** — [2026-05-15] Модели обобщённых трансформаторов:
   `OPT_GENERIC` (выходной), `SPEAKER_8OHM`.
   Acceptance: .subckt-файлы лежат в `models/`, SE-усилитель
