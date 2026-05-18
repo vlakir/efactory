@@ -21,6 +21,11 @@ from application.design_to_netlist import (
     design_to_netlist as design_to_netlist_use_case,
 )
 from application.design_to_sim import design_to_sim as design_to_sim_use_case
+from application.edit_component_value import (
+    ComponentNotFoundError,
+    MultipleMatchesError,
+    edit_component_value,
+)
 from application.errors import (
     DecisionPersistenceError,
     IndexPersistenceError,
@@ -684,17 +689,39 @@ def build_app(
         app.add_typer(sub, name=name)
 
         @sub.command('list')
-        def list_models() -> None:
+        def list_models(
+            *,
+            source: Annotated[
+                str | None,
+                typer.Option(
+                    '--source',
+                    help='Фильтр по ModelSource: koren/ayumi/duncan/custom/generic',
+                ),
+            ] = None,
+            subcategory: Annotated[
+                str | None,
+                typer.Option(
+                    '--subcategory',
+                    help='Фильтр по subcategory (T005): triode/pentode/'
+                    'rectifier/signal/schottky/opt/speaker/...',
+                ),
+            ] = None,
+        ) -> None:
             async def _run() -> list[SpiceModel]:
                 models = await spice_library.list_all()
-                return [m for m in models if m.category is category]
+                filtered = [m for m in models if m.category is category]
+                if source is not None:
+                    filtered = [m for m in filtered if m.source.value == source]
+                if subcategory is not None:
+                    filtered = [m for m in filtered if m.subcategory == subcategory]
+                return filtered
 
             models = asyncio.run(
                 _log_command(
                     session_logger,
                     f'{name}.list',
                     project=None,
-                    payload=None,
+                    payload={'source': source, 'subcategory': subcategory},
                     fn=_run,
                 ),
             )
@@ -1356,5 +1383,72 @@ def build_app(
             timeout,
             'bridge.design_to_sim.ac',
         )
+
+    @bridge_app.command('edit')
+    def bridge_edit(
+        project: Annotated[str, typer.Argument(help='Имя проекта')],
+        *,
+        schematic: Annotated[
+            str,
+            typer.Option('--schematic', help='Путь к .kicad_sch'),
+        ],
+        set_: Annotated[
+            list[str],
+            typer.Option(
+                '--set',
+                help='REF=VALUE (можно несколько раз) — изменить value '
+                'компонента в schematic. Пример: --set R1=10k --set C1=100n',
+            ),
+        ],
+    ) -> None:
+        """
+        T004b: изменить value-properties компонентов в `.kicad_sch`.
+
+        Использует `application.edit_component_value` (text-based atomic
+        replace). Atomic per-edit, но НЕ atomic on multi-edit (T021 в
+        Phase 2 backlog добавит snapshot/rollback). Combined edit+resim
+        в Python — через `application.edit_and_resim`.
+        """
+
+        async def _resolve_schematic_path() -> Path:
+            project_obj = await get_project_use_case(
+                name=project,
+                repo=metadata_repository,
+                manifest_repo=manifest_repository,
+            )
+            return (project_obj.path / schematic).resolve()
+
+        try:
+            schematic_path = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'bridge.edit',
+                    project=project,
+                    payload={'schematic': schematic, 'set': set_},
+                    fn=_resolve_schematic_path,
+                ),
+            )
+        except ProjectNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+
+        edits: list[tuple[str, str]] = []
+        for spec_str in set_:
+            if '=' not in spec_str:
+                typer.echo(
+                    f'--set требует формат REF=VALUE, получено {spec_str!r}',
+                    err=True,
+                )
+                raise typer.Exit(code=2)
+            ref, _, val = spec_str.partition('=')
+            edits.append((ref.strip(), val.strip()))
+
+        for ref, new_value in edits:
+            try:
+                old_value = edit_component_value(schematic_path, ref, new_value)
+            except (ComponentNotFoundError, MultipleMatchesError) as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(code=1) from exc
+            typer.echo(f'{ref}: {old_value!r} → {new_value!r}')
 
     return app
