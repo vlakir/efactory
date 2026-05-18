@@ -212,4 +212,6 @@ modules = [
     "adapters.outbound.spice_models",
     "adapters.outbound.platform_native",
     "adapters.outbound.subprocess_apps",
+    "adapters.outbound.kicad_cli",
+    "adapters.outbound.stub_simulator",
 ]

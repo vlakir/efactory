@@ -23,6 +23,9 @@ from adapters.outbound.file_store.project_file_repository import (
 from adapters.outbound.git_subprocess.git_repository import (
     SubprocessGitRepository,
 )
+from adapters.outbound.kicad_cli.schematic_exporter import (
+    KicadCliSchematicExporter,
+)
 from adapters.outbound.manifest_yaml.project_manifest_repository import (
     FilesystemProjectManifestRepository,
 )
@@ -39,6 +42,7 @@ from adapters.outbound.session_jsonl.session_logger import (
 from adapters.outbound.spice_models.spice_library import (
     FilesystemSpiceModelLibrary,
 )
+from adapters.outbound.stub_simulator.simulator import StubSimulator
 from adapters.outbound.subprocess_apps.app_manager import (
     SubprocessAppManager,
 )
@@ -91,6 +95,7 @@ def build_cli_app() -> typer.Typer:
 
     session_id = _make_session_id()
     platform = NativePlatformLayer()
+    app_manager = SubprocessAppManager(platform)
 
     return build_app(
         projects_root=settings.projects_root,
@@ -107,7 +112,9 @@ def build_cli_app() -> typer.Typer:
             settings.library_root,
             settings.user_library_root,
         ),
-        app_manager=SubprocessAppManager(platform),
+        app_manager=app_manager,
+        schematic_exporter=KicadCliSchematicExporter(app_manager),
+        simulator=StubSimulator(),
     )
 
 
