@@ -210,4 +210,6 @@ modules = [
     "adapters.outbound.git_subprocess",
     "adapters.outbound.session_jsonl",
     "adapters.outbound.spice_models",
+    "adapters.outbound.platform_native",
+    "adapters.outbound.subprocess_apps",
 ]
