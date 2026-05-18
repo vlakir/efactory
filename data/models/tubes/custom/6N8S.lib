@@ -6,7 +6,7 @@
 .SUBCKT 6N8S P G K
 * Koren parameters: MU=20 EX=1.4 KG1=1500 KP=80 KVB=300
 E1 7 0 VALUE={V(P,K)/80*LN(1+EXP(80*(1/20+V(G,K)/SQRT(300+V(P,K)*V(P,K)))))}
-G1 P K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/1500}
+G1 P K VALUE={(sgn(V(7))*pwr(abs(V(7)),1.4)+sgn(V(7))*pwr(abs(V(7)),1.4))/1500}
 C1 G K 2.6p
 C2 G P 4p
 C3 P K 1.0p

@@ -7,8 +7,8 @@
 .SUBCKT 6P18P P G2 G K
 * Koren parameters: MU=18 EX=1.4 KG1=1500 KG2=4500 KP=200 KVB=22
 E1 7 0 VALUE={V(G2,K)/200*LN(1+EXP(200*(1/18+V(G,K)/V(G2,K))))}
-G1 P K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/1500 * ATAN(V(P,K)/22)}
-G2 G2 K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/4500}
+G1 P K VALUE={(sgn(V(7))*pwr(abs(V(7)),1.4)+sgn(V(7))*pwr(abs(V(7)),1.4))/1500 * ATAN(V(P,K)/22)}
+G2 G2 K VALUE={(sgn(V(7))*pwr(abs(V(7)),1.4)+sgn(V(7))*pwr(abs(V(7)),1.4))/4500}
 C1 G K 11p
 C2 G P 0.5p
 C3 P K 6.5p
