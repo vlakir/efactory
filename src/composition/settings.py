@@ -48,6 +48,17 @@ def _default_tube_library_root() -> Path:
     return Path(__file__).resolve().parents[2] / 'data' / 'models' / 'tubes'
 
 
+def _default_user_tube_library_root() -> Path:
+    """
+    `<storage_root>/models/tubes/` для user-added моделей (T006 fix-up Q3).
+
+    Adapter будет overlay'ить эти модели поверх built-in: user-id
+    перезаписывает built-in. Каталог не создаётся автоматически — если
+    отсутствует, adapter работает только с built-in.
+    """
+    return _default_data_dir() / 'models' / 'tubes'
+
+
 class Settings(BaseSettings):
     """
     Конфигурация приложения.
@@ -71,3 +82,6 @@ class Settings(BaseSettings):
     database_url: str = Field(default_factory=_default_database_url)
     session_root: Path = Field(default_factory=_default_session_root)
     tube_library_root: Path = Field(default_factory=_default_tube_library_root)
+    user_tube_library_root: Path = Field(
+        default_factory=_default_user_tube_library_root,
+    )

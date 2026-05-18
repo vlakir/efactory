@@ -22,6 +22,7 @@ _EFACTORY_ENV_VARS = (
     'EFACTORY_DATABASE_URL',
     'EFACTORY_SESSION_ROOT',
     'EFACTORY_TUBE_LIBRARY_ROOT',
+    'EFACTORY_USER_TUBE_LIBRARY_ROOT',
 )
 
 
@@ -86,6 +87,28 @@ def test_env_overrides_tube_library_root(
     settings = Settings()
 
     assert settings.tube_library_root == custom
+
+
+def test_user_tube_library_defaults_to_storage_root_models_tubes(
+    tmp_path: 'Path',
+) -> None:
+    """T006 fix-up Q3: default user-каталог = <storage>/models/tubes/."""
+    settings = Settings()
+
+    expected = tmp_path / '.local' / 'share' / 'efactory' / 'models' / 'tubes'
+    assert settings.user_tube_library_root == expected
+
+
+def test_env_overrides_user_tube_library_root(
+    tmp_path: 'Path',
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    custom = tmp_path / 'my_user_tubes'
+    monkeypatch.setenv('EFACTORY_USER_TUBE_LIBRARY_ROOT', str(custom))
+
+    settings = Settings()
+
+    assert settings.user_tube_library_root == custom
 
 
 def test_defaults_use_xdg_data_home_when_set(

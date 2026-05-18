@@ -104,9 +104,70 @@ def test_tube_list_empty_when_library_root_missing(
     monkeypatch.setenv(
         'EFACTORY_TUBE_LIBRARY_ROOT', str(tmp_path / 'empty_tubes'),
     )
+    monkeypatch.setenv(
+        'EFACTORY_USER_TUBE_LIBRARY_ROOT', str(tmp_path / 'empty_user'),
+    )
     runner = CliRunner()
 
     result = runner.invoke(build_cli_app(), ['tube', 'list'])
 
     assert result.exit_code == 0, result.output
     assert 'No tube models found.' in result.output
+
+
+def test_tube_list_user_overlay_adds_custom_model(
+    tmp_path: 'Path', monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-user сценарий: положил `.lib` в user-каталог → видно в list."""
+    _setup_env(tmp_path, monkeypatch)
+    user_lib = tmp_path / 'user_tubes'
+    custom_dir = user_lib / 'custom'
+    custom_dir.mkdir(parents=True)
+    (custom_dir / 'MY_TUBE.lib').write_text(
+        '.SUBCKT MY_TUBE P G K\n.ENDS\n', encoding='utf-8',
+    )
+    monkeypatch.setenv('EFACTORY_USER_TUBE_LIBRARY_ROOT', str(user_lib))
+    runner = CliRunner()
+
+    list_result = runner.invoke(build_cli_app(), ['tube', 'list'])
+    assert list_result.exit_code == 0, list_result.output
+    # Built-in 2 generic + user MY_TUBE
+    assert 'GENERIC_TRIODE' in list_result.output
+    assert 'GENERIC_PENTODE' in list_result.output
+    assert 'MY_TUBE' in list_result.output
+    # User-модель помечена `user`, built-in — `built-in`
+    user_line = next(
+        line for line in list_result.output.splitlines() if 'MY_TUBE' in line
+    )
+    assert '\tuser\t' in user_line
+
+    show_result = runner.invoke(
+        build_cli_app(), ['tube', 'show', '--id', 'MY_TUBE'],
+    )
+    assert show_result.exit_code == 0
+    assert 'library: user' in show_result.output
+
+
+def test_tube_list_user_overlay_overrides_built_in(
+    tmp_path: 'Path', monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User-id с тем же именем побеждает built-in (Q3 fix-up acceptance)."""
+    _setup_env(tmp_path, monkeypatch)
+    user_lib = tmp_path / 'user_tubes'
+    custom_dir = user_lib / 'custom'
+    custom_dir.mkdir(parents=True)
+    (custom_dir / 'GENERIC_TRIODE.lib').write_text(
+        '.SUBCKT TUNED_TRIODE P G K\n* my tuned variant\n.ENDS\n',
+        encoding='utf-8',
+    )
+    monkeypatch.setenv('EFACTORY_USER_TUBE_LIBRARY_ROOT', str(user_lib))
+    runner = CliRunner()
+
+    show_result = runner.invoke(
+        build_cli_app(), ['tube', 'show', '--id', 'GENERIC_TRIODE'],
+    )
+
+    assert show_result.exit_code == 0, show_result.output
+    assert 'library: user' in show_result.output
+    assert 'TUNED_TRIODE' in show_result.output
+    assert 'name: TUNED_TRIODE' in show_result.output

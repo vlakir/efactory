@@ -663,8 +663,10 @@ def build_app(
             typer.echo('No tube models found.')
             return
         for m in models:
+            library = 'user' if m.is_user else 'built-in'
             typer.echo(
-                f'{m.id}\t{m.source.value}\t{m.tube_type.value}\t{m.file_path}',
+                f'{m.id}\t{library}\t{m.source.value}\t'
+                f'{m.tube_type.value}\t{m.file_path}',
             )
 
     @tube_app.command('show')
@@ -698,6 +700,7 @@ def build_app(
 
         typer.echo(f'id: {model.id}')
         typer.echo(f'name: {model.name}')
+        typer.echo(f'library: {"user" if model.is_user else "built-in"}')
         typer.echo(f'source: {model.source.value}')
         typer.echo(f'tube_type: {model.tube_type.value}')
         typer.echo(f'pins: {" ".join(model.subckt_pins)}')

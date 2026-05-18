@@ -183,3 +183,76 @@ def test_convert_ayumi_replaces_caret_globally() -> None:
     assert convert_ayumi_to_ngspice('V=x^2 + y^3') == 'V=x**2 + y**3'
     assert convert_ayumi_to_ngspice('no caret') == 'no caret'
     assert convert_ayumi_to_ngspice('') == ''
+
+
+# ---------- User overlay (Q3 fix-up) ----------
+
+
+async def test_user_overlay_adds_new_model(tmp_path: Path) -> None:
+    """User-каталог добавляет модель, которой нет в built-in."""
+    built_in = tmp_path / 'built_in'
+    user = tmp_path / 'user'
+    _seed(built_in, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
+    _seed(
+        user, ModelSource.CUSTOM, 'MY_TUBE.lib',
+        '.SUBCKT MY_TUBE P G K\n.ENDS\n',
+    )
+    repo = FilesystemTubeModelLibrary(built_in, user)
+
+    models = {m.id: m for m in await repo.list_all()}
+
+    assert set(models) == {'GENERIC_TRIODE', 'MY_TUBE'}
+    assert models['GENERIC_TRIODE'].is_user is False
+    assert models['MY_TUBE'].is_user is True
+
+
+async def test_user_overlay_overrides_built_in_by_id(tmp_path: Path) -> None:
+    """User-id с тем же именем перезаписывает built-in (overlay семантика)."""
+    built_in = tmp_path / 'built_in'
+    user = tmp_path / 'user'
+    _seed(built_in, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
+    user_content = '.SUBCKT MY_OWN_TRIODE P G K\n* tuned for my V12 stock\n.ENDS\n'
+    _seed(user, ModelSource.CUSTOM, 'GENERIC_TRIODE.lib', user_content)
+    repo = FilesystemTubeModelLibrary(built_in, user)
+
+    model = await repo.get_by_id('GENERIC_TRIODE')
+
+    assert model.is_user is True
+    assert model.source is ModelSource.CUSTOM
+    # read_subckt возвращает user-файл, не built-in
+    subckt = await repo.read_subckt('GENERIC_TRIODE')
+    assert 'MY_OWN_TRIODE' in subckt
+
+
+async def test_user_overlay_missing_dir_falls_back_to_built_in(
+    tmp_path: Path,
+) -> None:
+    built_in = tmp_path / 'built_in'
+    _seed(built_in, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
+    repo = FilesystemTubeModelLibrary(built_in, tmp_path / 'no_user_dir')
+
+    models = await repo.list_all()
+    assert [m.id for m in models] == ['GENERIC_TRIODE']
+    assert models[0].is_user is False
+
+
+async def test_duplicate_within_user_root_still_fails(tmp_path: Path) -> None:
+    """Внутри user root duplicate id всё ещё fail-fast."""
+    built_in = tmp_path / 'built_in'
+    user = tmp_path / 'user'
+    _seed(user, ModelSource.KOREN, 'XX.lib', '.SUBCKT XX P G K\n.ENDS\n')
+    _seed(user, ModelSource.CUSTOM, 'XX.lib', '.SUBCKT XX P G K\n.ENDS\n')
+    repo = FilesystemTubeModelLibrary(built_in, user)
+
+    with pytest.raises(TubeModelLibraryDuplicateError):
+        await repo.list_all()
+
+
+async def test_user_overlay_none_argument_works(tmp_path: Path) -> None:
+    """user_library_root=None — поведение как до fix-up (только built-in)."""
+    _seed(tmp_path, ModelSource.KOREN, 'GENERIC_TRIODE.lib', _TRIODE_LIB)
+    repo = FilesystemTubeModelLibrary(tmp_path, None)
+
+    models = await repo.list_all()
+    assert [m.id for m in models] == ['GENERIC_TRIODE']
+    assert models[0].is_user is False

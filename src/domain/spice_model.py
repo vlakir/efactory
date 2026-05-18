@@ -58,3 +58,4 @@ class SpiceModel(BaseModel):
     source: ModelSource
     file_path: Path
     subckt_pins: tuple[str, ...]
+    is_user: bool = False  # True если модель из user overlay (Q3 fix-up)
