@@ -1,0 +1,16 @@
+* Generic Koren-style triode model (T006 example, not physically accurate).
+*
+* Source: simplified illustrative form of the Koren-3 triode equation
+*   I_p ~ K * (U_g + U_p/MU)^EX  (kept symbolically via ngspice ** below).
+* tube_type: triode
+* Pins: P (plate), G (grid), K (cathode)
+*
+* Replace with vendor-fitted parameters before using in a real design.
+.SUBCKT GENERIC_TRIODE P G K
+* Bridging current source — placeholder, not real Koren formula.
+Bp P K I=0.1m * (V(G,K) + V(P,K)/100)**1.5
+* Grid-to-cathode capacitance (typical ECC83 ballpark).
+Cgk G K 1.6p
+* Plate-to-grid capacitance.
+Cpg P G 1.6p
+.ENDS GENERIC_TRIODE

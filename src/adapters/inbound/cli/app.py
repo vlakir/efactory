@@ -42,6 +42,7 @@ from domain.phase import PhaseName, PhaseStatus
 from ports.outbound.decision_repository import DecisionNotFoundError
 from ports.outbound.git_repository import GitOperationError
 from ports.outbound.session_logger import SessionEventStatus
+from ports.outbound.tube_model_library import TubeModelNotFoundError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
     from application.reindex_projects import ReindexSummary
     from domain.decision import Decision
     from domain.project import Project
+    from domain.spice_model import SpiceModel
     from ports.outbound.decision_repository import DecisionRepository
     from ports.outbound.git_repository import GitRepository
     from ports.outbound.metadata_repository import MetadataRepository
@@ -58,6 +60,7 @@ if TYPE_CHECKING:
         ProjectManifestRepository,
     )
     from ports.outbound.session_logger import SessionLogger
+    from ports.outbound.tube_model_library import TubeModelLibrary
 
 
 async def _log_command[T](
@@ -98,6 +101,7 @@ def build_app(
     decision_repository: DecisionRepository,
     git_repository: GitRepository,
     session_logger: SessionLogger,
+    tube_library: TubeModelLibrary,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -637,5 +641,68 @@ def build_app(
         typer.echo(f'\nRationale:\n{decision.rationale}')
         if decision.evidence is not None:
             typer.echo(f'\nEvidence: {decision.evidence}')
+
+    tube_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    app.add_typer(tube_app, name='tube')
+
+    @tube_app.command('list')
+    def tube_list() -> None:
+        async def _run() -> list[SpiceModel]:
+            return await tube_library.list_all()
+
+        models = asyncio.run(
+            _log_command(
+                session_logger,
+                'tube.list',
+                project=None,
+                payload=None,
+                fn=_run,
+            ),
+        )
+        if not models:
+            typer.echo('No tube models found.')
+            return
+        for m in models:
+            typer.echo(
+                f'{m.id}\t{m.source.value}\t{m.tube_type.value}\t{m.file_path}',
+            )
+
+    @tube_app.command('show')
+    def tube_show(
+        *,
+        model_id: Annotated[
+            str,
+            typer.Option('--id', help='ID модели (uppercase filename stem)'),
+        ],
+    ) -> None:
+        async def _run_model() -> SpiceModel:
+            return await tube_library.get_by_id(model_id)
+
+        async def _run_subckt() -> str:
+            return await tube_library.read_subckt(model_id)
+
+        try:
+            model = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'tube.show',
+                    project=None,
+                    payload={'id': model_id},
+                    fn=_run_model,
+                ),
+            )
+            subckt = asyncio.run(_run_subckt())
+        except TubeModelNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+
+        typer.echo(f'id: {model.id}')
+        typer.echo(f'name: {model.name}')
+        typer.echo(f'source: {model.source.value}')
+        typer.echo(f'tube_type: {model.tube_type.value}')
+        typer.echo(f'pins: {" ".join(model.subckt_pins)}')
+        typer.echo(f'file_path: {model.file_path}')
+        typer.echo('')
+        typer.echo(subckt)
 
     return app

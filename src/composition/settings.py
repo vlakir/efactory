@@ -35,6 +35,19 @@ def _default_session_root() -> Path:
     return _default_data_dir() / 'sessions'
 
 
+def _default_tube_library_root() -> Path:
+    """
+    `<repo>/data/models/tubes/` в development (editable install).
+
+    Resolution path: settings.py → composition/ → src/ → <repo>. На
+    production install (когда появится T002 bootstrap + pip install
+    с force-include) этот путь придётся переопределить через
+    `EFACTORY_TUBE_LIBRARY_ROOT` env — Phase 1a development
+    единственный сценарий (T006 C1).
+    """
+    return Path(__file__).resolve().parents[2] / 'data' / 'models' / 'tubes'
+
+
 class Settings(BaseSettings):
     """
     Конфигурация приложения.
@@ -57,3 +70,4 @@ class Settings(BaseSettings):
     projects_root: Path = Field(default_factory=_default_projects_root)
     database_url: str = Field(default_factory=_default_database_url)
     session_root: Path = Field(default_factory=_default_session_root)
+    tube_library_root: Path = Field(default_factory=_default_tube_library_root)
