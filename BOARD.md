@@ -63,6 +63,20 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T004b** + **T005 Phase 0** — [closed 2026-05-19, PR #40] Combined.
+  T004b: `application/edit_component_value` (atomic text-based regex
+  replace value-property в .kicad_sch) + `application/edit_and_resim`
+  (composition); CLI `bridge edit <project> --schematic PATH --set
+  REF=VALUE` (multi-edit, per-edit atomic, session-logged). T005
+  Phase 0: `tube/diode/transformer/load list` теперь принимают
+  `--source X --subcategory Y` для composable фильтрации.
+  Acceptance: edit-and-resim Python use case готов для LLM-agent;
+  model_search функционально достигается через filtered list. **Phase 1
+  deferred** (BACKLOG): bridge_sweep parametric, model_assign CLI
+  (Sim.Library/Sim.Name swap), snapshot/rollback multi-edit, MCP-server
+  обвязка (T013 Phase 1b). 5 unit + 3 e2e тестов. 575 passed (+8),
+  coverage 88.58%, 5 гейтов зелёные.
+
 - **T105 Phase 0** — [closed 2026-05-19, PR #39] Extend Valve registry
   4 valves (EL84 + ECC81 + ECC88 + EC92). Writer `_collect_lib_symbols`
   с topological sort + auto-load parent через `(extends ...)` — готов

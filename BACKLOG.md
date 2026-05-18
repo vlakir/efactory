@@ -64,16 +64,17 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
 ### Фаза 1a — MVP-ядро (3–4 недели)
 
-- **T004b** — [2026-05-18] `bridge_edit_and_resim` +
-  `bridge_sweep` — после T008 (нужна реальная симуляция). Использует
-  kicad-sch-api для манипуляций со схемой. (Split из исходного T004
-  2026-05-18 — pipeline framework + export через kicad-cli уехали
-  в T004 done; реальная симуляция в T008.)
-- **T005** — [2026-05-15] `kicad-sim-bridge`: модуль
-  `models_manager.py` — инструменты `model_library`, `model_assign`,
-  `model_search`.
-  Acceptance: можно найти модель в библиотеке и назначить компоненту
-  с правильным pin mapping.
+<!-- T004b + T005 перенесены в BOARD.md → Done (2026-05-19, common PR). -->
+
+- **T004b/T005 Phase 1 (deferred)** — расширение бoyond minimal MVP:
+  (а) **bridge_sweep** — параметрический run (R1=1k,10k → N симуляций
+  + delta-таблица), требует sweep-domain VO и итеративную orchestration
+  логику; (б) **model_assign** через CLI (`efactory model assign`) —
+  swap `Sim.Library`/`Sim.Name` properties для tube/diode/transformer
+  instances в schematic (currently only `value` edit поддерживается);
+  (в) snapshot/rollback на multi-edit failure (atomicity beyond
+  per-edit). MCP-server обвязка `models_manager` — T013 в Phase 1b
+  (LLM chat MCP-client integration).
 <!-- T101 перенесена в BOARD.md → Done (2026-05-19). -->
 <!-- T102 перенесена в BOARD.md → Doing (2026-05-18). -->
 
