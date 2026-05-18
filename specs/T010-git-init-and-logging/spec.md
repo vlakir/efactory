@@ -1,6 +1,6 @@
 ## Spec: T010 — git init + structured session logging
 
-**Статус:** Draft (готов к Clarify)
+**Статус:** Analyzed
 **Дата создания:** 2026-05-18
 **Связанные документы:**
 - `CONCEPT.md` §4.5 (история сессий), §4.6 (команды управления
@@ -356,6 +356,220 @@ git нет. Unit-тесты adapter'а с monkeypatched `shutil.which` /
 
 ---
 
-### Analyze (заполняется после Clarify)
+### Resolved
 
-(заполнится перед implement)
+Разработчик подтвердил все 10 предложенных дефолтов (2026-05-18).
+Кратко:
+
+1. **Session log** — **(A) global** `<storage_root>/sessions/<id>/log.jsonl`.
+   Per-project — отложено в Phase 1b вместе с chat-context'ом
+   сессии.
+2. **Session_id format** — **(A)** `YYYYMMDD-HHMMSS-<rand6>`.
+   ASCII / sortable / Windows-safe. `<rand6>` — `secrets.token_hex(3)`.
+3. **Session reuse** — **(B)** default = новый id; есть
+   `EFACTORY_SESSION_ID` env override для chat-клиента и тестов.
+4. **`payload`** — минимум. Только аргументы CLI, без полных DTO.
+5. **Initial commit message** — **(A)** фиксированный
+   `efactory: create project <name>`.
+6. **`--no-gpg-sign`** — **(A)** всегда при initial commit.
+   Документируем как internal operation.
+7. **CLI session-log** — **(B)** helper / декоратор. Минимизация
+   boilerplate.
+8. **Log write failure** — best-effort. stderr warning, основной
+   CLI flow не прерывается. Логирование — не критичный путь.
+9. **Phasing** — **(A) один phase**. Реализация компактнее
+   T098/T099.
+10. **git тесты** — skip если `git` нет на PATH (integration);
+    unit-тесты adapter'а с monkeypatched subprocess.
+
+---
+
+### Analyze
+
+#### 🔴 Critical
+
+##### C1. Порядок git init относительно остальных шагов CreateProject
+
+После T098 порядок: `create_dir → manifest.save → SQL upsert`.
+Куда вставить git init?
+
+- **(A) После всего** (`...→ git.init`). Логично: коммит снимает
+  состояние «как только что создано», включая `project.yaml`.
+- **(B) После manifest.save, до SQL.** Если SQL упал
+  (`IndexPersistenceError`), git коммит уже сделан — repo есть.
+  Но реestric: SQL fail сейчас — partial failure (manifest=truth,
+  SQL stale, `reindex` recovers); git init после ничего не
+  ломает, но добавляет один лишний коммит к partial-failure
+  manifest'у.
+
+**Резолюция:** **(A) после всего**. Git init = «фиксация
+успешного результата». Если SQL упал — git init не делается;
+после `reindex` пользователь может сделать `git init` руками
+или мы сделаем это автоматически в future задаче. Trade-off:
+очень редкий случай partial failure без git — приемлемо.
+
+##### C2. `git config user.name / user.email` не настроен
+
+`git commit` упадёт с «Please tell me who you are». Это блокер
+для свежего bootstrap'а на чистой машине.
+
+- **(A) Hard fail.** Сообщение «настрой `git config --global
+  user.name 'X' && user.email 'Y'`». Корректно, но раздражает
+  при первом запуске.
+- **(B) Передавать temp identity через env**
+  (`GIT_AUTHOR_NAME=efactory`, etc). Локально override без
+  глобального config.
+- **(C) Skip git init если user.* не настроен** (warning в session
+  log).
+
+**Резолюция:** **(B)** — `GIT_AUTHOR_NAME=efactory`,
+`GIT_AUTHOR_EMAIL=efactory@localhost`, аналогично `GIT_COMMITTER_*`,
+только для initial commit. `git log` покажет автора `efactory
+<efactory@localhost>` — явно «системный» коммит. Пользовательские
+коммиты потом будут от его `git config`. Не подменяем глобально;
+override только в subprocess env.
+
+##### C3. Session_id collision
+
+Формат `YYYYMMDD-HHMMSS-rand6` — collision вероятность
+6 hex chars = 1/16M на ту же секунду. Single-user CLI — не
+проблема. Документируем.
+
+#### 🟡 Warning
+
+##### W1. Существующий e2e `test_create_project_end_to_end` (T085)
+
+Этот тест проверяет SQL запись после `project create`. После
+T010 в FS появятся `.git/` и `sessions/<id>/log.jsonl`. Тест
+не сломается (он проверяет наличие папки + SQL row), но e2e
+output может содержать дополнительные строки (если CLI печатает
+session_id или что-то). Решение: CLI новых строк не печатает;
+session log пишется молча. Тест без правок.
+
+##### W2. Тестовая изоляция session log
+
+Каждый тест в `tests/e2e/` использует tmp_path → `session_root`
+тоже tmp_path. Между тестами нет shared state. Безопасно.
+
+##### W3. `--no-gpg-sign` vs `commit.gpgsign = true` user config
+
+`git commit --no-gpg-sign` перебивает config. Хорошо для
+init commit. Pre-commit hook proxy на signature — нерелевантно
+для initial commit (он создаёт первый коммит).
+
+#### 🟢 Note
+
+##### N1. Helper `_log_command` сигнатура
+
+```python
+async def _log_command(
+    logger: SessionLogger,
+    event: str,
+    project: str | None,
+    payload: dict | None,
+    fn: Callable[[], Awaitable[T]],
+) -> T:
+    try:
+        result = await fn()
+    except Exception as exc:
+        await logger.log_event(event, status=SessionEventStatus.ERROR,
+                                project=project, payload=payload,
+                                error=f'{type(exc).__name__}: {exc}')
+        raise
+    await logger.log_event(event, status=SessionEventStatus.OK,
+                            project=project, payload=payload)
+    return result
+```
+
+Один helper для всех CLI-команд. Без декоратора, потому что
+Typer commands sync а внутри `asyncio.run` — декоратор поверх
+sync не работает чисто. Через context-manager (`async with`) —
+тоже сложно из-за `asyncio.run` boundary. Простая функция
+вызывается внутри `asyncio.run(...)`.
+
+##### N2. Build session_id helper
+
+В `composition/main.py`:
+```python
+def _make_session_id() -> str:
+    if env_id := os.environ.get('EFACTORY_SESSION_ID'):
+        return env_id
+    ts = datetime.now(UTC).strftime('%Y%m%d-%H%M%S')
+    return f'{ts}-{secrets.token_hex(3)}'
+```
+
+##### N3. Имена событий
+
+`project.create`, `project.list`, `project.show`,
+`project.update`, `project.delete`, `project.reindex`,
+`decision.add`, `decision.list`, `decision.show`. Совпадает с
+CLI subcommand path; легко grep'ать в логах.
+
+##### N4. JSONL format
+
+Одна запись:
+```json
+{"ts":"2026-05-18T10:15:00.123456+00:00","event":"project.create","status":"ok","project":"demo","payload":{"name":"demo"}}
+```
+
+`status=error` добавляет `error: "ClassName: message"`.
+
+##### N5. Logger: не используем stdlib `logging`
+
+stdlib `logging` — для diagnostic stderr (например, INFO/WARNING
+в composition). Session log — отдельный, structured, JSONL,
+append-only. Это разные каналы, не путаем.
+
+##### N6. Adapter dir naming
+
+- `adapters/outbound/git_subprocess/` для GitRepository.
+- `adapters/outbound/session_jsonl/` для SessionLogger.
+
+Оба добавляются в import-linter independence contract.
+
+##### N7. Settings.session_root
+
+```python
+session_root: Path = Field(
+    default_factory=lambda: _xdg_data_home() / 'efactory' / 'sessions',
+)
+```
+
+Independent от `projects_root`: можно положить в другое место (для
+очистки лога без удаления проектов).
+
+##### N8. Session log при `create` — порядок
+
+Поток `efactory project create --name demo`:
+1. `session_id` сгенерирован.
+2. CLI command вызывает `create_project` use case.
+3. Use case делает: dir → manifest → SQL upsert → git init.
+4. CLI после успеха зовёт `log_event('project.create', ok, project='demo', payload={name:'demo'})`.
+
+То есть session log записывается после успеха use case. Если
+use case упал — log_event пишется с `status=error` в catch.
+Файл `sessions/<id>/log.jsonl` создаётся at-first-write.
+
+##### N9. `git unavailable` log entry
+
+Если `GitUnavailableError` — CreateProject ловит, логирует
+`event=git.init, status=error, error='git not found'` через
+session_logger и продолжает (проект создан без VCS). CLI команда
+дополнительно логирует `event=project.create, status=ok`.
+
+Соответственно `CreateProject` сам зовёт `session_logger.log_event`
+для git failure — нарушение слоистости? Альтернатива: возвращать
+дополнительный outcome flag и логировать в CLI. Решение: пробросить
+warning через возвращаемое значение `CreateProject` (например,
+`CreateProjectResult { project, git_initialized: bool }`). CLI
+видит флаг и логирует отдельным событием. Это сохраняет
+application слой чистым от инфраструктуры логирования.
+
+##### N10. Composition зависимости
+
+`build_cli_app`:
+- `settings = Settings()` — содержит session_root.
+- `session_id = _make_session_id()`.
+- `session_logger = FilesystemJsonlSessionLogger(settings.session_root, session_id)`.
+- `git_repo = SubprocessGitRepository()`.
+- `build_app(..., session_logger=..., git_repo=...)`.
