@@ -63,6 +63,27 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T004** — [closed 2026-05-18, PR #30] KiCad → SPICE pipeline
+  (split-scope, без ngspice). Split T004/T008 (2026-05-18) +
+  T004b в BACKLOG для edit/sweep после T008. Domain.Simulation
+  (id, project_id, schematic_path, netlist_path, status, created_at,
+  result), SimulationStatus + SimulationResult. Ports
+  SchematicExporter + Simulator + контрактные exceptions
+  (SchematicExportError / SimulatorUnavailableError /
+  SimulationFailedError). Adapters: KicadCliSchematicExporter
+  (через T009 app_manager.run KICAD_CLI; pragmatic exit code:
+  success если netlist реально создан, exit 2 для warnings OK),
+  StubSimulator (бросает SimulatorUnavailableError). Application
+  design_to_sim use case: get_project → resolve paths → mkdir sim
+  → export → simulator (catch SimulatorUnavailableError →
+  status=NETLIST_READY). CLI `bridge design-to-sim <project>
+  --schematic PATH [--netlist-output PATH]` + session-log
+  `bridge.design_to_sim`. tests/fixtures/rc_filter.kicad_sch
+  (manual minimal V1+R1+C1) → e2e: kicad-cli export → SPICE netlist
+  на диске с R/C/V. Spec Analyzed
+  (`specs/T004-kicad-sim-pipeline/spec.md`). 381 passed, coverage
+  88.37%.
+
 - **T009** — [closed 2026-05-18, PR #29] platform_layer +
   app_manager: фундамент для bridges Phase 1a. Domain.ApplicationKind
   (kicad/kicad-cli/freecad/femm/ngspice) + Status + OsKind + Info.

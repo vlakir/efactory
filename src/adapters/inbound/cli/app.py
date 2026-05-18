@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from application.add_decision import add_decision as add_decision_use_case
 from application.create_project import create_project as create_project_use_case
 from application.delete_project import delete_project as delete_project_use_case
+from application.design_to_sim import design_to_sim as design_to_sim_use_case
 from application.errors import (
     DecisionPersistenceError,
     IndexPersistenceError,
@@ -48,7 +49,9 @@ from ports.outbound.app_manager import (
 )
 from ports.outbound.decision_repository import DecisionNotFoundError
 from ports.outbound.git_repository import GitOperationError
+from ports.outbound.schematic_exporter import SchematicExportError
 from ports.outbound.session_logger import SessionEventStatus
+from ports.outbound.simulator import SimulationFailedError
 from ports.outbound.spice_model_library import SpiceModelNotFoundError
 
 if TYPE_CHECKING:
@@ -58,6 +61,7 @@ if TYPE_CHECKING:
     from application.reindex_projects import ReindexSummary
     from domain.decision import Decision
     from domain.project import Project
+    from domain.simulation import Simulation
     from domain.spice_model import SpiceModel
     from ports.outbound.app_manager import AppManager, RunResult
     from ports.outbound.decision_repository import DecisionRepository
@@ -67,7 +71,9 @@ if TYPE_CHECKING:
     from ports.outbound.project_manifest_repository import (
         ProjectManifestRepository,
     )
+    from ports.outbound.schematic_exporter import SchematicExporter
     from ports.outbound.session_logger import SessionLogger
+    from ports.outbound.simulator import Simulator
     from ports.outbound.spice_model_library import SpiceModelLibrary
 
 
@@ -111,6 +117,8 @@ def build_app(
     session_logger: SessionLogger,
     spice_library: SpiceModelLibrary,
     app_manager: AppManager,
+    schematic_exporter: SchematicExporter,
+    simulator: Simulator,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -908,5 +916,79 @@ def build_app(
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=2) from exc
         typer.echo(f'Restarted {kind.value} (pid={info.pid})')  # type: ignore[attr-defined]
+
+    bridge_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    app.add_typer(bridge_app, name='bridge')
+
+    @bridge_app.command('design-to-sim')
+    def bridge_design_to_sim(
+        project: Annotated[
+            str,
+            typer.Argument(help='Имя проекта'),
+        ],
+        *,
+        schematic: Annotated[
+            str,
+            typer.Option(
+                '--schematic',
+                help='Путь к .kicad_sch (относительный к проекту либо абсолютный)',
+            ),
+        ],
+        netlist_output: Annotated[
+            str | None,
+            typer.Option(
+                '--netlist-output',
+                help='Путь для SPICE netlist (default: <project>/sim/<name>.cir)',
+            ),
+        ] = None,
+    ) -> None:
+        async def _run() -> Simulation:
+            return await design_to_sim_use_case(
+                project_name=project,
+                schematic=Path(schematic),
+                netlist_output=(
+                    Path(netlist_output) if netlist_output is not None else None
+                ),
+                repo=metadata_repository,
+                manifest_repo=manifest_repository,
+                exporter=schematic_exporter,
+                simulator=simulator,
+            )
+
+        try:
+            sim = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'bridge.design_to_sim',
+                    project=project,
+                    payload={
+                        'project': project,
+                        'schematic': schematic,
+                        'netlist_output': netlist_output,
+                    },
+                    fn=_run,
+                ),
+            )
+        except ProjectNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        except ProjectManifestMissingError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        except SchematicExportError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        except SimulationFailedError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+
+        typer.echo(f'Exported netlist: {sim.netlist_path}')
+        if sim.status.value == 'simulated':
+            typer.echo('Simulation: completed')
+        else:
+            typer.echo(
+                'Simulation: not yet implemented '
+                '(T008 — ngspice integration scheduled)',
+            )
 
     return app

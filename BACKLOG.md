@@ -57,11 +57,11 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   через winget/chocolatey + pip.
   Acceptance: на чистой Windows 11 `bootstrap.ps1` без ошибок,
   smoke-тест зелёный.
-- **T004** — [2026-05-15] `kicad-sim-bridge`: модуль `pipeline.py` —
-  инструменты `bridge_design_to_sim`, `bridge_edit_and_resim`,
-  `bridge_sweep` (без автосравнения — это Фаза 2).
-  Acceptance: тестовый проект (RC-фильтр) проходит design→sim→results
-  одним вызовом инструмента.
+- **T004b** — [2026-05-18] `bridge_edit_and_resim` +
+  `bridge_sweep` — после T008 (нужна реальная симуляция). Использует
+  kicad-sch-api для манипуляций со схемой. (Split из исходного T004
+  2026-05-18 — pipeline framework + export через kicad-cli уехали
+  в T004 done; реальная симуляция в T008.)
 - **T005** — [2026-05-15] `kicad-sim-bridge`: модуль
   `models_manager.py` — инструменты `model_library`, `model_assign`,
   `model_search`.
