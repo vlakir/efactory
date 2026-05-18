@@ -142,8 +142,65 @@ _VALVE_EL84 = _ValveSymbolDef(
     label_offsets=_LabelOffsets(ref=(7.62, -10.16), value=(7.62, 7.62)),
 )
 
+# Triode physical pin layout — общая геометрия для всех ECC*/EC* dual-
+# triodes из Valve.kicad_sym (unit 1 = одна половина). Pin numbers
+# разные, координаты одинаковые.
+_TRIODE_LABEL_OFFSETS = _LabelOffsets(ref=(5.08, -8.89), value=(5.08, 7.62))
+
+# ECC81 (T105) — 12AT7 dual-triode. Unit 1 pins: A=6, G=7, K=8.
+# Маппинг для советских: 6Н1П (low-µ alternative), 6Н3П.
+# Library coords Y-up → schematic Y-down (знак Y инвертирован).
+_VALVE_ECC81 = _ValveSymbolDef(
+    lib_id='Valve:ECC81',
+    pins=(
+        _PinLayout('6', (0.0, -10.16)),  # A (anode)
+        _PinLayout('7', (-7.62, 0.0)),  # G (grid)
+        _PinLayout('8', (-2.54, 10.16)),  # K (cathode)
+    ),
+    spice_pin_names=('P', 'G', 'K'),
+    unit=1,
+    label_offsets=_TRIODE_LABEL_OFFSETS,
+)
+
+# ECC83 (12AX7) — pin-compatible с ECC81, derived (extends) в KiCad
+# library. **Отложено в T105 Phase 1**: writer `_collect_lib_symbols`
+# умеет авто-подгружать parent через `(extends ...)`, но KiCad pin
+# resolution для derived `extends`-symbol работает иначе чем ожидалось
+# (нашёл в попытке embed — pins NC при equal coords как у parent).
+# Для 6Н2П сейчас используйте `Valve:ECC81` напрямую (pinout идентичен,
+# отличается только µ — это в T006 SPICE модели).
+
+# ECC88 (T105) — 6DJ8 dual-triode. Unit 1 pins: A=1, G=2, K=3.
+# Маппинг для советских: 6Н23П, 6Н1П (alt).
+_VALVE_ECC88 = _ValveSymbolDef(
+    lib_id='Valve:ECC88',
+    pins=(
+        _PinLayout('1', (0.0, -10.16)),
+        _PinLayout('2', (-7.62, 0.0)),
+        _PinLayout('3', (-2.54, 10.16)),
+    ),
+    spice_pin_names=('P', 'G', 'K'),
+    unit=1,
+    label_offsets=_TRIODE_LABEL_OFFSETS,
+)
+
+# EC92 (T105) — single-section triode (тоже встречается в KiCad lib).
+# Unit 1 pins: A=1, G=6, K=7.
+_VALVE_EC92 = _ValveSymbolDef(
+    lib_id='Valve:EC92',
+    pins=(
+        _PinLayout('1', (0.0, -10.16)),
+        _PinLayout('6', (-7.62, 0.0)),
+        _PinLayout('7', (-2.54, 10.16)),
+    ),
+    spice_pin_names=('P', 'G', 'K'),
+    unit=1,
+    label_offsets=_TRIODE_LABEL_OFFSETS,
+)
+
 _VALVE_REGISTRY: dict[str, _ValveSymbolDef] = {
-    _VALVE_EL84.lib_id: _VALVE_EL84,
+    valve.lib_id: valve
+    for valve in (_VALVE_EL84, _VALVE_ECC81, _VALVE_ECC88, _VALVE_EC92)
 }
 
 # R/C/L Reference/Value — справа от horizontal-rendered body, разнесены по Y.

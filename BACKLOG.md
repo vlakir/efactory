@@ -79,18 +79,19 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
 <!-- T103 перенесена в BOARD.md → Done (2026-05-19). -->
 
-- **T105** — [2026-05-18] Extend `_VALVE_REGISTRY` для остальных
-  советских ламп. T104 Phase 0 закрыл только `Valve:EL84` (6П14П).
-  Phase 1: маппинг ID → western Valve-symbol для популярных
-  советских (6Н1П → Valve:ECC81, 6Н2П → Valve:ECC83, 6П3С/6П1П
-  → Valve:EL84 если pin-compatible, etc); кастомные snippets для
-  уникальных без западного аналога (GU50, 6П45С, 6Н6П в hi-µ
-  triode-mode). Phase 2: **multi-unit dual-triodes** (ECC83 = два
-  триода — каждый half через отдельный unit instance, требует
-  facade-расширение для `(unit N)` instancing в одном символе).
-  Acceptance: PR покрывает 5+ tube models, integration тест c
-  каждой запускает ngspice без warning'ов lib_symbol_mismatch
-  (snippets верны для каждого).
+<!-- T105 Phase 0 перенесена в BOARD.md → Done (2026-05-19). -->
+
+- **T105 Phase 1 (deferred)** — оставшиеся advanced задачи registry:
+  (а) derived symbols через `(extends ...)` — writer уже умеет
+  auto-load parent, но KiCad pin resolution для derived требует ещё
+  работы (pins NC при equal coords; нашли при попытке ECC83 в
+  T105 Phase 0); (б) кастомные snippets для уникальных советских
+  ламп без western аналога (GU50, 6П45С, 6Н6П); (в) multi-unit
+  dual-triode instancing (отдельные halves через unit-A/B
+  sub-references) — facade-расширение, требует unique constraint
+  на reference revisit. Acceptance Phase 1: ECC83 работает (pins
+  not NC); 3+ кастомных tube snippets; dual-triode amp с обоими
+  halves в одной схеме.
 
 ### Фаза 1b — Чат-клиент (+2–3 недели)
 
