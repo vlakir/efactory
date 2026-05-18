@@ -50,9 +50,12 @@ def test_vdc_default_sim_properties_include_value_in_params() -> None:
     sch.add_v_dc(reference='V1', value='5', at=(0.0, 0.0))
     spec = sch.to_spec()
     props = spec.components[0].properties
-    assert props['Sim.Device'] == 'SPICE'
-    assert props['Sim.Type'] == 'V'
+    # Sim.Device='V' (built-in voltage source), Sim.Type='DC' — без Sim.Library
+    # чтобы не триггерить «Не найдено определение модели симуляции» в KiCad GUI.
+    assert props['Sim.Device'] == 'V'
+    assert props['Sim.Type'] == 'DC'
     assert 'dc=5' in props['Sim.Params']
+    assert 'Sim.Library' not in props
 
 
 def test_ground_auto_increments_reference() -> None:

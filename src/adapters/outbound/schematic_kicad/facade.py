@@ -119,11 +119,14 @@ _MOSFET_LABEL_OFFSETS = _BJT_LABEL_OFFSETS
 # Conn_01x04: Reference сверху, Value снизу — canonical Connector_Generic.
 _CONN_01X04_LABEL_OFFSETS = _LabelOffsets(ref=(0.0, 5.08), value=(0.0, -7.62))
 
+# Sim.Device='V' (built-in voltage source) + Sim.Type='DC' — без Sim.Library.
+# Пустая Sim.Library триггерит KiCad GUI warning «Не найдено определение
+# модели симуляции» (blocks GUI Simulator run), хотя ngspice netlist при
+# этом валидный. Convention идёт от VSIN (Phase 1) — без Sim.Library.
 _VDC_DEFAULT_PROPERTIES = {
     'Sim.Pins': '1=+ 2=-',
-    'Sim.Type': 'V',
-    'Sim.Device': 'SPICE',
-    'Sim.Library': '',
+    'Sim.Type': 'DC',
+    'Sim.Device': 'V',
     'Sim.Params': 'dc=1 ac=1',
 }
 

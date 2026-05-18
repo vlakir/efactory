@@ -38,6 +38,7 @@ from adapters.outbound.schematic_kicad.facade import Schematic
 from adapters.outbound.subprocess_apps.app_manager import (
     SubprocessAppManager,
 )
+from domain.schematic import Position
 from domain.simulation import TranAnalysis
 from domain.spice_model import (
     ComponentCategory,
@@ -91,24 +92,28 @@ def _opt_se_5k_8() -> SpiceModel:
     )
 
 
-# Layout (mm, Y-down). Workaround Y-flip polarity у V_DC/V_AC: фасадный
-# pin_plus = real '-', pin_minus = real '+'. Для положительного B+ 250V
-# — Vb-label на pin_minus, GND на pin_plus. См. facade.py комментарий.
-_V_IN_AT = (40.0, 90.0)            # rotation=0: pin_plus (40,95.08), pin_minus (40,84.92)
-_C_IN_AT = (55.0, 84.92)           # horizontal cap соединяет к pin_minus = real '+'
-_TUBE_AT = (95.0, 90.0)
-_R_G_AT = (70.0, 100.0)
-_R_K_AT = (105.0, 100.0)
-_C_K_AT = (115.0, 100.0)
-_V_B_AT = (155.0, 50.0)            # rotation=0: pin_plus (155,55.08)=real '-', pin_minus (155,44.92)=real '+'
-_OPT_AT = (135.0, 90.0)
-_R_LOAD_AT = (165.0, 90.0)
-_GND_VIN_AT = (40.0, 100.0)        # под V_in.pin_plus (95.08)
-_GND_RG_AT = (70.0, 115.0)
-_GND_RK_AT = (105.0, 115.0)
-_GND_CK_AT = (115.0, 115.0)
-_GND_VB_AT = (155.0, 62.0)         # под V_B.pin_plus (55.08) = real '-'
-_FLG_AT = (35.0, 100.0)
+# Layout (mm, Y-down) на KiCad-стандартной сетке 1.27 mm. Wire-based
+# топология, labels — только для SPICE-trace nodes (input/plate/sec_*).
+#
+# V_DC/V_AC polarity workaround (Y-flip bug в фасаде): pin_plus = real '-',
+# pin_minus = real '+'. Для +B+=250V — pin_minus подключаем к B+ rail,
+# pin_plus → GND. См. facade.py комментарий.
+_V_IN_AT   = (50.8, 80.01)         # rotation=0: pin_plus@(50.8,85.09)→GND, pin_minus@(50.8,74.93)→C_in
+_GND_VIN_AT = (50.8, 88.9)
+_FLG_AT    = (45.72, 88.9)
+_C_IN_AT   = (63.5, 74.93)         # rotation=90 horizontal
+_R_G_AT    = (78.74, 77.47)        # pin_b@(78.74,73.66)→grid, pin_a@(78.74,81.28)→GND
+_GND_RG_AT = (78.74, 85.09)
+_TUBE_AT   = (99.06, 71.12)        # Conn_01x04: P@(93.98,68.58), G2@(93.98,71.12), G@(93.98,73.66), K@(93.98,76.2)
+_R_K_AT    = (105.41, 80.01)       # pin_b@(105.41,76.2)→cathode
+_GND_RK_AT = (105.41, 87.63)
+_C_K_AT    = (116.84, 80.01)       # parallel R_K
+_GND_CK_AT = (116.84, 87.63)
+_OPT_AT    = (132.08, 71.12)       # P1@(127.0,68.58)→plate, P2@(127.0,71.12)→B+, S1@(127.0,73.66), S2@(127.0,76.2)
+_R_LOAD_AT = (144.78, 77.47)       # pin_b@(144.78,73.66) = OPT.S1.y; pin_a@(144.78,81.28)
+_V_B_AT    = (144.78, 60.96)       # rotation=0: pin_plus@(144.78,66.04)→GND, pin_minus@(144.78,55.88)→B+ rail
+_GND_VB_AT = (144.78, 69.85)
+_BPLUS_RAIL_Y = 55.88              # horizontal rail соединяет V_B.pin_minus, tube.G2, OPT.P2
 
 
 def _app_manager() -> SubprocessAppManager:
@@ -146,41 +151,45 @@ def _build_se_amp(path: Path) -> Path:
     gnd_vb = sch.add_ground(at=_GND_VB_AT)
     flg = sch.add_pwr_flag(at=_FLG_AT, rotation=180)
 
-    # === Short wires к GND-symbols (V1/V_B pin_plus = real '-' идёт на GND) ===
+    # === Wires ===
+    # Input: V_in.pin_minus → C_in.pin_a (horizontal Y=74.93)
+    sch.connect(v_in.pin_minus, c_in.pin_a)
+    # Grid: C_in.pin_b → R_g.pin_b → tube.G (через L-corner на X=67.31, Y=73.66)
+    sch.connect(c_in.pin_b, Position(x_mm=_C_IN_AT[0] + 3.81, y_mm=73.66))
+    sch.connect(Position(x_mm=_C_IN_AT[0] + 3.81, y_mm=73.66), r_g.pin_b)
+    sch.connect(r_g.pin_b, xv1.pin('G'))
+    sch.junction(at=(_R_G_AT[0], 73.66))  # T: R_g pin + grid wire L↔R
+    # Cathode rail: tube.K → R_k.pin_b → C_k.pin_b (horizontal Y=76.2)
+    sch.connect(xv1.pin('K'), r_k.pin_b)
+    sch.connect(r_k.pin_b, c_k.pin_b)
+    sch.junction(at=(_R_K_AT[0], 76.2))  # T: R_k pin + rail
+    # Plate: tube.P → OPT.P1 (horizontal Y=68.58)
+    sch.connect(xv1.pin('P'), xt1.pin('P1'))
+    # B+ rail: V_B.pin_minus → горизонталь Y=55.88 → стуbs к tube.G2 и OPT.P2
+    sch.connect(v_b.pin_minus, Position(x_mm=93.98, y_mm=_BPLUS_RAIL_Y))
+    sch.connect(Position(x_mm=93.98, y_mm=_BPLUS_RAIL_Y), xv1.pin('G2'))
+    sch.connect(Position(x_mm=127.0, y_mm=_BPLUS_RAIL_Y), xt1.pin('P2'))
+    sch.junction(at=(127.0, _BPLUS_RAIL_Y))  # T: rail + stub к OPT
+    # Secondary loop: S1 → R_load.pin_b (horizontal Y=73.66), S2 → R_load.pin_a (L)
+    sch.connect(xt1.pin('S1'), r_load.pin_b)
+    sch.connect(xt1.pin('S2'), Position(x_mm=_R_LOAD_AT[0], y_mm=76.2))
+    sch.connect(Position(x_mm=_R_LOAD_AT[0], y_mm=76.2), r_load.pin_a)
+
+    # GND-стержни
     sch.connect(v_in.pin_plus, gnd_vin.pin)
     sch.connect(v_b.pin_plus, gnd_vb.pin)
-    sch.connect(r_g.pin_b, gnd_rg.pin)
-    sch.connect(r_k.pin_b, gnd_rk.pin)
-    sch.connect(c_k.pin_b, gnd_ck.pin)
+    sch.connect(r_g.pin_a, gnd_rg.pin)
+    sch.connect(r_k.pin_a, gnd_rk.pin)
+    sch.connect(c_k.pin_a, gnd_ck.pin)
     sch.connect(flg.pin, v_in.pin_plus)
 
-    # === Net labels (KiCad склеивает по имени) ===
-    # input net (V_in.pin_minus = real '+' → C_in.left)
+    # SPICE-trace labels (только для assertions)
     sch.label('input', at=v_in.pin_minus)
-    sch.label('input', at=c_in.pin_a)
-    # grid net (C_in.right → tube.G → R_g.top)
-    sch.label('grid', at=c_in.pin_b)
-    sch.label('grid', at=xv1.pin('G'))
-    sch.label('grid', at=r_g.pin_a)
-    # cathode net (tube.K → R_k.top → C_k.top)
-    sch.label('cathode', at=xv1.pin('K'))
-    sch.label('cathode', at=r_k.pin_a)
-    sch.label('cathode', at=c_k.pin_a)
-    # B+ rail (V_B.pin_minus = real '+' → tube.G2 → OPT.P2)
-    sch.label('Bplus', at=v_b.pin_minus)
-    sch.label('Bplus', at=xv1.pin('G2'))
-    sch.label('Bplus', at=xt1.pin('P2'))
-    # plate net (tube.P → OPT.P1)
     sch.label('plate', at=xv1.pin('P'))
-    sch.label('plate', at=xt1.pin('P1'))
-    # secondary loop (OPT.S1 → R_load.top, OPT.S2 → R_load.bottom)
     sch.label('sec_a', at=xt1.pin('S1'))
-    sch.label('sec_a', at=r_load.pin_b)
     sch.label('sec_b', at=xt1.pin('S2'))
-    sch.label('sec_b', at=r_load.pin_a)
 
-    # .tran директива для KiCad Simulator
-    sch.spice_directive('.tran 10u 5m uic', at=(40, 130))
+    sch.spice_directive('.tran 10u 5m uic', at=(50.8, 95.25))
 
     return sch.save(path)
 
