@@ -423,11 +423,30 @@ operating point, transient, AC sweep — на трёх минимальных
    новый контракт. `composition.main` не тронут — StubSimulator на
    месте до Phase 3. 415 passed, coverage 88.73%, все quality gates
    зелёные.
-3. **Phase 3 — Adapter.** `NgspiceSimulator` — wrapper generation,
-   `AppManager.run`, ASCII raw parser. Unit-тесты на парсере с
-   фиксированной фикстурой raw. Contract-тест на реальный ngspice под
-   `@pytest.mark.requires_ngspice`.
+3. **Phase 3 — Adapter. ✅ Done 2026-05-18.** Новый пакет
+   `src/adapters/outbound/ngspice/`: `raw_parser.py` (ASCII raw →
+   `SimulationResult` через `_Header`/`_Variable` dataclass'ы),
+   `wrapper.py` (генератор обёртки с очисткой `.end` из netlist'а
+   case-insensitive, `.control { set filetype=ascii; run; write … all;
+   exit }.endc`), `simulator.py` (адаптер через `AppManager.run` +
+   маппинг `ApplicationNotInstalledError → SimulatorUnavailableError`,
+   `ApplicationStartError` / non-zero exit / отсутствие raw →
+   `SimulationFailedError`). `StubSimulator` удалён;
+   `composition.main` переключён на `NgspiceSimulator(app_manager)`.
+   Тесты: 10 parser unit + 5 wrapper unit + 6 adapter с FakeAppManager
+   + 4 integration с реальным ngspice (skip-if-no-ngspice).
+   **Reality-check находка:** фикстура `rc_filter.kicad_sch` (T004)
+   экспортируется со всеми unconnected nets (`unconnected-_R1-Pad1_`
+   и т.п.) — wires в s-expr не реально соединяют pins. ngspice
+   падает. T004 acceptance проходил только потому, что StubSimulator
+   не симулировал. **Phase 5 первым делом чинит rc_filter.** e2e тест
+   `tests/e2e/walking_skeleton/test_bridge_design_to_sim.py` адаптирован
+   под текущее поведение (exit 2 + понятная ошибка) с TODO. 437
+   passed, coverage 88.77%, все quality gates зелёные.
+
 4. **Phase 4 — CLI.** Сплит `design-to-sim` на `design-to-netlist` +
    `sim-run` + новую композицию. SPICE-суффикс парсинг. Session-log.
-5. **Phase 5 — Fixtures + e2e.** `se_amp.kicad_sch`, `rectifier.kicad_sch`,
-   acceptance-тесты (§4).
+5. **Phase 5 — Fixtures + e2e.** **Перво-наперво** — починка
+   `rc_filter.kicad_sch` (после Phase 3 reality check: unconnected
+   nets); только потом `se_amp.kicad_sch`, `rectifier.kicad_sch`
+   (пилот SE-amp по C-1) и acceptance-тесты (§4).

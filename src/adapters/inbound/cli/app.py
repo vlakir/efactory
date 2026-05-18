@@ -987,8 +987,8 @@ def build_app(
             typer.echo('Simulation: completed')
         else:
             typer.echo(
-                'Simulation: not yet implemented '
-                '(T008 — ngspice integration scheduled)',
+                'Simulation: skipped (ngspice not available — install via '
+                '`apt install ngspice` / `brew install ngspice`)',
             )
 
     return app
