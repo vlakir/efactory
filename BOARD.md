@@ -61,18 +61,25 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T006** — [taken 2026-05-18] Tube SPICE model library (framework).
-  Domain.SpiceModel + TubeType + ModelSource; outbound port
-  `TubeModelLibrary` + filesystem adapter (сканирует
-  `data/models/tubes/{koren,ayumi,duncan,custom}/`, парсит
-  `.SUBCKT ... .ENDS`); конвертер `^ → **` для Ayumi-формата;
-  CLI `efactory tube list / show`; 2 generic example models
-  (Koren-style triode + Ayumi-style pentode). Out of scope:
-  скачивание upstream (T002/T003 bootstrap), русские лампы,
-  ngspice smoke (T008). Спека (Draft, 10 Clarify) —
-  `specs/T006-tube-library/spec.md`. Ветка `T006-tube-library`.
-
 ## Done
+
+- **T006** — [closed 2026-05-18, PR #24] Tube SPICE model library
+  (framework). Domain.SpiceModel (id, name, tube_type, source,
+  file_path, subckt_pins) + enums TubeType / ModelSource.
+  Outbound port TubeModelLibrary + FilesystemTubeModelLibrary
+  adapter (scan data/models/tubes/{koren,ayumi,duncan,custom}/
+  *.{lib,inc,cir}, парсинг .SUBCKT header + tube_type detection
+  через header override или pin-count fallback; id = uppercase
+  filename stem). Конвертер convert_ayumi_to_ngspice (`^ → **`)
+  применяется на read_subckt для Ayumi-источника. Settings.
+  tube_library_root + EFACTORY_TUBE_LIBRARY_ROOT env override.
+  pyproject force-include для data/models — wheel содержит
+  built-in модели. CLI subapp efactory tube list/show. 2 generic
+  example models (GENERIC_TRIODE koren + GENERIC_PENTODE ayumi).
+  299 passed, coverage 94.04%. Spec Analyzed
+  (`specs/T006-tube-library/spec.md`). Out of scope явно: upstream
+  скачивание (T002), русские лампы (заполняет bootstrap или
+  пользователь), ngspice smoke (T008).
 
 - **T010** — [closed 2026-05-18, PR #23] Открытие Фазы 1a (MVP-
   ядро): `git init` + initial commit при `project create` +
