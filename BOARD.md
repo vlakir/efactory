@@ -61,17 +61,28 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T008** — [taken 2026-05-18] Базовые SPICE-анализы в bridge:
-  OP / tran / AC через ngspice subprocess. Заменяет StubSimulator
-  реальным `NgspiceSimulator`. Spec
-  (`specs/T008-spice-analyses/spec.md`), ветка `T008-spice-analyses`.
-  Acceptance: 3 анализа отрабатывают на 3 тест-фикстурах (RC,
-  SE-amp, выпрямитель) с проверкой расчётной точки ±10%; ngspice
-  считается предусловием (apt install отдельно); CLI `bridge sim-run`
-  + `bridge design-to-netlist` + `bridge design-to-sim` как
-  композиция.
-
 ## Done
+
+- **T008** — [closed 2026-05-18, PR #31] Базовые SPICE-анализы:
+  OP / TRAN / AC через `NgspiceSimulator` (subprocess + ASCII raw
+  parser). Spec (`specs/T008-spice-analyses/spec.md`). Domain:
+  `AnalysisSpec = Op | Tran | Ac` (pydantic discriminated union),
+  `TimeSeries` / `AcSweep` VO, `SimulationResult` с invariant «ровно
+  одна ветвь». Port: `Simulator.run(netlist, analysis, *,
+  timeout_seconds=60.0)`. Adapter: `src/adapters/outbound/ngspice/`
+  (simulator + wrapper с `GND → 0` substitution + raw_parser); удалён
+  `StubSimulator`. CLI: `bridge design-to-netlist` + два sub-sub-app'a
+  `bridge sim-run {op,tran,ac}` + `bridge design-to-sim {op,tran,ac}`
+  (первая 3-уровневая typer-иерархия). SPICE-суффиксы (`1k`,
+  `1.5Meg`, не путает `m` с `Meg`). Фикстура `rc_filter.kicad_sch`
+  полностью переписана (оригинал T004 имел unconnected wires,
+  StubSimulator маскировал). E2E acceptance: OP `|V|≈1V`, TRAN
+  steady DC, AC `|H(fc)|≈0.707` на fc=159Hz. **Scope-reduced
+  2026-05-18:** SE-amp/rectifier фикстуры вынесены в T100 (после
+  интеграции `kicad-sch-api` — чтобы не делать tube subckt руками
+  в s-expr). 491 passed (+110 от baseline), coverage 87.93%.
+  Reality-check уроки в auto-memory (Y-down convention, ground via
+  power symbol с substitution, KiCad SPICE polarity quirk).
 
 - **T004** — [closed 2026-05-18, PR #30] KiCad → SPICE pipeline
   (split-scope, без ngspice). Split T004/T008 (2026-05-18) +
