@@ -35,6 +35,36 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      и его обкаткой полным CRUD-набором (T086–T092). Источник —
      ретроспективы milestone'ов в `CHANGELOG.md`. -->
 
+- **T100** — [2026-05-18] **Первоочередная после T008**. Интегрировать
+  `kicad-sch-api` (Python library) как dependency efactory и обернуть
+  в внутренний фасад `efactory.schematic` (`Schematic`, `Component`,
+  `GND`, `Label`, `connect()`, `save()`). Цель — programmatic
+  generation `.kicad_sch` без ручного s-expr: координаты pin'ов, Y-down
+  convention, GND→0 substitution, валидные lib_symbol references,
+  UUID generation — все эти детали изолированы в адаптере. Это **разблокировка
+  ядра efactory** (T011-T014 — LLM chat-client — должен ВЫЗЫВАТЬ
+  функции, а не генерировать s-expr через text completion).
+  Source: T008 Phase 5 reality check (2026-05-18) — ручной s-expr
+  оказался хрупким (Y-up vs Y-down координатная путаница, кастомные
+  power-symbol'ы валили KiCad GUI, KiCad SPICE pin order quirks).
+  Без этого модуля каждая новая схема — повторение цикла «обучения»
+  Гвидо, что противоречит концепту автоматизации.
+  Acceptance:
+  - `efactory.schematic` API позволяет собрать RC-фильтр, SE-amp и
+    выпрямитель в Python (≤30 строк каждый), без знания координат
+    pin'ов и s-expr формата;
+  - export даёт валидный `.kicad_sch`, который открывается в KiCad GUI
+    без ошибок и проходит ERC=0;
+  - `kicad-cli sch export netlist --format spice` + ngspice
+    отрабатывают на сгенерированных схемах;
+  - все ручные фикстуры из T008 (`tests/fixtures/`) переписаны через
+    новый API (это и есть smoke-test);
+  - ADR в `DECISIONS.md` фиксирует выбор `kicad-sch-api` vs
+    альтернативы (собственная реализация, skidl, etc.), причины выбора.
+  Pre-spike: оценить состояние `kicad-sch-api` (последний релиз,
+  активность, покрытие KiCad 10.0, лицензия). Если непригодна —
+  ре-открыть выбор.
+
 - **T094** — [2026-05-17] CodeRabbit rate-limit: оценить paid plan
   или альтернативу. В 0.2.0 rate-limit хитнул 6+ PR из 9, status-
   check показывал SUCCESS без реального ревью — обманчиво.
@@ -67,10 +97,6 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   `model_search`.
   Acceptance: можно найти модель в библиотеке и назначить компоненту
   с правильным pin mapping.
-- **T008** — [2026-05-15] Базовые анализы в bridge: OP, tran, AC
-  через SPICEBridge.
-  Acceptance: все три анализа отрабатывают на тестовых проектах
-  (RC, SE-amp, выпрямитель).
 
 ### Фаза 1b — Чат-клиент (+2–3 недели)
 

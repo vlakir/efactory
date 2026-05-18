@@ -10,9 +10,16 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 from pydantic import ValidationError
 
+from adapters.inbound.cli.spice_units import (
+    SpiceNumberFormatError,
+    parse_spice_number,
+)
 from application.add_decision import add_decision as add_decision_use_case
 from application.create_project import create_project as create_project_use_case
 from application.delete_project import delete_project as delete_project_use_case
+from application.design_to_netlist import (
+    design_to_netlist as design_to_netlist_use_case,
+)
 from application.design_to_sim import design_to_sim as design_to_sim_use_case
 from application.errors import (
     DecisionPersistenceError,
@@ -31,6 +38,7 @@ from application.list_projects import list_projects as list_projects_use_case
 from application.reindex_projects import (
     reindex_projects as reindex_projects_use_case,
 )
+from application.sim_run import sim_run as sim_run_use_case
 from application.update_project import (
     PhaseUpdate,
     UpdateProjectCommand,
@@ -41,6 +49,11 @@ from application.update_project import (
 from domain.application import ApplicationKind
 from domain.decision import DecisionStatus
 from domain.phase import PhaseName, PhaseStatus
+from domain.simulation import (
+    AcAnalysis,
+    OpAnalysis,
+    TranAnalysis,
+)
 from domain.spice_model import ComponentCategory
 from ports.outbound.app_manager import (
     ApplicationNotInstalledError,
@@ -51,7 +64,10 @@ from ports.outbound.decision_repository import DecisionNotFoundError
 from ports.outbound.git_repository import GitOperationError
 from ports.outbound.schematic_exporter import SchematicExportError
 from ports.outbound.session_logger import SessionEventStatus
-from ports.outbound.simulator import SimulationFailedError
+from ports.outbound.simulator import (
+    SimulationFailedError,
+    SimulatorUnavailableError,
+)
 from ports.outbound.spice_model_library import SpiceModelNotFoundError
 
 if TYPE_CHECKING:
@@ -61,7 +77,7 @@ if TYPE_CHECKING:
     from application.reindex_projects import ReindexSummary
     from domain.decision import Decision
     from domain.project import Project
-    from domain.simulation import Simulation
+    from domain.simulation import AnalysisSpec, Simulation, SimulationResult
     from domain.spice_model import SpiceModel
     from ports.outbound.app_manager import AppManager, RunResult
     from ports.outbound.decision_repository import DecisionRepository
@@ -920,12 +936,55 @@ def build_app(
     bridge_app = typer.Typer(no_args_is_help=True, add_completion=False)
     app.add_typer(bridge_app, name='bridge')
 
-    @bridge_app.command('design-to-sim')
-    def bridge_design_to_sim(
-        project: Annotated[
-            str,
-            typer.Argument(help='Имя проекта'),
-        ],
+    def _exit_on_bridge_error(exc: Exception) -> typer.Exit:
+        """Унифицированный маппинг bridge-ошибок в exit-коды."""
+        typer.echo(str(exc), err=True)
+        if isinstance(exc, ProjectNotFoundError):
+            return typer.Exit(code=1)
+        return typer.Exit(code=2)
+
+    def _make_tran(
+        t_step: str,
+        t_stop: str,
+        t_start: str,
+        *,
+        uic: bool,
+    ) -> TranAnalysis:
+        return TranAnalysis(
+            t_step=parse_spice_number(t_step),
+            t_stop=parse_spice_number(t_stop),
+            t_start=parse_spice_number(t_start),
+            uic=uic,
+        )
+
+    def _make_ac(
+        sweep: str,
+        n_points: int,
+        f_start: str,
+        f_stop: str,
+    ) -> AcAnalysis:
+        return AcAnalysis(
+            sweep=sweep,  # type: ignore[arg-type]
+            n_points=n_points,
+            f_start=parse_spice_number(f_start),
+            f_stop=parse_spice_number(f_stop),
+        )
+
+    def _echo_sim_status(sim: Simulation) -> None:
+        typer.echo(f'Exported netlist: {sim.netlist_path}')
+        if sim.status.value == 'simulated':
+            typer.echo('Simulation: completed')
+        else:
+            typer.echo(
+                'Simulation: skipped (ngspice not available — install via '
+                '`apt install ngspice` / `brew install ngspice`)',
+            )
+
+    # === bridge design-to-netlist (без симуляции) ===
+
+    @bridge_app.command('design-to-netlist')
+    def bridge_design_to_netlist(
+        project: Annotated[str, typer.Argument(help='Имя проекта')],
         *,
         schematic: Annotated[
             str,
@@ -943,7 +1002,7 @@ def build_app(
         ] = None,
     ) -> None:
         async def _run() -> Simulation:
-            return await design_to_sim_use_case(
+            return await design_to_netlist_use_case(
                 project_name=project,
                 schematic=Path(schematic),
                 netlist_output=(
@@ -952,14 +1011,13 @@ def build_app(
                 repo=metadata_repository,
                 manifest_repo=manifest_repository,
                 exporter=schematic_exporter,
-                simulator=simulator,
             )
 
         try:
             sim = asyncio.run(
                 _log_command(
                     session_logger,
-                    'bridge.design_to_sim',
+                    'bridge.design_to_netlist',
                     project=project,
                     payload={
                         'project': project,
@@ -969,26 +1027,329 @@ def build_app(
                     fn=_run,
                 ),
             )
-        except ProjectNotFoundError as exc:
-            typer.echo(str(exc), err=True)
-            raise typer.Exit(code=1) from exc
-        except ProjectManifestMissingError as exc:
-            typer.echo(str(exc), err=True)
-            raise typer.Exit(code=2) from exc
-        except SchematicExportError as exc:
-            typer.echo(str(exc), err=True)
-            raise typer.Exit(code=2) from exc
-        except SimulationFailedError as exc:
-            typer.echo(str(exc), err=True)
-            raise typer.Exit(code=2) from exc
+        except (
+            ProjectNotFoundError,
+            ProjectManifestMissingError,
+            SchematicExportError,
+        ) as exc:
+            raise _exit_on_bridge_error(exc) from exc
 
         typer.echo(f'Exported netlist: {sim.netlist_path}')
-        if sim.status.value == 'simulated':
-            typer.echo('Simulation: completed')
-        else:
-            typer.echo(
-                'Simulation: not yet implemented '
-                '(T008 — ngspice integration scheduled)',
+
+    # === bridge sim-run <op|tran|ac> (только симуляция готового netlist'а) ===
+
+    sim_run_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    bridge_app.add_typer(sim_run_app, name='sim-run')
+
+    async def _execute_sim_run(
+        netlist: Path,
+        analysis: AnalysisSpec,
+        timeout_seconds: float,
+        event: str,
+    ) -> SimulationResult:
+        async def _run() -> SimulationResult:
+            return await sim_run_use_case(
+                netlist=netlist,
+                analysis=analysis,
+                simulator=simulator,
+                timeout_seconds=timeout_seconds,
             )
+
+        return await _log_command(
+            session_logger,
+            event,
+            project=None,
+            payload={
+                'netlist': str(netlist),
+                'analysis': analysis.type,
+                'timeout_seconds': timeout_seconds,
+            },
+            fn=_run,
+        )
+
+    def _run_sim_and_report(
+        netlist: str,
+        analysis: AnalysisSpec,
+        timeout_seconds: float,
+        event: str,
+    ) -> None:
+        try:
+            asyncio.run(
+                _execute_sim_run(
+                    Path(netlist),
+                    analysis,
+                    timeout_seconds,
+                    event,
+                ),
+            )
+        except (
+            SimulationFailedError,
+            SimulatorUnavailableError,
+            SpiceNumberFormatError,
+            ValidationError,
+        ) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        typer.echo(f'Simulation: completed (analysis={analysis.type})')
+
+    @sim_run_app.command('op')
+    def sim_run_op(
+        netlist: Annotated[str, typer.Argument(help='Путь к SPICE netlist')],
+        *,
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
+        ] = 60.0,
+    ) -> None:
+        _run_sim_and_report(
+            netlist,
+            OpAnalysis(),
+            timeout,
+            'bridge.sim_run.op',
+        )
+
+    @sim_run_app.command('tran')
+    def sim_run_tran(
+        netlist: Annotated[str, typer.Argument(help='Путь к SPICE netlist')],
+        *,
+        t_step: Annotated[
+            str,
+            typer.Option('--t-step', help='Шаг по времени (SPICE-нотация: 1u, 10n)'),
+        ],
+        t_stop: Annotated[
+            str,
+            typer.Option('--t-stop', help='Длительность (1m, 20m)'),
+        ],
+        t_start: Annotated[
+            str,
+            typer.Option('--t-start', help='Начало записи (default 0)'),
+        ] = '0',
+        uic: Annotated[
+            bool,
+            typer.Option('--uic', help='Use Initial Conditions'),
+        ] = False,
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
+        ] = 60.0,
+    ) -> None:
+        try:
+            analysis = _make_tran(t_step, t_stop, t_start, uic=uic)
+        except (SpiceNumberFormatError, ValidationError) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+        _run_sim_and_report(
+            netlist,
+            analysis,
+            timeout,
+            'bridge.sim_run.tran',
+        )
+
+    @sim_run_app.command('ac')
+    def sim_run_ac(
+        netlist: Annotated[str, typer.Argument(help='Путь к SPICE netlist')],
+        *,
+        n_points: Annotated[
+            int,
+            typer.Option(
+                '--n-points', help='Число точек на октаву / декаду / на интервале'
+            ),
+        ],
+        f_start: Annotated[
+            str,
+            typer.Option('--f-start', help='Начальная частота (1, 10, 100)'),
+        ],
+        f_stop: Annotated[
+            str,
+            typer.Option('--f-stop', help='Конечная частота (1Meg, 100k)'),
+        ],
+        sweep: Annotated[
+            str,
+            typer.Option(
+                '--sweep',
+                help='Тип развёртки: dec / lin / oct (default dec)',
+            ),
+        ] = 'dec',
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
+        ] = 60.0,
+    ) -> None:
+        try:
+            analysis = _make_ac(sweep, n_points, f_start, f_stop)
+        except (SpiceNumberFormatError, ValidationError) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+        _run_sim_and_report(
+            netlist,
+            analysis,
+            timeout,
+            'bridge.sim_run.ac',
+        )
+
+    # === bridge design-to-sim <op|tran|ac> (композиция export + sim) ===
+
+    design_to_sim_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    bridge_app.add_typer(design_to_sim_app, name='design-to-sim')
+
+    async def _execute_design_to_sim(
+        project: str,
+        schematic: str,
+        netlist_output: str | None,
+        analysis: AnalysisSpec,
+        timeout_seconds: float,
+        event: str,
+    ) -> Simulation:
+        async def _run() -> Simulation:
+            return await design_to_sim_use_case(
+                project_name=project,
+                schematic=Path(schematic),
+                analysis=analysis,
+                netlist_output=(
+                    Path(netlist_output) if netlist_output is not None else None
+                ),
+                timeout_seconds=timeout_seconds,
+                repo=metadata_repository,
+                manifest_repo=manifest_repository,
+                exporter=schematic_exporter,
+                simulator=simulator,
+            )
+
+        return await _log_command(
+            session_logger,
+            event,
+            project=project,
+            payload={
+                'project': project,
+                'schematic': schematic,
+                'netlist_output': netlist_output,
+                'analysis': analysis.type,
+                'timeout_seconds': timeout_seconds,
+            },
+            fn=_run,
+        )
+
+    def _run_dts_and_report(
+        project: str,
+        schematic: str,
+        netlist_output: str | None,
+        analysis: AnalysisSpec,
+        timeout_seconds: float,
+        event: str,
+    ) -> None:
+        try:
+            sim = asyncio.run(
+                _execute_design_to_sim(
+                    project,
+                    schematic,
+                    netlist_output,
+                    analysis,
+                    timeout_seconds,
+                    event,
+                ),
+            )
+        except (
+            ProjectNotFoundError,
+            ProjectManifestMissingError,
+            SchematicExportError,
+            SimulationFailedError,
+            SpiceNumberFormatError,
+            ValidationError,
+        ) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        _echo_sim_status(sim)
+
+    @design_to_sim_app.command('op')
+    def dts_op(
+        project: Annotated[str, typer.Argument(help='Имя проекта')],
+        *,
+        schematic: Annotated[
+            str,
+            typer.Option('--schematic', help='Путь к .kicad_sch'),
+        ],
+        netlist_output: Annotated[
+            str | None,
+            typer.Option('--netlist-output', help='Путь для SPICE netlist'),
+        ] = None,
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
+        ] = 60.0,
+    ) -> None:
+        _run_dts_and_report(
+            project,
+            schematic,
+            netlist_output,
+            OpAnalysis(),
+            timeout,
+            'bridge.design_to_sim.op',
+        )
+
+    @design_to_sim_app.command('tran')
+    def dts_tran(
+        project: Annotated[str, typer.Argument(help='Имя проекта')],
+        *,
+        schematic: Annotated[
+            str,
+            typer.Option('--schematic', help='Путь к .kicad_sch'),
+        ],
+        t_step: Annotated[str, typer.Option('--t-step')],
+        t_stop: Annotated[str, typer.Option('--t-stop')],
+        t_start: Annotated[str, typer.Option('--t-start')] = '0',
+        uic: Annotated[bool, typer.Option('--uic')] = False,
+        netlist_output: Annotated[
+            str | None,
+            typer.Option('--netlist-output'),
+        ] = None,
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout'),
+        ] = 60.0,
+    ) -> None:
+        try:
+            analysis = _make_tran(t_step, t_stop, t_start, uic=uic)
+        except (SpiceNumberFormatError, ValidationError) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+        _run_dts_and_report(
+            project,
+            schematic,
+            netlist_output,
+            analysis,
+            timeout,
+            'bridge.design_to_sim.tran',
+        )
+
+    @design_to_sim_app.command('ac')
+    def dts_ac(
+        project: Annotated[str, typer.Argument(help='Имя проекта')],
+        *,
+        schematic: Annotated[
+            str,
+            typer.Option('--schematic', help='Путь к .kicad_sch'),
+        ],
+        n_points: Annotated[int, typer.Option('--n-points')],
+        f_start: Annotated[str, typer.Option('--f-start')],
+        f_stop: Annotated[str, typer.Option('--f-stop')],
+        sweep: Annotated[str, typer.Option('--sweep')] = 'dec',
+        netlist_output: Annotated[
+            str | None,
+            typer.Option('--netlist-output'),
+        ] = None,
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout'),
+        ] = 60.0,
+    ) -> None:
+        try:
+            analysis = _make_ac(sweep, n_points, f_start, f_stop)
+        except (SpiceNumberFormatError, ValidationError) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+        _run_dts_and_report(
+            project,
+            schematic,
+            netlist_output,
+            analysis,
+            timeout,
+            'bridge.design_to_sim.ac',
+        )
 
     return app

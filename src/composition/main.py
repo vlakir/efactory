@@ -29,6 +29,7 @@ from adapters.outbound.kicad_cli.schematic_exporter import (
 from adapters.outbound.manifest_yaml.project_manifest_repository import (
     FilesystemProjectManifestRepository,
 )
+from adapters.outbound.ngspice.simulator import NgspiceSimulator
 from adapters.outbound.persistence_sql.migrations_runner import run_migrations
 from adapters.outbound.persistence_sql.repository import (
     SqlAlchemyMetadataRepository,
@@ -42,7 +43,6 @@ from adapters.outbound.session_jsonl.session_logger import (
 from adapters.outbound.spice_models.spice_library import (
     FilesystemSpiceModelLibrary,
 )
-from adapters.outbound.stub_simulator.simulator import StubSimulator
 from adapters.outbound.subprocess_apps.app_manager import (
     SubprocessAppManager,
 )
@@ -114,7 +114,7 @@ def build_cli_app() -> typer.Typer:
         ),
         app_manager=app_manager,
         schematic_exporter=KicadCliSchematicExporter(app_manager),
-        simulator=StubSimulator(),
+        simulator=NgspiceSimulator(app_manager),
     )
 
 

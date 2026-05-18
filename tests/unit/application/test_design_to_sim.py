@@ -1,4 +1,4 @@
-"""design_to_sim use case — unit с fake-портами (T004)."""
+"""design_to_sim use case — unit с fake-портами (T004 / T008)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,12 @@ import pytest
 from application.design_to_sim import design_to_sim
 from application.errors import ProjectManifestMissingError
 from application.get_project import ProjectNotFoundError
-from domain.simulation import SimulationResult, SimulationStatus
+from domain.simulation import (
+    AnalysisSpec,
+    OpAnalysis,
+    SimulationResult,
+    SimulationStatus,
+)
 from ports.outbound.project_manifest_repository import ManifestNotFoundError
 from ports.outbound.schematic_exporter import SchematicExportError
 from ports.outbound.simulator import (
@@ -63,10 +68,16 @@ class FakeSimulator:
     ) -> None:
         self._result = result
         self._raises = raises
-        self.calls: list[Path] = []
+        self.calls: list[tuple[Path, AnalysisSpec, float]] = []
 
-    async def run_op(self, netlist: Path) -> SimulationResult:
-        self.calls.append(netlist)
+    async def run(
+        self,
+        netlist: Path,
+        analysis: AnalysisSpec,
+        *,
+        timeout_seconds: float = 60.0,
+    ) -> SimulationResult:
+        self.calls.append((netlist, analysis, timeout_seconds))
         if self._raises is not None:
             raise self._raises
         assert self._result is not None
@@ -96,7 +107,8 @@ async def test_design_to_sim_exports_netlist_and_stub_simulator_returns_netlist_
 
     sim = await design_to_sim(
         project_name='demo',
-        schematic=schematic,
+        analysis=OpAnalysis(),
+                schematic=schematic,
         repo=repo,
         manifest_repo=manifest_repo,
         exporter=exporter,
@@ -129,7 +141,8 @@ async def test_design_to_sim_returns_simulated_when_real_simulator_works(
 
     sim = await design_to_sim(
         project_name='demo',
-        schematic=Path('schematic/rc.kicad_sch'),
+        analysis=OpAnalysis(),
+                schematic=Path('schematic/rc.kicad_sch'),
         repo=repo,
         manifest_repo=manifest_repo,
         exporter=exporter,
@@ -139,6 +152,11 @@ async def test_design_to_sim_returns_simulated_when_real_simulator_works(
     assert sim.status is SimulationStatus.SIMULATED
     assert sim.result is not None
     assert sim.result.operating_points == {'V(out)': 3.3}
+    assert len(simulator.calls) == 1
+    netlist_called, analysis_called, timeout_called = simulator.calls[0]
+    assert netlist_called == project.path / 'sim' / 'rc.cir'
+    assert isinstance(analysis_called, OpAnalysis)
+    assert timeout_called == 60.0
 
 
 async def test_design_to_sim_absolute_schematic_path_kept(tmp_path: Path) -> None:
@@ -154,7 +172,8 @@ async def test_design_to_sim_absolute_schematic_path_kept(tmp_path: Path) -> Non
 
     sim = await design_to_sim(
         project_name='demo',
-        schematic=abs_schematic,
+        analysis=OpAnalysis(),
+                schematic=abs_schematic,
         repo=repo,
         manifest_repo=manifest_repo,
         exporter=exporter,
@@ -175,7 +194,8 @@ async def test_design_to_sim_custom_netlist_output(tmp_path: Path) -> None:
 
     sim = await design_to_sim(
         project_name='demo',
-        schematic=Path('schematic/x.kicad_sch'),
+        analysis=OpAnalysis(),
+                schematic=Path('schematic/x.kicad_sch'),
         netlist_output=custom_output,
         repo=repo,
         manifest_repo=manifest_repo,
@@ -195,6 +215,7 @@ async def test_design_to_sim_unknown_project_raises() -> None:
     with pytest.raises(ProjectNotFoundError):
         await design_to_sim(
             project_name='ghost',
+            analysis=OpAnalysis(),
             schematic=Path('schematic/x.kicad_sch'),
             repo=repo,
             manifest_repo=manifest_repo,
@@ -213,7 +234,8 @@ async def test_design_to_sim_manifest_missing_raises(tmp_path: Path) -> None:
     with pytest.raises(ProjectManifestMissingError):
         await design_to_sim(
             project_name='demo',
-            schematic=Path('x.kicad_sch'),
+            analysis=OpAnalysis(),
+                    schematic=Path('x.kicad_sch'),
             repo=repo,
             manifest_repo=manifest_repo,
             exporter=exporter,
@@ -232,7 +254,8 @@ async def test_design_to_sim_propagates_exporter_error(tmp_path: Path) -> None:
     with pytest.raises(SchematicExportError, match='bad sch'):
         await design_to_sim(
             project_name='demo',
-            schematic=Path('schematic/x.kicad_sch'),
+            analysis=OpAnalysis(),
+                    schematic=Path('schematic/x.kicad_sch'),
             repo=repo,
             manifest_repo=manifest_repo,
             exporter=exporter,
@@ -252,7 +275,8 @@ async def test_design_to_sim_propagates_simulation_failed(tmp_path: Path) -> Non
     with pytest.raises(SimulationFailedError):
         await design_to_sim(
             project_name='demo',
-            schematic=Path('schematic/x.kicad_sch'),
+            analysis=OpAnalysis(),
+                    schematic=Path('schematic/x.kicad_sch'),
             repo=repo,
             manifest_repo=manifest_repo,
             exporter=exporter,

@@ -41,11 +41,11 @@ def _setup_env(
 
 
 @needs_kicad
-def test_design_to_sim_rc_filter_produces_spice_netlist(
+def test_design_to_sim_rc_filter_exports_netlist(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """T004 acceptance: RC-фильтр → SPICE netlist через kicad-cli."""
+    """E2E: RC-фильтр → SPICE netlist через kicad-cli → ngspice OP (T008)."""
     projects_root = _setup_env(tmp_path, monkeypatch)
     runner = CliRunner()
 
@@ -64,23 +64,22 @@ def test_design_to_sim_rc_filter_produces_spice_netlist(
         [
             'bridge',
             'design-to-sim',
+            'op',
             'rc_test',
             '--schematic',
             'schematic/rc_filter.kicad_sch',
         ],
     )
+
     assert bridge_result.exit_code == 0, bridge_result.output
+    assert 'Simulation: completed' in bridge_result.output
 
     netlist_path = project_path / 'sim' / 'rc_filter.cir'
     assert netlist_path.is_file()
     content = netlist_path.read_text(encoding='utf-8')
-    # Acceptance: содержит R1, C1, V1 (имена из fixture).
     assert 'R1' in content
     assert 'C1' in content
     assert 'V1' in content
-    # T004 split-scope: simulation pending (T008 message).
-    assert 'not yet implemented' in bridge_result.output
-    assert 'T008' in bridge_result.output
 
 
 @needs_kicad
@@ -96,6 +95,7 @@ def test_design_to_sim_unknown_project_exits_one(
         [
             'bridge',
             'design-to-sim',
+            'op',
             'ghost',
             '--schematic',
             'schematic/x.kicad_sch',
@@ -124,6 +124,7 @@ def test_design_to_sim_invalid_schematic_returns_export_error(
         [
             'bridge',
             'design-to-sim',
+            'op',
             'bad',
             '--schematic',
             'schematic/broken.kicad_sch',
