@@ -61,6 +61,17 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T010** — [taken 2026-05-18] Открытие Фазы 1a (MVP-ядро):
+  `git init` + initial commit при `project create` + structured
+  session log (`<session_root>/<session_id>/log.jsonl`). Новые
+  outbound порты `GitRepository` + `SessionLogger`; subprocess
+  git adapter и filesystem JSONL adapter. CLI команды
+  оборачиваются session-log декоратором. Готовит канал для будущих
+  bridges (Phase 1a T004+) и для chat-клиента tool_use событий
+  (Phase 1b). Спека (Draft, 10 Clarify) —
+  `specs/T010-git-init-and-logging/spec.md`. Ветка
+  `T010-git-init-and-logging`.
+
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
