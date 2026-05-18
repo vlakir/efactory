@@ -412,14 +412,30 @@ class Schematic:
     _pwr_counter: int = 0
     _flg_counter: int = 0
 
+    def _auto_ref(self, prefix: str) -> str:
+        """
+        Найти наименьший свободный `<prefix><N>` среди уже добавленных.
+
+        Используется когда пользователь не передал `reference` явно. Заполняет
+        «дыры» — если есть R1 и R3, то возвращает R2 для следующего auto-add.
+        Power markers (#PWR##/#FLG##) имеют отдельные счётчики и не учитываются.
+        """
+        used = {c.reference for c in self._components}
+        n = 1
+        while f'{prefix}{n}' in used:
+            n += 1
+        return f'{prefix}{n}'
+
     def add_resistor(
         self,
         *,
-        reference: str,
         value: str,
         at: tuple[float, float] | Position,
+        reference: str | None = None,
         rotation: float = 0.0,
     ) -> Resistor:
+        if reference is None:
+            reference = self._auto_ref('R')
         position = _to_position(at)
         ref_pos, value_pos = _label_positions(position, _RC_LABEL_OFFSETS)
         self._components.append(
@@ -444,11 +460,13 @@ class Schematic:
     def add_capacitor(
         self,
         *,
-        reference: str,
         value: str,
         at: tuple[float, float] | Position,
+        reference: str | None = None,
         rotation: float = 0.0,
     ) -> Capacitor:
+        if reference is None:
+            reference = self._auto_ref('C')
         position = _to_position(at)
         ref_pos, value_pos = _label_positions(position, _RC_LABEL_OFFSETS)
         self._components.append(
@@ -473,11 +491,13 @@ class Schematic:
     def add_inductor(
         self,
         *,
-        reference: str,
         value: str,
         at: tuple[float, float] | Position,
+        reference: str | None = None,
         rotation: float = 0.0,
     ) -> Inductor:
+        if reference is None:
+            reference = self._auto_ref('L')
         position = _to_position(at)
         ref_pos, value_pos = _label_positions(position, _INDUCTOR_LABEL_OFFSETS)
         self._components.append(
@@ -502,9 +522,9 @@ class Schematic:
     def add_diode(
         self,
         *,
-        reference: str,
         value: str,
         at: tuple[float, float] | Position,
+        reference: str | None = None,
         rotation: float = 0.0,
         spice_params: str | None = None,
     ) -> Diode:
@@ -515,6 +535,8 @@ class Schematic:
         (например, Duncan-модель 1N4007). Если None — используется default
         из библиотеки (generic Si: Is=14.11n N=1.984 ... 1N4007-like).
         """
+        if reference is None:
+            reference = self._auto_ref('D')
         position = _to_position(at)
         properties = dict(_DIODE_DEFAULT_PROPERTIES)
         if spice_params is not None:
@@ -541,11 +563,13 @@ class Schematic:
     def add_v_dc(
         self,
         *,
-        reference: str,
         value: str,
         at: tuple[float, float] | Position,
+        reference: str | None = None,
         rotation: float = 0.0,
     ) -> VoltageSourceDc:
+        if reference is None:
+            reference = self._auto_ref('V')
         position = _to_position(at)
         properties = dict(_VDC_DEFAULT_PROPERTIES)
         properties['Sim.Params'] = f'dc={value} ac=1'
@@ -571,12 +595,12 @@ class Schematic:
     def add_v_ac(
         self,
         *,
-        reference: str,
         value: str,
         at: tuple[float, float] | Position,
         amplitude: float,
         frequency: float,
         dc_offset: float = 0.0,
+        reference: str | None = None,
         rotation: float = 0.0,
     ) -> VoltageSourceAc:
         """
@@ -586,6 +610,8 @@ class Schematic:
         DC-смещение, В. Sim.Params строится как
         `dc={dc_offset} ampl={amplitude} f={frequency} ac=1`.
         """
+        if reference is None:
+            reference = self._auto_ref('V')
         position = _to_position(at)
         properties = dict(_VAC_DEFAULT_PROPERTIES)
         properties['Sim.Params'] = f'dc={dc_offset} ampl={amplitude} f={frequency} ac=1'
@@ -674,11 +700,11 @@ class Schematic:
     def add_bjt(
         self,
         *,
-        reference: str,
         value: str,
         polarity: str,
         model_name: str,
         at: tuple[float, float] | Position,
+        reference: str | None = None,
         rotation: float = 0.0,
     ) -> Bjt:
         """
@@ -690,6 +716,8 @@ class Schematic:
         SPICE pin order для primitive BJT — C/B/E, что фиксируется
         `Sim.Pins='C=1 B=2 E=3'`.
         """
+        if reference is None:
+            reference = self._auto_ref('Q')
         if polarity == 'NPN':
             lib_id = 'Device:Q_NPN'
         elif polarity == 'PNP':
@@ -725,11 +753,11 @@ class Schematic:
     def add_mosfet(
         self,
         *,
-        reference: str,
         value: str,
         polarity: str,
         model_name: str,
         at: tuple[float, float] | Position,
+        reference: str | None = None,
         rotation: float = 0.0,
     ) -> Mosfet:
         """
@@ -738,6 +766,8 @@ class Schematic:
         SPICE pin order для primitive MOSFET — D/G/S (3-pin модель, bulk
         соединён к source внутри primitive). `Sim.Pins='D=1 G=2 S=3'`.
         """
+        if reference is None:
+            reference = self._auto_ref('M')
         if polarity == 'NMOS':
             lib_id = 'Device:Q_NMOS'
         elif polarity == 'PMOS':
@@ -773,11 +803,11 @@ class Schematic:
     def add_subckt(
         self,
         *,
-        reference: str,
         model_id: str,
         lib_path: Path,
         pin_names: tuple[str, ...],
         at: tuple[float, float] | Position,
+        reference: str | None = None,
         rotation: float = 0.0,
         symbol: str | None = None,
     ) -> Subcircuit:
@@ -800,6 +830,8 @@ class Schematic:
         Используется внутри `add_tube` / `add_transformer`; в API
         пользователя — для специфичных моделей без VO в T006/T007.
         """
+        if reference is None:
+            reference = self._auto_ref('X')
         position = _to_position(at)
         if symbol is None:
             return self._add_generic_conn_subckt(
@@ -952,8 +984,8 @@ class Schematic:
         self,
         *,
         spice_model: SpiceModel,
-        reference: str,
         at: tuple[float, float] | Position,
+        reference: str | None = None,
         rotation: float = 0.0,
         symbol: str | None = None,
     ) -> Subcircuit:
@@ -982,8 +1014,8 @@ class Schematic:
         self,
         *,
         spice_model: SpiceModel,
-        reference: str,
         at: tuple[float, float] | Position,
+        reference: str | None = None,
         rotation: float = 0.0,
     ) -> Subcircuit:
         """

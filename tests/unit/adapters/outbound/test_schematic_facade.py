@@ -313,3 +313,76 @@ def test_add_transformer_uses_spice_model_metadata() -> None:
     c = sch.to_spec().components[0]
     assert c.properties['Sim.Name'] == 'OPT_SE_5K_8'
     assert c.properties['Sim.Pins'] == '1=P1 2=P2 3=S1 4=S2'
+
+
+# ---------- T104: auto-numbering refs ----------
+
+
+def test_auto_ref_resistor_sequence() -> None:
+    """Без explicit reference: R1, R2, R3 в порядке add'а."""
+    sch = Schematic('t')
+    r1 = sch.add_resistor(value='1k', at=(0.0, 0.0))
+    r2 = sch.add_resistor(value='2k', at=(10.0, 0.0))
+    r3 = sch.add_resistor(value='3k', at=(20.0, 0.0))
+    assert (r1.reference, r2.reference, r3.reference) == ('R1', 'R2', 'R3')
+
+
+def test_auto_ref_per_kind_independent() -> None:
+    """Каждый kind — свой счётчик: R1/C1/L1/D1/V1/Q1/M1/X1."""
+    sch = Schematic('t')
+    r = sch.add_resistor(value='1k', at=(0.0, 0.0))
+    c = sch.add_capacitor(value='1u', at=(10.0, 0.0))
+    li = sch.add_inductor(value='1m', at=(20.0, 0.0))
+    d = sch.add_diode(value='D', at=(30.0, 0.0))
+    v = sch.add_v_dc(value='5', at=(40.0, 0.0))
+    q = sch.add_bjt(
+        value='2N3904', polarity='NPN', model_name='2N3904',
+        at=(50.0, 0.0),
+    )
+    m = sch.add_mosfet(
+        value='IRF540', polarity='NMOS', model_name='IRF540',
+        at=(60.0, 0.0),
+    )
+    assert r.reference == 'R1'
+    assert c.reference == 'C1'
+    assert li.reference == 'L1'
+    assert d.reference == 'D1'
+    assert v.reference == 'V1'
+    assert q.reference == 'Q1'
+    assert m.reference == 'M1'
+
+
+def test_auto_ref_skips_explicit() -> None:
+    """Explicit R5 → следующий auto = R1 (не R6); затем R2, R3, R4 (R5 занят)."""
+    sch = Schematic('t')
+    r5 = sch.add_resistor(reference='R5', value='5k', at=(0.0, 0.0))
+    r1 = sch.add_resistor(value='1k', at=(10.0, 0.0))
+    r2 = sch.add_resistor(value='2k', at=(20.0, 0.0))
+    r3 = sch.add_resistor(value='3k', at=(30.0, 0.0))
+    r4 = sch.add_resistor(value='4k', at=(40.0, 0.0))
+    # Auto-counter заполняет дыры: после R5 — R1, R2, R3, R4, потом R6
+    r6 = sch.add_resistor(value='6k', at=(50.0, 0.0))
+    refs = (r5.reference, r1.reference, r2.reference, r3.reference,
+            r4.reference, r6.reference)
+    assert refs == ('R5', 'R1', 'R2', 'R3', 'R4', 'R6')
+
+
+def test_auto_ref_tube_uses_x_prefix() -> None:
+    """add_tube без reference: X1 (subckt SPICE convention)."""
+    sch = Schematic('t')
+    model = SpiceModel(
+        id='6P14P', name='6П14П',
+        category=ComponentCategory.TUBE, subcategory='pentode',
+        source=ModelSource.CUSTOM,
+        file_path=Path('/data/tubes/6P14P.lib'),
+        subckt_pins=('P', 'G2', 'G', 'K'),
+    )
+    xv = sch.add_tube(spice_model=model, at=(0.0, 0.0))
+    assert xv.reference == 'X1'
+
+
+def test_auto_ref_explicit_overrides() -> None:
+    """Explicit reference имеет приоритет — auto не вмешивается."""
+    sch = Schematic('t')
+    r = sch.add_resistor(reference='Rload', value='100k', at=(0.0, 0.0))
+    assert r.reference == 'Rload'

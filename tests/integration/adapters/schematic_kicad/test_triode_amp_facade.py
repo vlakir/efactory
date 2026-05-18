@@ -124,31 +124,23 @@ def _build_triode_amp(path: Path) -> Path:
     """Common-cathode 6П14П (EL84-symbol) — простой R-loaded SE stage."""
     sch = Schematic('triode_amp_6p14p')
 
-    v_bb = sch.add_v_dc(reference='V1', value='250', at=_V_BB_AT)
-    v_in = sch.add_v_ac(
-        reference='V2', value='VSIN', at=_V_IN_AT,
-        amplitude=0.010, frequency=1000.0,
+    # T104 auto-numbering: refs не указываем явно — фасад присваивает
+    # V1, V2, C1, R1, X1, R2, R3, C2, C3, R4 в порядке add'а.
+    v_bb = sch.add_v_dc(value='250', at=_V_BB_AT)                     # V1
+    v_in = sch.add_v_ac(                                              # V2
+        value='VSIN', at=_V_IN_AT, amplitude=0.010, frequency=1000.0,
     )
-    c_in = sch.add_capacitor(
-        reference='C1', value='100n', at=_C_IN_AT, rotation=90,
+    c_in = sch.add_capacitor(value='100n', at=_C_IN_AT, rotation=90)  # C1
+    r_g = sch.add_resistor(value='470k', at=_R_G_AT)                  # R1
+    r_p = sch.add_resistor(value='4.7k', at=_R_P_AT)                  # R2
+    xv1 = sch.add_tube(                                               # X1
+        spice_model=_tube_6p14p(), at=_TUBE_AT, symbol='Valve:EL84',
     )
-    # KiCad annotation requirement: references = <Letter><Number>.
-    # Без trailing цифры (Rg/Rk/Rp/RL/Ck/Cout) KiCad GUI запрашивает
-    # auto-annotate перед simulation. Используем R1..R4, C2/C3 чтобы
-    # схема была "annotated" сразу и Simulator запускался без диалога.
-    r_g = sch.add_resistor(reference='R1', value='470k', at=_R_G_AT)
-    r_p = sch.add_resistor(reference='R2', value='4.7k', at=_R_P_AT)
-    xv1 = sch.add_tube(
-        spice_model=_tube_6p14p(),
-        reference='XV1',
-        at=_TUBE_AT,
-        symbol='Valve:EL84',          # T104 — реальный пентод вместо Conn_01x04
-    )
-    r_k = sch.add_resistor(reference='R3', value='270', at=_R_K_AT)
-    c_k = sch.add_capacitor(reference='C2', value='22u', at=_C_K_AT)
+    r_k = sch.add_resistor(value='270', at=_R_K_AT)                   # R3
+    c_k = sch.add_capacitor(value='22u', at=_C_K_AT)                  # C2
     # Output stage (T104 — AC coupling)
-    c_out = sch.add_capacitor(reference='C3', value='220n', at=_C_OUT_AT)
-    r_load = sch.add_resistor(reference='R4', value='100k', at=_R_LOAD_AT)
+    c_out = sch.add_capacitor(value='220n', at=_C_OUT_AT)             # C3
+    r_load = sch.add_resistor(value='100k', at=_R_LOAD_AT)            # R4
     gnd_vbb = sch.add_ground(at=_GND_VBB_AT)
     gnd_vin = sch.add_ground(at=_GND_VIN_AT)
     gnd_rg = sch.add_ground(at=_GND_RG_AT)
@@ -244,8 +236,9 @@ async def test_facade_triode_amp_netlist_includes_tube_subckt(
     sch_path = _build_triode_amp(tmp_path / 'triode_amp.kicad_sch')
     netlist = await _export_netlist(sch_path, tmp_path / 'triode_amp.cir')
     text = netlist.read_text()
-    xv1_lines = [ln for ln in text.splitlines() if ln.startswith('XV1 ')]
-    assert xv1_lines, f'No XV1 line:\n{text}'
+    # Auto-numbered subckt ref = X1 (SPICE convention X prefix).
+    xv1_lines = [ln for ln in text.splitlines() if ln.startswith('X1 ')]
+    assert xv1_lines, f'No X1 line:\n{text}'
     assert xv1_lines[0].split()[-1] == '6P14P', xv1_lines[0]
     assert '6P14P.lib' in text, text
 
