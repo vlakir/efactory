@@ -135,6 +135,7 @@ def test_component_category_enum_values() -> None:
         ComponentCategory.TUBE,
         ComponentCategory.TRANSFORMER,
         ComponentCategory.LOAD,
+        ComponentCategory.DIODE,
     }
 
 

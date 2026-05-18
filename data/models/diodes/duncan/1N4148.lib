@@ -1,0 +1,13 @@
+* 1N4148 — small-signal switching silicon diode.
+*
+* 100V / 200 mA fast-switching diode (trr ≈ 4 ns) — повсеместный
+* signal-path / clamp / detector. SPICE — typical Si small-signal
+* (Duncan, Vishay datasheet).
+*
+* subcategory: signal
+* Pins:
+*   A — anode, K — cathode.
+.SUBCKT 1N4148 A K
+D1 A K D_1N4148
+.MODEL D_1N4148 D(Is=2.52n N=1.752 Rs=0.568 Cjo=4p M=0.4 Bv=100 Ibv=100u Tt=20n)
+.ENDS 1N4148

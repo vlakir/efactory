@@ -1,0 +1,13 @@
+* 1N4007 — general-purpose silicon rectifier diode.
+*
+* Standard 1000V / 1A power rectifier — most common 50/60 Hz mains
+* diode. SPICE-параметры — typical Si rectifier из Duncan's library
+* (duncanamps.com), сопоставимо с datasheet ON Semi / Vishay.
+*
+* subcategory: rectifier
+* Pins:
+*   A — anode (anode), K — cathode (cathode).
+.SUBCKT 1N4007 A K
+D1 A K D_1N4007
+.MODEL D_1N4007 D(Is=14.11n N=1.984 Rs=33.89m Cjo=51.17p M=0.5 Bv=1000 Ibv=10u Tt=4.32u)
+.ENDS 1N4007

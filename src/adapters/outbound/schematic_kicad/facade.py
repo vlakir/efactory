@@ -28,6 +28,7 @@ from domain.schematic import (
     TextSpec,
     WireSpec,
 )
+from domain.spice_model import ComponentCategory
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -176,14 +177,12 @@ _VDC_DEFAULT_PROPERTIES = {
     'Sim.Params': 'dc=1 ac=1',
 }
 
-# Diode: built-in ngspice D primitive с inline-параметрами через Sim.Params.
-# Pin convention KiCad: 1=K (cathode), 2=A (anode) — Sim.Pins фиксирует это
-# для SPICE-writer'а вне зависимости от visual rotation.
-_DIODE_DEFAULT_PROPERTIES = {
-    'Sim.Device': 'D',
-    'Sim.Pins': '1=K 2=A',
-    'Sim.Params': 'Is=14.11n N=1.984 Rs=33.89m Cjo=51.17p Bv=1000 Ibv=10u Tt=4.32u',
-}
+# Diode SPICE: KiCad symbol `Simulation_SPICE:D` (визуальный диод).
+# Pin convention: 1=K (cathode), 2=A (anode) — Sim.Pins фиксирует это
+# для SPICE-writer'а вне зависимости от visual rotation. Параметры
+# модели либо inline через `spice_params` (D-primitive),  либо из
+# `spice_model` (T101 library, subckt-instance).
+_DIODE_SIM_PINS = '1=K 2=A'
 
 # VSIN: sin-источник (Sim.Type=SIN) с встроенным Sim.Params в формате KiCad
 # (`dc=0 ampl=X f=Y ac=1`). KiCad SPICE writer эмитит `Vn n+ n- SIN(...)`.
@@ -522,25 +521,70 @@ class Schematic:
     def add_diode(
         self,
         *,
-        value: str,
         at: tuple[float, float] | Position,
+        spice_model: SpiceModel | None = None,
+        spice_params: str | None = None,
+        value: str | None = None,
         reference: str | None = None,
         rotation: float = 0.0,
-        spice_params: str | None = None,
     ) -> Diode:
         """
-        Диод (Simulation_SPICE:D) с inline SPICE-параметрами.
+        Диод (Simulation_SPICE:D) с привязкой к SPICE-модели.
 
-        `spice_params` — строка в формате KiCad/ngspice `Param=Value ...`
-        (например, Duncan-модель 1N4007). Если None — используется default
-        из библиотеки (generic Si: Is=14.11n N=1.984 ... 1N4007-like).
+        Один из двух режимов параметров:
+
+        * `spice_model` (T101 library) — `SpiceModel` категории DIODE из
+          `SpiceModelLibrary`. Фасад эмитит subckt-instance: `Sim.Device=
+          subckt`, `Sim.Library=<file_path>`, `Sim.Name=<id>`. Reference
+          auto = `X<N>` (SPICE convention для subckt). `value` по
+          умолчанию = `spice_model.id`.
+        * `spice_params` (legacy inline) — строка `Param=Value ...` для
+          built-in ngspice D primitive (`Sim.Device='D'`). Reference auto
+          = `D<N>`. `value` обязателен (например `'1N4007'`).
+
+        Если ни `spice_model`, ни `spice_params` не переданы —
+        `ValueError`. Hardcoded default (T100 Phase 1) убран в T101.
         """
-        if reference is None:
-            reference = self._auto_ref('D')
+        if spice_model is None and spice_params is None:
+            msg = (
+                'add_diode requires either spice_model (T101 library) '
+                'or spice_params (inline D-primitive). Hardcoded 1N4007 '
+                'default удалён в T101.'
+            )
+            raise ValueError(msg)
+        if spice_model is not None and spice_params is not None:
+            msg = 'add_diode: укажите только один из spice_model / spice_params'
+            raise ValueError(msg)
+        if spice_model is not None:
+            if spice_model.category is not ComponentCategory.DIODE:
+                msg = (
+                    f'add_diode: spice_model.category должна быть DIODE, '
+                    f'получена {spice_model.category.value}'
+                )
+                raise ValueError(msg)
+            if reference is None:
+                reference = self._auto_ref('X')
+            if value is None:
+                value = spice_model.id
+            properties = {
+                'Sim.Device': 'subckt',
+                'Sim.Library': str(spice_model.file_path),
+                'Sim.Name': spice_model.id,
+                'Sim.Pins': _DIODE_SIM_PINS,
+            }
+        else:
+            # legacy inline path: spice_params is not None (validated выше)
+            if reference is None:
+                reference = self._auto_ref('D')
+            if value is None:
+                msg = 'add_diode with spice_params: укажите value (model name)'
+                raise ValueError(msg)
+            properties = {
+                'Sim.Device': 'D',
+                'Sim.Pins': _DIODE_SIM_PINS,
+                'Sim.Params': spice_params,  # type: ignore[dict-item]
+            }
         position = _to_position(at)
-        properties = dict(_DIODE_DEFAULT_PROPERTIES)
-        if spice_params is not None:
-            properties['Sim.Params'] = spice_params
         ref_pos, value_pos = _label_positions(position, _DIODE_LABEL_OFFSETS)
         self._components.append(
             ComponentSpec(
