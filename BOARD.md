@@ -61,6 +61,17 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T009** — [taken 2026-05-18] platform_layer + app_manager:
+  абстракция Linux/Windows/macOS (resolve_executable, default
+  install paths, env) + управление процессами внешних приложений
+  (KiCad GUI, FreeCAD, FEMM) — start/stop/restart/status. CLI
+  `efactory app status/start/stop/restart`. PlatformLayer + AppManager
+  ports + NativePlatformLayer + SubprocessAppManager adapters.
+  ApplicationKind enum (kicad/kicad-cli/freecad/femm/ngspice). PID
+  registry in-memory (per-CLI-process, persistence Out of Scope).
+  Спека (Draft, 6 Clarify) — `specs/T009-platform-and-apps/spec.md`.
+  Ветка `T009-platform-and-apps`.
+
 ## Done
 
 - **T007** — [closed 2026-05-18, PR #28] Transformer / load SPICE

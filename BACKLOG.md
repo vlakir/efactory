@@ -71,11 +71,7 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   через SPICEBridge.
   Acceptance: все три анализа отрабатывают на тестовых проектах
   (RC, SE-amp, выпрямитель).
-- **T009** — [2026-05-15] `kicad-sim-bridge`: `platform_layer.py`
-  (абстракция Linux/Windows: пути, команды, env) + `app_manager.py`
-  (управление процессами KiCad/FreeCAD/FEMM).
-  Acceptance: запуск/остановка/перезапуск KiCad работает одинаково
-  под Linux и Windows.
+
 ### Фаза 1b — Чат-клиент (+2–3 недели)
 
 - **T011** — [2026-05-15] `kicad-sim-chat`: терминальный UI на Rich
