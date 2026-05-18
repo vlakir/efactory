@@ -12,6 +12,11 @@ FilesystemTubeModelLibrary — scan `data/models/tubes/{source}/` (T006).
 
 `read_subckt` для Ayumi-моделей применяет `^ → **` конвертацию.
 
+**User overlay (Q3 fix-up, 2026-05-18):** конструктор принимает
+optional `user_library_root`. Сначала сканируется built-in
+(`library_root`), потом user — user-id'ы перезаписывают built-in
+(overlay). Внутри одного root duplicate id всё ещё fail-fast.
+
 Known limitation (C2): поддерживаются только `.SUBCKT NAME P1 P2 ...
 [PARAMS:...]` на одной строке (uppercase или lowercase). Continuation
 lines (`.SUBCKT NAME\\n+ P1 P2`) не поддерживаются — добавим если
@@ -107,34 +112,57 @@ def _extract_subckt_block(text: str) -> str:
     return match.group(1)
 
 
+def _scan_root(
+    root: Path,
+    *,
+    is_user: bool,
+) -> dict[str, SpiceModel]:
+    """Scan one root → {id: SpiceModel}. Fail-fast на duplicate в пределах root."""
+    by_id: dict[str, SpiceModel] = {}
+    if not root.is_dir():
+        return by_id
+    for source in ModelSource:
+        source_dir = root / source.value
+        if not source_dir.is_dir():
+            continue
+        for entry in sorted(source_dir.iterdir()):
+            if entry.suffix.lower() not in _MODEL_EXTS:
+                continue
+            if not entry.is_file():
+                continue
+            model = _parse_file(entry, source, is_user=is_user)
+            if model.id in by_id:
+                existing = by_id[model.id]
+                msg = (
+                    f"Duplicate tube model id '{model.id}' in "
+                    f'{"user" if is_user else "built-in"} library: '
+                    f'{existing.file_path} vs {entry}'
+                )
+                raise TubeModelLibraryDuplicateError(msg)
+            by_id[model.id] = model
+    return by_id
+
+
 class FilesystemTubeModelLibrary:
-    def __init__(self, library_root: Path) -> None:
+    def __init__(
+        self,
+        library_root: Path,
+        user_library_root: Path | None = None,
+    ) -> None:
         self._library_root = library_root
+        self._user_library_root = user_library_root
 
     async def list_all(self) -> list[SpiceModel]:
         def _scan() -> list[SpiceModel]:
-            if not self._library_root.is_dir():
-                return []
-            by_id: dict[str, SpiceModel] = {}
-            for source in ModelSource:
-                source_dir = self._library_root / source.value
-                if not source_dir.is_dir():
-                    continue
-                for entry in sorted(source_dir.iterdir()):
-                    if entry.suffix.lower() not in _MODEL_EXTS:
-                        continue
-                    if not entry.is_file():
-                        continue
-                    model = _parse_file(entry, source)
-                    if model.id in by_id:
-                        existing = by_id[model.id]
-                        msg = (
-                            f"Duplicate tube model id '{model.id}': "
-                            f'{existing.file_path} vs {entry}'
-                        )
-                        raise TubeModelLibraryDuplicateError(msg)
-                    by_id[model.id] = model
-            return sorted(by_id.values(), key=lambda m: m.id)
+            built_in = _scan_root(self._library_root, is_user=False)
+            user = (
+                _scan_root(self._user_library_root, is_user=True)
+                if self._user_library_root is not None
+                else {}
+            )
+            # User overlay: user-id'ы перезаписывают built-in (Q3 fix-up).
+            merged = {**built_in, **user}
+            return sorted(merged.values(), key=lambda m: m.id)
 
         return await asyncio.to_thread(_scan)
 
@@ -159,7 +187,12 @@ class FilesystemTubeModelLibrary:
         return await asyncio.to_thread(_read)
 
 
-def _parse_file(file_path: Path, source: ModelSource) -> SpiceModel:
+def _parse_file(
+    file_path: Path,
+    source: ModelSource,
+    *,
+    is_user: bool = False,
+) -> SpiceModel:
     text = file_path.read_text(encoding='utf-8')
     subckt_name, pins, tube_type = _parse_header(text, file_path)
     return SpiceModel(
@@ -169,6 +202,7 @@ def _parse_file(file_path: Path, source: ModelSource) -> SpiceModel:
         source=source,
         file_path=file_path,
         subckt_pins=pins,
+        is_user=is_user,
     )
 
 

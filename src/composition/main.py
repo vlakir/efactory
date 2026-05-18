@@ -96,7 +96,10 @@ def build_cli_app() -> typer.Typer:
             settings.session_root,
             session_id,
         ),
-        tube_library=FilesystemTubeModelLibrary(settings.tube_library_root),
+        tube_library=FilesystemTubeModelLibrary(
+            settings.tube_library_root,
+            settings.user_tube_library_root,
+        ),
     )
 
 
