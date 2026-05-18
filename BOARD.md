@@ -63,6 +63,19 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T101** — [closed 2026-05-19, PR #38] Diode SPICE-модели в
+  `SpiceModelLibrary` — расширение T007 generalization на 4-ю
+  категорию. `domain.ComponentCategory.DIODE` + `DiodeKind` (rectifier/
+  signal/schottky/zener/led) + `SpiceModel.diode_kind` accessor;
+  `data/models/diodes/duncan/` с 3 starter моделями (1N4007/1N4148/
+  BAT85), wrapped в SUBCKT-форму с `* subcategory:` headers; CLI
+  `efactory diode list/show`; `facade.add_diode` поддерживает
+  `spice_model=...` (X-prefix subckt-instance) и legacy `spice_params`
+  (D-prefix inline), hardcoded default удалён, ValueError на отсутствие
+  обоих. Backward compat — rectifier фикстура работает без правок.
+  6 unit-тестов на add_diode edge cases. 564 passed (+6), coverage
+  89.15%, 5 гейтов зелёные.
+
 - **T103** — [closed 2026-05-19, PR #37] SE-amp wire-router fix через
   re-layout. Переписан SE-amp с использованием Valve:EL84 (T104) —
   plate-к-OPT.P1 wire идёт **выше** B+ rail, что исключает
