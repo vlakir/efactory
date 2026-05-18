@@ -61,18 +61,28 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T007** — [taken 2026-05-18] Transformer / load SPICE model
-  library. Domain.TransformerModel + TransformerKind (opt | load).
-  Outbound port TransformerLibrary + filesystem adapter (parallel
-  to TubeModelLibrary, не generalize). CLI `efactory transformer
-  list / show`. data/models/transformers/{opt,load}/ с 5 example
-  моделей: OPT_SE_5K_8, OPT_PP_6K6_8, SPEAKER_8OHM (с резонансом),
-  SPEAKER_8OHM_RES (чистый R), SPEAKER_4OHM. Settings.transformer_*
-  + user overlay. ngspice smoke — T008. Спека (Draft, 6 Clarify) —
-  `specs/T007-transformer-models/spec.md`. Ветка
-  `T007-transformer-models`.
-
 ## Done
+
+- **T007** — [closed 2026-05-18, PR #28] Transformer / load SPICE
+  model library через **generalization** T006 (Q1 resolved
+  generalization вместо дублирования; Q3 — loads/ отдельно от
+  transformers/). Domain: ComponentCategory (tube/transformer/load)
+  + SpiceModel.subcategory (str) с typed accessors @property
+  (tube_type/transformer_kind/load_kind) с category guard. TubeType
+  расширен RECTIFIER (legacy T006). ModelSource += GENERIC. Adapter:
+  rename TubeModelLibrary → SpiceModelLibrary (port +
+  FilesystemSpiceModelLibrary). Scanning `<root>/<category>/<source>/`.
+  Header `* subcategory:` универсальный + legacy `* tube_type:`
+  backward compat. Pin-эвристика только для tubes; transformer/load
+  без header → SpiceModelInvalidError. Settings (breaking):
+  library_root + user_library_root заменили tube_library_root +
+  user_tube_library_root. CLI: 3 subapp (tube/transformer/load)
+  через общий helper, фильтрация по category, category mismatch →
+  exit 1 с подсказкой. Data: OPT_SE_5K_8, OPT_PP_6K6_8, SPEAKER_8OHM
+  (с mech. резонансом), SPEAKER_8OHM_RES, SPEAKER_4OHM,
+  DUMMY_LOAD_8R. Spec Analyzed
+  (`specs/T007-transformer-models/spec.md`). 325 passed, coverage
+  93.77%. ngspice smoke — T008.
 
 - **T006** — [closed 2026-05-18, PR #24] Tube SPICE model library
   (framework). Domain.SpiceModel (id, name, tube_type, source,
