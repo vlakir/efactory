@@ -47,16 +47,23 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   если (а) — оплачено, проверено хотя бы на одном PR без rate-limit.
   Источник: ретро `[0.2.0]`.
 
+### Tech Debt (отложено)
+
+<!-- Задачи признанные нужными, но без активного владельца / времени.
+     Не идут в Doing до явного решения Разработчика «берём». -->
+
+- **T002** — [2026-05-15, parked 2026-05-19] bootstrap.sh для Linux:
+  установка KiCad, ngspice, FreeCAD, FEMM, Python, MCP-серверов по
+  `compatibility.toml`. Acceptance: на чистой Ubuntu 24.04
+  `./bootstrap.sh` без ошибок, smoke-тест зелёный. **Parked:**
+  Разработчик пока откладывает (когда — не определено).
+- **T003** — [2026-05-15, parked 2026-05-19] bootstrap.ps1 для
+  Windows: то же самое через winget/chocolatey + pip. Acceptance:
+  на чистой Windows 11 `bootstrap.ps1` без ошибок, smoke-тест
+  зелёный. **Parked:** аналогично T002.
+
 ### Фаза 1a — MVP-ядро (3–4 недели)
 
-- **T002** — [2026-05-15] bootstrap.sh для Linux: установка KiCad,
-  ngspice, FreeCAD, FEMM, Python, MCP-серверов по `compatibility.toml`.
-  Acceptance: на чистой Ubuntu 24.04 `./bootstrap.sh` без ошибок,
-  smoke-тест зелёный.
-- **T003** — [2026-05-15] bootstrap.ps1 для Windows: то же самое
-  через winget/chocolatey + pip.
-  Acceptance: на чистой Windows 11 `bootstrap.ps1` без ошибок,
-  smoke-тест зелёный.
 - **T004b** — [2026-05-18] `bridge_edit_and_resim` +
   `bridge_sweep` — после T008 (нужна реальная симуляция). Использует
   kicad-sch-api для манипуляций со схемой. (Split из исходного T004
@@ -92,6 +99,18 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   чтобы при `connect()` мимо чужих pin'ов ставился explicit
   junction-избегающий обход. **Не блокирует фазу 1b** — SE-amp не
   на критическом пути LLM chat-client.
+- **T105** — [2026-05-18] Extend `_VALVE_REGISTRY` для остальных
+  советских ламп. T104 Phase 0 закрыл только `Valve:EL84` (6П14П).
+  Phase 1: маппинг ID → western Valve-symbol для популярных
+  советских (6Н1П → Valve:ECC81, 6Н2П → Valve:ECC83, 6П3С/6П1П
+  → Valve:EL84 если pin-compatible, etc); кастомные snippets для
+  уникальных без западного аналога (GU50, 6П45С, 6Н6П в hi-µ
+  triode-mode). Phase 2: **multi-unit dual-triodes** (ECC83 = два
+  триода — каждый half через отдельный unit instance, требует
+  facade-расширение для `(unit N)` instancing в одном символе).
+  Acceptance: PR покрывает 5+ tube models, integration тест c
+  каждой запускает ngspice без warning'ов lib_symbol_mismatch
+  (snippets верны для каждого).
 
 ### Фаза 1b — Чат-клиент (+2–3 недели)
 
