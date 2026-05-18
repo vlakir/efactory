@@ -61,6 +61,22 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T004** — [taken 2026-05-18] KiCad → SPICE pipeline (split-scope,
+  без ngspice). Договорились split T004/T008 (2026-05-18): T004 =
+  pipeline framework + export `.kicad_sch → SPICE netlist` через
+  kicad-cli (использует T009 `app_manager.run(KICAD_CLI, ...)`);
+  T008 = реальный ngspice прогон через PySpice/SPICEBridge.
+  Domain: Simulation + status (pending/netlist_ready/simulated/
+  failed) + SimulationResult. Ports: SchematicExporter + Simulator
+  (stub в T004). Adapter: KicadCliSchematicExporter (через
+  app_manager). StubSimulator бросает SimulatorUnavailableError →
+  use case ловит, status=NETLIST_READY, CLI exit 0 с hint про T008.
+  CLI subapp `bridge design-to-sim`. Acceptance: RC-фильтр fixture
+  → export → SPICE netlist на диске. NE делаем: edit_and_resim,
+  sweep, model_assign, реальная симуляция, persistence Simulation.
+  Спека (Draft, 7 Clarify) — `specs/T004-kicad-sim-pipeline/spec.md`.
+  Ветка `T004-kicad-sim-pipeline`.
+
 ## Done
 
 - **T009** — [closed 2026-05-18, PR #29] platform_layer +
