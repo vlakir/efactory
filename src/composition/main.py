@@ -30,11 +30,17 @@ from adapters.outbound.persistence_sql.migrations_runner import run_migrations
 from adapters.outbound.persistence_sql.repository import (
     SqlAlchemyMetadataRepository,
 )
+from adapters.outbound.platform_native.platform_layer import (
+    NativePlatformLayer,
+)
 from adapters.outbound.session_jsonl.session_logger import (
     FilesystemJsonlSessionLogger,
 )
 from adapters.outbound.spice_models.spice_library import (
     FilesystemSpiceModelLibrary,
+)
+from adapters.outbound.subprocess_apps.app_manager import (
+    SubprocessAppManager,
 )
 from composition.settings import Settings
 
@@ -84,6 +90,7 @@ def build_cli_app() -> typer.Typer:
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     session_id = _make_session_id()
+    platform = NativePlatformLayer()
 
     return build_app(
         projects_root=settings.projects_root,
@@ -100,6 +107,7 @@ def build_cli_app() -> typer.Typer:
             settings.library_root,
             settings.user_library_root,
         ),
+        app_manager=SubprocessAppManager(platform),
     )
 
 

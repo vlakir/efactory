@@ -37,9 +37,15 @@ from application.update_project import (
 from application.update_project import (
     update_project as update_project_use_case,
 )
+from domain.application import ApplicationKind
 from domain.decision import DecisionStatus
 from domain.phase import PhaseName, PhaseStatus
 from domain.spice_model import ComponentCategory
+from ports.outbound.app_manager import (
+    ApplicationNotInstalledError,
+    ApplicationStartError,
+    ApplicationStopError,
+)
 from ports.outbound.decision_repository import DecisionNotFoundError
 from ports.outbound.git_repository import GitOperationError
 from ports.outbound.session_logger import SessionEventStatus
@@ -53,6 +59,7 @@ if TYPE_CHECKING:
     from domain.decision import Decision
     from domain.project import Project
     from domain.spice_model import SpiceModel
+    from ports.outbound.app_manager import AppManager, RunResult
     from ports.outbound.decision_repository import DecisionRepository
     from ports.outbound.git_repository import GitRepository
     from ports.outbound.metadata_repository import MetadataRepository
@@ -103,6 +110,7 @@ def build_app(
     git_repository: GitRepository,
     session_logger: SessionLogger,
     spice_library: SpiceModelLibrary,
+    app_manager: AppManager,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -739,5 +747,166 @@ def build_app(
         ComponentCategory.LOAD,
         'No load models found.',
     )
+
+    app_subapp = typer.Typer(no_args_is_help=True, add_completion=False)
+    app.add_typer(app_subapp, name='app')
+
+    @app_subapp.command('status')
+    def app_status(
+        *,
+        kind: Annotated[
+            ApplicationKind | None,
+            typer.Option('--kind', help='Конкретное приложение; иначе — все'),
+        ] = None,
+    ) -> None:
+        kinds = [kind] if kind is not None else list(ApplicationKind)
+
+        async def _run() -> list:
+            return [await app_manager.status(k) for k in kinds]
+
+        infos = asyncio.run(
+            _log_command(
+                session_logger,
+                'app.status',
+                project=None,
+                payload={'kind': kind.value if kind else 'all'},
+                fn=_run,
+            ),
+        )
+        for info in infos:
+            path = str(info.executable_path) if info.executable_path else '—'
+            pid = str(info.pid) if info.pid else '—'
+            typer.echo(
+                f'{info.kind.value}\t{info.status.value}\t{pid}\t{path}',
+            )
+
+    @app_subapp.command('launch')
+    def app_launch(
+        kind: Annotated[
+            ApplicationKind,
+            typer.Argument(help='Приложение (kicad / freecad / ...)'),
+        ],
+    ) -> None:
+        async def _run() -> object:
+            return await app_manager.launch(kind)
+
+        try:
+            info = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'app.launch',
+                    project=None,
+                    payload={'kind': kind.value},
+                    fn=_run,
+                ),
+            )
+        except ApplicationNotInstalledError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        except ApplicationStartError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        typer.echo(f'Launched {kind.value} (pid={info.pid})')  # type: ignore[attr-defined]
+
+    @app_subapp.command('run')
+    def app_run(
+        kind: Annotated[
+            ApplicationKind,
+            typer.Argument(help='Приложение'),
+        ],
+        *,
+        timeout_seconds: Annotated[
+            float | None,
+            typer.Option('--timeout', help='Таймаут (сек)'),
+        ] = None,
+        cli_args: Annotated[
+            list[str] | None,
+            typer.Argument(
+                help='Аргументы для приложения (после --)',
+            ),
+        ] = None,
+    ) -> None:
+        async def _run() -> RunResult:
+            return await app_manager.run(
+                kind,
+                list(cli_args or []),
+                timeout_seconds=timeout_seconds,
+            )
+
+        try:
+            result = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'app.run',
+                    project=None,
+                    payload={'kind': kind.value, 'args': cli_args or []},
+                    fn=_run,
+                ),
+            )
+        except ApplicationNotInstalledError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        except ApplicationStartError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        if result.stdout:
+            typer.echo(result.stdout, nl=False)
+        if result.stderr:
+            typer.echo(result.stderr, err=True, nl=False)
+        if result.returncode != 0:
+            raise typer.Exit(code=result.returncode)
+
+    @app_subapp.command('stop')
+    def app_stop(
+        kind: Annotated[
+            ApplicationKind,
+            typer.Argument(help='Приложение'),
+        ],
+    ) -> None:
+        async def _run() -> None:
+            await app_manager.stop(kind)
+
+        try:
+            asyncio.run(
+                _log_command(
+                    session_logger,
+                    'app.stop',
+                    project=None,
+                    payload={'kind': kind.value},
+                    fn=_run,
+                ),
+            )
+        except ApplicationStopError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        typer.echo(f'Stopped {kind.value}')
+
+    @app_subapp.command('restart')
+    def app_restart(
+        kind: Annotated[
+            ApplicationKind,
+            typer.Argument(help='Приложение'),
+        ],
+    ) -> None:
+        async def _run() -> object:
+            return await app_manager.restart(kind)
+
+        try:
+            info = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'app.restart',
+                    project=None,
+                    payload={'kind': kind.value},
+                    fn=_run,
+                ),
+            )
+        except ApplicationNotInstalledError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        except (ApplicationStartError, ApplicationStopError) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        typer.echo(f'Restarted {kind.value} (pid={info.pid})')  # type: ignore[attr-defined]
 
     return app

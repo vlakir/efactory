@@ -63,6 +63,23 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T009** — [closed 2026-05-18, PR #29] platform_layer +
+  app_manager: фундамент для bridges Phase 1a. Domain.ApplicationKind
+  (kicad/kicad-cli/freecad/femm/ngspice) + Status + OsKind + Info.
+  PlatformLayer: 5-step resolution chain (env → which → .desktop →
+  known paths → KICAD_CLI fallback через KiCad AppImage); поддержка
+  AppImage в `~/kicad/`, `~/Загрузки/`, `~/Applications/`, etc.
+  AppManager: unified `run` (blocking subprocess.run для headless)
+  + `launch` (Popen detach для GUI), `stop` (TERM→5s→KILL),
+  `restart`, in-memory PID registry. CLI `efactory app status/
+  launch/run/stop/restart` + session-log. Live smoke на dev-машине:
+  KiCad+FreeCAD AppImage найдены, `efactory app run kicad-cli --
+  --version` → 10.0.2. Spec Analyzed
+  (`specs/T009-platform-and-apps/spec.md`). Methodology lesson:
+  изначально угадал «KiCad нет», Владимир указал на ошибку,
+  feedback зафиксирован в auto-memory (проверять окружение через
+  `command -v` + `.desktop` файлы). 357 passed, coverage 87.99%.
+
 - **T007** — [closed 2026-05-18, PR #28] Transformer / load SPICE
   model library через **generalization** T006 (Q1 resolved
   generalization вместо дублирования; Q3 — loads/ отдельно от
