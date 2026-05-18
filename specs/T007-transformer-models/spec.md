@@ -1,6 +1,6 @@
 ## Spec: T007 — Transformer / load SPICE model library
 
-**Статус:** Draft (готов к Clarify)
+**Статус:** Analyzed
 **Дата создания:** 2026-05-18
 **Связанные документы:**
 - `CONCEPT.md` §13 (BACKLOG задача T007).
@@ -262,6 +262,186 @@ BACKLOG-описанию ("модели трансформаторов"). Speake
 
 ---
 
-### Analyze (заполняется после Clarify)
+### Resolved
 
-(после твоего ответа)
+Разработчик подтвердил 4 дефолта; **поправил Q1 и Q3** (2026-05-18).
+
+1. **Generalize SpiceModel** — **(B) generalization** вместо (A)
+   дублирования. Рефакторинг T006: `SpiceModel` получает поля
+   `category: ComponentCategory` (tube/transformer/load) и
+   `subcategory: str`. Один port `SpiceModelLibrary`, один adapter
+   `FilesystemSpiceModelLibrary`. CLI остаётся раздельным
+   (`tube`/`transformer`/`load` subapps), внутри фильтрует по
+   category.
+2. **Subdir структура** — дефолт **(A)** `transformers/{opt}/`,
+   `loads/{speaker,resistive}/` (Q3 отделяет loads).
+3. **Speaker отдельно** — **(B)** `data/models/loads/`,
+   не `transformers/load/`. Семантически чище: load это load,
+   transformer это transformer.
+4. **CLI namespace** — три отдельных subapp: `efactory tube`,
+   `efactory transformer`, `efactory load`.
+5. **Параметры моделей** — **(A) generic typical** (Hammond 1627A
+   class OPT, typical hi-fi speaker).
+6. **Phasing** — **(A) один phase** в рамках одного PR (рефакторинг
+   T006 + добавление T007 категорий вместе; squash-merge даст один
+   коммит в main).
+
+#### Структура `data/models/` после рефакторинга
+
+```
+data/models/
+├── tubes/
+│   ├── koren/...      # source-based subdir
+│   ├── ayumi/...
+│   ├── duncan/...
+│   └── custom/...
+├── transformers/
+│   └── generic/...    # vendor-based subdir (generic, hammond, tango, ...)
+└── loads/
+    └── generic/...
+```
+
+#### Sub-directory семантика
+
+Subdir1 = `category`, Subdir2 = `source`. Унифицировано: всегда
+2-уровневая структура. Для tubes source значит fit (Koren/Ayumi/Duncan/
+Custom). Для transformers/loads source значит vendor/origin
+(generic/hammond/tango/custom).
+
+Subcategory (tube_type / transformer_kind / load_kind) определяется
+header `* subcategory: <value>` либо pin-эвристикой (для tubes уже
+работает).
+
+#### Backward compat header
+
+Adapter ищет в header `* subcategory:` И `* tube_type:` (legacy
+T006). Старые ~50 tube файлов не трогаем. Header для transformers /
+loads — обязателен или fallback pin-эвристика per-category (пока
+тривиально: opt всегда 4 pin, speaker 2 pin — но header всё равно
+обязателен для discrimination от 2-pin half-wave rectifier).
+
+---
+
+### Analyze
+
+#### 🔴 Critical
+
+##### C1. Backward compat для T006 tube models
+
+После рефакторинга adapter ищет `subcategory` поле в SpiceModel.
+Старые tube файлы (~50) содержат header `* tube_type: triode|pentode|
+rectifier|...`. Adapter должен поддержать оба header'а: новый
+`* subcategory:` (для transformers/loads) и legacy `* tube_type:`
+(для tubes, без изменения файлов).
+
+**Резолюция:** в `_parse_header` ищем оба регекспа. Если найден
+`tube_type` — это subcategory. Старые файлы продолжают работать.
+Новые файлы используют `subcategory`. Документируется в README.
+
+##### C2. Pin-эвристика для transformer/load
+
+Сейчас 2-pin → RECTIFIER (T006 expansion). Speaker 2-pin тоже —
+будет ошибочно определён как RECTIFIER без header.
+
+**Резолюция:** **header обязателен** для не-tube моделей. Pin-
+эвристика остаётся tube-only (применяется только для category=TUBE
+файлов). Adapter: для файлов в `transformers/`/`loads/` subdir
+header `* subcategory:` обязателен; иначе `SpiceModelInvalidError`.
+
+Для tubes pin-эвристика — fallback (как раньше).
+
+##### C3. Settings backward incompatible change
+
+`EFACTORY_TUBE_LIBRARY_ROOT` и `EFACTORY_USER_TUBE_LIBRARY_ROOT`
+заменяются на `EFACTORY_LIBRARY_ROOT` и `EFACTORY_USER_LIBRARY_ROOT`.
+Существующие тесты используют `EFACTORY_TUBE_LIBRARY_ROOT` — все
+обновятся в этом PR. Production пока нет, поэтому breaking change
+безопасен.
+
+**Резолюция:** обновить все references в одном PR. Документировать
+в commit message.
+
+#### 🟡 Warning
+
+##### W1. SpiceModel.tube_type как @property
+
+После рефакторинга `tube_type` становится property с category guard:
+
+```python
+@property
+def tube_type(self) -> TubeType:
+    if self.category is not ComponentCategory.TUBE:
+        msg = f'Not a tube: category={self.category}'
+        raise ValueError(msg)
+    return TubeType(self.subcategory)
+```
+
+Старый код, который использовал `model.tube_type` для tube,
+продолжает работать. Для transformer вызов `tube_type` сейчас даст
+ValueError — корректное поведение.
+
+##### W2. CLI помощь и `tube_type` колонка
+
+Старый `tube list` показывал колонку `tube_type` (`triode`/`pentode`).
+В новой версии для CLI tube subapp выводим `subcategory` под именем
+`type` (общее для всех category). Изменение колонки display
+backward-incompatible для скриптов, парсящих TSV.
+
+**Резолюция:** оставить колонку как было (header содержит type как
+строку). Скриптам не должно быть разницы — значения те же.
+
+##### W3. ModelSource.GENERIC семантика
+
+Для tubes GENERIC не используется (есть koren/ayumi/duncan/custom).
+Для transformers/loads GENERIC — основной source. Добавление в один
+enum для всех category — компромисс. Альтернатива — иметь по enum
+на category, но это усложняет.
+
+**Резолюция:** добавляем GENERIC в общий ModelSource. Документируется
+как «source для transformer/load когда vendor не специфичен».
+
+#### 🟢 Note
+
+##### N1. CLI helper structure
+
+```python
+async def _list_models(
+    library: SpiceModelLibrary,
+    category: ComponentCategory,
+) -> list[SpiceModel]:
+    all_models = await library.list_all()
+    return [m for m in all_models if m.category is category]
+```
+
+CLI subapp tube/transformer/load — каждый вызывает _list_models
+с своей категорией. Минимум дублирования.
+
+##### N2. Filename `OPT_SE_5K_8` vs `OPT_GENERIC`
+
+BACKLOG спецификация — `OPT_GENERIC`. Но `OPT_SE_5K_8` информативнее
+(5kΩ:8Ω SE topology). При расширении (`OPT_PP_6K6_8`) разница
+читабельна. Решаю в пользу descriptive names.
+
+##### N3. Adapter sub-package renaming
+
+`tube_models/` → `spice_models/`. Update independence contract в
+pyproject. Все импорты обновить.
+
+##### N4. Tests рефакторинг
+
+Существующие T006 тесты используют tube-specific импорты. После
+рефакторинга:
+- `TubeModelLibrary` → `SpiceModelLibrary`.
+- Сигнатуры методов сохранены.
+- Имена fixture'ов в адаптерных тестах обновить.
+
+##### N5. README обновление
+
+`data/models/README.md` (новый) — глобальная структура. Существующий
+`data/models/tubes/README.md` остаётся для tube-specific.
+
+##### N6. ngspice smoke — T008
+
+Подтверждение что OPT + speaker действительно работают в SE-усилителе
+— T008 (требует SPICEBridge/ngspice). T007 acceptance: только
+парсинг моделей + CLI display.
