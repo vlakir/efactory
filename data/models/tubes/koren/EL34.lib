@@ -1,0 +1,19 @@
+* EL34 / 6CA7 — output pentode (~25 W per tube, classic Marshall / Hi-Fi).
+*
+* Norman Koren pentode model. Approximate parameters from Mullard /
+* Philips curves; production-grade fitting requires per-batch
+* measurements (T031).
+*
+* tube_type: pentode
+* Pins: P (plate), G2 (screen), G (grid 1), K (cathode).
+.SUBCKT EL34 P G2 G K
+* Koren parameters: MU=11 EX=1.35 KG1=650 KG2=4500 KP=60 KVB=24
+E1 7 0 VALUE={V(G2,K)/60*LN(1+EXP(60*(1/11+V(G,K)/V(G2,K))))}
+G1 P K VALUE={(PWRS(V(7),1.35)+PWRS(V(7),1.35))/650 * ATAN(V(P,K)/24)}
+G2 G2 K VALUE={(PWRS(V(7),1.35)+PWRS(V(7),1.35))/4500}
+* Capacitances (typical).
+C1 G K 15p
+C2 G P 1.1p
+C3 P K 8.4p
+RGI G K 1MEG
+.ENDS EL34

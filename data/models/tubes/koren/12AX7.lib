@@ -1,0 +1,23 @@
+* 12AX7 / ECC83 — high-mu dual triode (preamp tube).
+*
+* Norman Koren triode model. Parameters from Koren's published
+* dataset (typical values fitted from RCA / Philips curves).
+*
+* tube_type: triode
+* Pins: P (plate), G (grid), K (cathode) — single section.
+*       For dual operation, instantiate two copies (sharing heater externally).
+*
+* Approximation note: typical-sample parameters; for production-grade
+* fitting use a Koren curve-fitting tool against your actual tube samples
+* (см. roadmap T031 — Tube-curve-fitting integration).
+.SUBCKT 12AX7 P G K
+* Koren parameters: MU=100 EX=1.4 KG1=1060 KP=600 KVB=300
+E1 7 0 VALUE={V(P,K)/600*LN(1+EXP(600*(1/100+V(G,K)/SQRT(300+V(P,K)*V(P,K)))))}
+G1 P K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/1060}
+* Inter-electrode capacitances (typical).
+C1 G K 1.6p
+C2 G P 1.7p
+C3 P K 0.46p
+* Grid leak (very high — protects against floating grid).
+RGI G K 1MEG
+.ENDS 12AX7

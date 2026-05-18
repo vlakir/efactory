@@ -1,0 +1,16 @@
+* KT88 / 6550 — high-power beam tetrode (~42 W, premium Hi-Fi / studio).
+*
+* Norman Koren pentode model. Typical sample (T031 for precise fit).
+*
+* tube_type: pentode
+* Pins: P (plate), G2 (screen), G (grid 1), K (cathode).
+.SUBCKT KT88 P G2 G K
+* Koren parameters: MU=8 EX=1.35 KG1=730 KG2=4500 KP=32 KVB=16
+E1 7 0 VALUE={V(G2,K)/32*LN(1+EXP(32*(1/8+V(G,K)/V(G2,K))))}
+G1 P K VALUE={(PWRS(V(7),1.35)+PWRS(V(7),1.35))/730 * ATAN(V(P,K)/16)}
+G2 G2 K VALUE={(PWRS(V(7),1.35)+PWRS(V(7),1.35))/4500}
+C1 G K 16p
+C2 G P 1.2p
+C3 P K 12p
+RGI G K 1MEG
+.ENDS KT88

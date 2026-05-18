@@ -1,0 +1,16 @@
+* 6SN7 — medium-mu dual triode (audiophile favourite for driver / phase splitter).
+*
+* Norman Koren triode model. Typical-sample parameters; sample-to-sample
+* spread on 6SN7 is significant — refit for production designs (T031).
+*
+* tube_type: triode
+* Pins: P (plate), G (grid), K (cathode) — single section.
+.SUBCKT 6SN7 P G K
+* Koren parameters: MU=20 EX=1.4 KG1=1500 KP=80 KVB=300
+E1 7 0 VALUE={V(P,K)/80*LN(1+EXP(80*(1/20+V(G,K)/SQRT(300+V(P,K)*V(P,K)))))}
+G1 P K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/1500}
+C1 G K 2.6p
+C2 G P 4p
+C3 P K 1.0p
+RGI G K 1MEG
+.ENDS 6SN7

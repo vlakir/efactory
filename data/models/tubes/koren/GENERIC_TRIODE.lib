@@ -1,16 +1,24 @@
-* Generic Koren-style triode model (T006 example, not physically accurate).
+* GENERIC_TRIODE — minimal Koren-style triode formatting reference.
 *
-* Source: simplified illustrative form of the Koren-3 triode equation
-*   I_p ~ K * (U_g + U_p/MU)^EX  (kept symbolically via ngspice ** below).
+* Этот файл — не реальная лампа, а живой пример формата для
+* пользователей, добавляющих свои модели. Скопируй, переименуй,
+* подставь параметры конкретной лампы (см. T031 — Tube-curve-fitting).
+*
+* Для реальных моделей см. соседние файлы: 12AX7, 6SN7, EL34 и др.
+*
 * tube_type: triode
-* Pins: P (plate), G (grid), K (cathode)
-*
-* Replace with vendor-fitted parameters before using in a real design.
+* Pins: P (plate), G (grid), K (cathode).
 .SUBCKT GENERIC_TRIODE P G K
-* Bridging current source — placeholder, not real Koren formula.
-Bp P K I=0.1m * (V(G,K) + V(P,K)/100)**1.5
-* Grid-to-cathode capacitance (typical ECC83 ballpark).
-Cgk G K 1.6p
-* Plate-to-grid capacitance.
-Cpg P G 1.6p
+* Inline parameters (Koren equation):
+*   MU=20  — gain.
+*   EX=1.4 — current exponent (typically 1.3-1.5).
+*   KG1=1500 — current scaling.
+*   KP=80  — plate voltage cutoff sharpness.
+*   KVB=300 — internal "knee" voltage.
+E1 7 0 VALUE={V(P,K)/80*LN(1+EXP(80*(1/20+V(G,K)/SQRT(300+V(P,K)*V(P,K)))))}
+G1 P K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/1500}
+C1 G K 2p
+C2 G P 2p
+C3 P K 1p
+RGI G K 1MEG
 .ENDS GENERIC_TRIODE

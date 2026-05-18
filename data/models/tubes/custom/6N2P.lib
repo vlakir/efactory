@@ -1,0 +1,21 @@
+* 6Н2П — советский двойной триод, аналог 12AX7 / ECC83.
+*
+* Koren triode model. Параметры близки к 12AX7 (исходная Reflex
+* разработка как preamp tube для отечественной аппаратуры).
+* Для production-grade fitting под конкретные образцы используйте
+* T031 (Tube-curve-fitting).
+*
+* Положена в `custom/`, потому что не входит в Norman Koren / Ayumi /
+* Duncan upstream-коллекции; built-in часть библиотеки efactory.
+*
+* tube_type: triode
+* Pins: P (plate), G (grid), K (cathode) — single section.
+.SUBCKT 6N2P P G K
+* Koren parameters: MU=100 EX=1.4 KG1=1060 KP=600 KVB=300
+E1 7 0 VALUE={V(P,K)/600*LN(1+EXP(600*(1/100+V(G,K)/SQRT(300+V(P,K)*V(P,K)))))}
+G1 P K VALUE={(PWRS(V(7),1.4)+PWRS(V(7),1.4))/1060}
+C1 G K 2.0p
+C2 G P 1.8p
+C3 P K 0.45p
+RGI G K 1MEG
+.ENDS 6N2P
