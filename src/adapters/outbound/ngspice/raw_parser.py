@@ -27,6 +27,7 @@ Parser ngspice ASCII raw файла → SimulationResult (T008).
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
 
 from domain.simulation import AcSweep, SimulationResult, TimeSeries
@@ -60,12 +61,18 @@ _VARIABLE_TOKEN_COUNT = 3
 
 
 def parse_ngspice_raw(content: str) -> SimulationResult:
-    """Разобрать содержимое ngspice ASCII raw файла."""
+    """
+    Разобрать содержимое ngspice ASCII raw файла.
+
+    Если файл содержит несколько plots (ngspice эмитит leading 'constants'
+    plot при наличии `.model` директивы), пропускаем все секции до первой
+    поддерживаемой (`Operating Point` / `Transient Analysis` / `AC Analysis`).
+    """
     if not content.strip():
         msg = 'ngspice raw is empty.'
         raise NgspiceRawParseError(msg)
 
-    lines = content.splitlines()
+    lines = _select_supported_plot(content.splitlines())
     header, idx = _parse_header(lines)
     variables, idx = _parse_variables(
         lines,
@@ -85,6 +92,39 @@ def parse_ngspice_raw(content: str) -> SimulationResult:
         variables=variables,
         values=values,
     )
+
+
+_SUPPORTED_PLOTNAMES = frozenset(
+    {_PLOTNAME_OP, _PLOTNAME_TRAN, _PLOTNAME_AC},
+)
+
+
+def _select_supported_plot(lines: list[str]) -> list[str]:
+    """
+    Вернуть подсписок, начиная с первого supported plot block.
+
+    Plot block начинается с 'Title:'; 'Plotname:' внутри определяет тип.
+    Скипуем prefix-секции (например, 'constants', которую ngspice добавляет
+    при наличии `.model` директивы) — они не несут полезных данных. Если
+    ни один блок не supported, возвращаем первый блок — пусть _build_result
+    сообщит конкретное `unsupported Plotname '<X>'`.
+    """
+    block_starts = [i for i, line in enumerate(lines) if line.startswith('Title:')]
+    if not block_starts:
+        return lines  # старый single-plot формат — оставляем как есть
+    block_starts.append(len(lines))
+    pairs = list(itertools.pairwise(block_starts))
+    for start, end in pairs:
+        for line in lines[start:end]:
+            if line.startswith('Plotname:'):
+                plotname = line.partition(':')[2].strip()
+                if plotname in _SUPPORTED_PLOTNAMES:
+                    return lines[start:end]
+                break
+    # Ни один блок не supported — возвращаем первый, чтобы _build_result
+    # сообщил точное `unsupported Plotname '<X>'`.
+    first_start, first_end = pairs[0]
+    return lines[first_start:first_end]
 
 
 def _parse_header(lines: list[str]) -> tuple[_Header, int]:

@@ -1,11 +1,16 @@
-"""T008 Phase 5 acceptance: RC-фильтр через полный pipeline.
+"""T100 Phase 0 acceptance: RC-фильтр через `efactory.schematic` фасад.
 
-Покрывает T008 §4 Success criteria для RC-фильтра (OP / TRAN / AC).
-SE-amp и rectifier фикстуры — закрыты в T100 (после T100 Phase 0–3:
-фасад `efactory.schematic` строит все нужные `.kicad_sch` программно).
+Reproducing through the new programmatic API. Acceptance — ngspice
+OP/TRAN/AC матчатся с baseline T008 (см.
+`tests/e2e/spice_acceptance/test_rc_filter.py`):
 
-С T100 Phase 3 фикстура `tests/fixtures/rc_filter.kicad_sch` удалена;
-строится через фасад в `tests/conftest.py::rc_filter_schematic_path`.
+  * OP: |V(/in)| = |V(/out)| = 1 V  (ёмкость в DC = разрыв).
+  * TRAN: V(/in)/V(/out) держатся 1V на всём интервале.
+  * AC: |H(fc)| ≈ 0.7071 на fc = 1 / (2π·R·C) ≈ 159 Hz.
+
+С T100 Phase 3 фасад-builder вынесен в `tests/conftest.py` (фикстура
+`rc_filter_schematic_path`); старая ручная фикстура
+`tests/fixtures/rc_filter.kicad_sch` удалена.
 """
 
 from __future__ import annotations
@@ -40,7 +45,7 @@ needs_kicad = pytest.mark.skipif(
 )
 needs_ngspice = pytest.mark.skipif(
     not _NGSPICE_AVAILABLE,
-    reason='ngspice not installed (apt install ngspice / brew install ngspice)',
+    reason='ngspice not installed',
 )
 
 
@@ -48,44 +53,46 @@ def _app_manager() -> SubprocessAppManager:
     return SubprocessAppManager(NativePlatformLayer())
 
 
-async def _export_rc_netlist(schematic_path: Path, tmp_path: Path) -> Path:
+async def _export_netlist(schematic_path: Path, netlist_path: Path) -> Path:
     exporter = KicadCliSchematicExporter(_app_manager())
-    netlist_out = tmp_path / 'rc_filter.cir'
-    return await exporter.export_spice_netlist(schematic_path, netlist_out)
+    return await exporter.export_spice_netlist(schematic_path, netlist_path)
 
 
 @needs_kicad
 @needs_ngspice
-async def test_rc_filter_op_yields_unit_voltage_on_input_and_output(
+async def test_facade_rc_op_yields_unit_voltage(
     rc_filter_schematic_path: Path,
     tmp_path: Path,
 ) -> None:
-    """OP: DC 1V → V(in)=V(out)=1V (ток через ёмкость в DC = 0)."""
-    netlist = await _export_rc_netlist(rc_filter_schematic_path, tmp_path)
+    """OP через сгенерированный фасадом schematic → V(in)=V(out)=1V."""
+    netlist = await _export_netlist(
+        rc_filter_schematic_path, tmp_path / 'rc_filter.cir',
+    )
     simulator = NgspiceSimulator(_app_manager())
 
     result = await simulator.run(netlist, OpAnalysis())
 
     assert result.operating_points is not None
     op = result.operating_points
-    # KiCad SPICE pin-order quirk инвертирует знак — проверяем magnitude.
+    # KiCad SPICE pin-order quirk инвертирует знак — magnitude (see T008).
     assert abs(op['v(/in)']) == pytest.approx(1.0, abs=1e-6)
     assert abs(op['v(/out)']) == pytest.approx(1.0, abs=1e-6)
 
 
 @needs_kicad
 @needs_ngspice
-async def test_rc_filter_tran_holds_dc_steady_across_time(
+async def test_facade_rc_tran_holds_dc_steady(
     rc_filter_schematic_path: Path,
     tmp_path: Path,
 ) -> None:
-    """TRAN: DC source → V(in)/V(out) держатся постоянными во времени."""
-    netlist = await _export_rc_netlist(rc_filter_schematic_path, tmp_path)
+    """TRAN через фасад: DC источник → V(in)/V(out) постоянны."""
+    netlist = await _export_netlist(
+        rc_filter_schematic_path, tmp_path / 'rc_filter.cir',
+    )
     simulator = NgspiceSimulator(_app_manager())
 
     result = await simulator.run(
-        netlist,
-        TranAnalysis(t_step=1e-4, t_stop=1e-3),
+        netlist, TranAnalysis(t_step=1e-4, t_stop=1e-3),
     )
 
     assert result.time_series is not None
@@ -100,12 +107,14 @@ async def test_rc_filter_tran_holds_dc_steady_across_time(
 
 @needs_kicad
 @needs_ngspice
-async def test_rc_filter_ac_yields_minus_three_db_at_cutoff(
+async def test_facade_rc_ac_yields_minus_three_db_at_cutoff(
     rc_filter_schematic_path: Path,
     tmp_path: Path,
 ) -> None:
-    """AC: на fc = 1 / (2π·R·C) ≈ 159 Hz → |H(fc)| ≈ 1/√2 ≈ 0.707."""
-    netlist = await _export_rc_netlist(rc_filter_schematic_path, tmp_path)
+    """AC через фасад: на fc = 1 / (2π·R·C) ≈ 159 Hz → |H| ≈ 1/√2."""
+    netlist = await _export_netlist(
+        rc_filter_schematic_path, tmp_path / 'rc_filter.cir',
+    )
     simulator = NgspiceSimulator(_app_manager())
 
     result = await simulator.run(
@@ -120,18 +129,19 @@ async def test_rc_filter_ac_yields_minus_three_db_at_cutoff(
     re = ac.traces_real['v(/out)'][idx]
     im = ac.traces_imag['v(/out)'][idx]
     magnitude = math.hypot(re, im)
-    # Теоретически |H(fc)| = 1/√2 ≈ 0.7071. Допуск ±5%.
     assert magnitude == pytest.approx(0.7071, rel=0.05)
 
 
 @needs_kicad
 @needs_ngspice
-async def test_rc_filter_ac_yields_unity_gain_far_below_cutoff(
+async def test_facade_rc_ac_unity_gain_far_below_cutoff(
     rc_filter_schematic_path: Path,
     tmp_path: Path,
 ) -> None:
-    """AC: на f << fc → |H(f)| ≈ 1 (passband)."""
-    netlist = await _export_rc_netlist(rc_filter_schematic_path, tmp_path)
+    """AC через фасад: на f=1Hz (<< fc=159Hz) → |H| ≈ 1 (passband)."""
+    netlist = await _export_netlist(
+        rc_filter_schematic_path, tmp_path / 'rc_filter.cir',
+    )
     simulator = NgspiceSimulator(_app_manager())
 
     result = await simulator.run(
@@ -141,7 +151,6 @@ async def test_rc_filter_ac_yields_unity_gain_far_below_cutoff(
 
     assert result.ac_sweep is not None
     ac = result.ac_sweep
-    # На f=1Hz (<< 159Hz) magnitude должна быть ~1.
     re = ac.traces_real['v(/out)'][0]
     im = ac.traces_imag['v(/out)'][0]
     magnitude = math.hypot(re, im)

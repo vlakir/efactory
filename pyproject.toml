@@ -14,6 +14,7 @@ dependencies = [
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.1",
     "pyyaml>=6.0.3",
+    "sexpdata>=1.0.2",
     "sqlalchemy[asyncio]>=2.0.49",
     "typer>=0.25.1",
 ]
@@ -53,6 +54,11 @@ packages = [
 # `data/` чтобы при `pip install` пути остались стабильными.
 [tool.hatch.build.targets.wheel.force-include]
 "data/models" = "data/models"
+# KiCad lib_symbols snippets, embedded в адаптер schematic_kicad (T100).
+# Frozen-copy секций `(symbol "X:Y" ...)` из стандартной библиотеки KiCad
+# 10, чтобы файлы .kicad_sch, генерируемые фасадом, были self-contained
+# и не зависели от глобальной KICAD_SYMBOL_DIR на машине-получателе.
+"src/adapters/outbound/schematic_kicad/lib_symbols" = "adapters/outbound/schematic_kicad/lib_symbols"
 
 
 [tool.hatch.build.hooks.custom]
@@ -214,4 +220,5 @@ modules = [
     "adapters.outbound.subprocess_apps",
     "adapters.outbound.kicad_cli",
     "adapters.outbound.ngspice",
+    "adapters.outbound.schematic_kicad",
 ]
