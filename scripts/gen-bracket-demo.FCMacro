@@ -1,5 +1,10 @@
-"""gen-bracket-demo.py — материализует sheet-metal-bracket demo-модель
+"""gen-bracket-demo.FCMacro — материализует sheet-metal-bracket demo-модель
 для ручного прогона в FreeCAD GUI (T112 acceptance ритуал).
+
+Расширение `.FCMacro` — обязательно: `freecadcmd <file.py>` трактует .py
+как «document open» (FreeCAD не знает что делать с .py, молча игнорирует
+и выходит). Файл с extension `.FCMacro` исполняется как Python. Содержимое
+— обычный Python, под ruff/mypy не попадает (ищут `.py`).
 
 Что делает:
     1. Создаёт directory `$EFACTORY_DEMO_DIR` (default
@@ -19,7 +24,7 @@
 
         docker run --rm \\
             -v $HOME/efactory-projects:/workspace:rw \\
-            efactory:linux freecadcmd /opt/efactory/scripts/gen-bracket-demo.py
+            efactory:linux freecadcmd /opt/efactory/scripts/gen-bracket-demo.FCMacro
 
     Обычно вызывается автоматически из `./efactory-up --demo-freecad`.
 """

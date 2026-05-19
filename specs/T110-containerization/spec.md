@@ -596,10 +596,13 @@ merge (Vladimir's KiCad-GUI ритуал, см. memory).
 - **Симлинки** в `/usr/local/bin/`: `freecadcmd` → `/opt/freecad/
   usr/bin/freecadcmd`, `freecad` → `/opt/freecad/AppRun` (AppRun
   настраивает LD_LIBRARY_PATH, PYTHONPATH для bundled Qt/Python).
-- **Demo-фикстура** — `scripts/gen-bracket-demo.py` материализует
-  простой sheet-metal-bracket (L-форма с одним bend) в `$HOME/
-  efactory-projects/sheetmetal-bracket-demo/` через FreeCAD Python
-  API. Открывается через `./efactory-up --demo-freecad`.
+- **Demo-фикстура** — `scripts/gen-bracket-demo.FCMacro` материализует
+  простой L-bracket в `$HOME/efactory-projects/sheetmetal-bracket-demo/`
+  через FreeCAD Part API. `.FCMacro` (а не `.py`) — потому что
+  `freecadcmd <script.py>` трактует файл как document.open (FreeCAD не
+  знает что делать с .py, молча игнорирует и выходит); только
+  `.FCMacro` extension запускается как макрос. Открывается через
+  `./efactory-up --demo-freecad`.
 - **GPU acceleration** — `efactory-up` пробрасывает `/dev/dri`
   (по аналогии с KiCad PCB 3D в T111); software rendering как
   fallback.

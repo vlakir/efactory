@@ -31,7 +31,7 @@
 #                       сгенерирована, запускает `gen-se-amp-demo.py`.
 #     --demo-freecad    Открыть sheet-metal-bracket demo в FreeCAD GUI
 #                       (T112). Если фикстура не сгенерирована —
-#                       запускает gen-bracket-demo.py через `freecadcmd`
+#                       запускает gen-bracket-demo.FCMacro через `freecadcmd`
 #                       внутри контейнера. Не тащит kicad-libs.
 #                       Несовместимо с --demo.
 #     -h, --help        Показать help и выйти.
@@ -201,7 +201,7 @@ if (( DEMO_FREECAD_MODE )); then
             -v "$PROJECTS_DIR:/workspace:rw" \
             --user "$(id -u):$(id -g)" \
             "$IMAGE" \
-            freecadcmd /opt/efactory/scripts/gen-bracket-demo.py \
+            freecadcmd /opt/efactory/scripts/gen-bracket-demo.FCMacro \
             || fail "генератор bracket-demo упал"
     fi
     LAUNCH_BIN="freecad"
