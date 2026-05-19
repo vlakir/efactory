@@ -121,12 +121,8 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- T110 (Phase 0 базовый Dockerfile) перенесён в BOARD.md → Doing
      2026-05-19. Spec — `specs/T110-containerization/spec.md`
      (Analyzed, Phase 0). -->
-- **T111** — [2026-05-19] **KiCad GUI passthrough.** X11/Wayland
-  socket mount, Xauthority, `/dev/dri` для Intel/AMD GPU
-  acceleration (или nvidia-runtime для NVIDIA). KiCad eeschema /
-  pcbnew / 3D viewer запускается из контейнера, открывается на
-  хосте. Acceptance: открыть SE-amp фикстуру, сохранить,
-  переоткрыть — стабильно на >50 cycles.
+<!-- T111 перенесена в BOARD.md → Done (2026-05-19, PR #53). Маркер
+     пропущен в PR #53, восстановлен по дороге в PR T113. -->
 <!-- T112 перенесена в BOARD.md → Doing (2026-05-20). Acceptance
      уточнено: FreeCAD 1.0+ через AppImage (variant C), Sheet Metal
      через git clone в Mod/, freecad-mcp вынесен в T124. См. ADR
