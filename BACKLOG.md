@@ -188,6 +188,21 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   как partially-replaced. Acceptance: 0 строк кода специфичных
   для AppImage; все тесты зелёные при KiCad из apt; PR ловится
   pre-push gate как обычно.
+- **T121** — [2026-05-19] **Externalize KiCad/FreeCAD libraries
+  as host volumes.** Phase 1.5 в Phase 0.9. Введена после Clarify
+  spec'а T110 (Vladimir 2026-05-19): «библиотеки в любом случае
+  лучше вывесить наружу, так же как пользовательские проекты».
+  Cut ~3 GB system libraries из основного образа, вынести в
+  отдельный `ghcr.io/vlakir/efactory-libs:linux-X.Y.Z` image
+  + bootstrap-логика в `efactory-up`: при первом запуске копирует
+  libraries из `efactory-libs` image в host `$HOME/efactory-libs/`,
+  на последующих запусках mount существующих host-volumes. Команда
+  `efactory-up --update-libs` пересоздаёт libraries. Пользователь
+  может полностью override через `-v ~/my-libs:/usr/share/kicad/`.
+  Acceptance: slim-образ ≤ 3 GB (с 5–6 GB до 3 GB); KiCad GUI
+  открывает существующий проект и library symbols резолвятся;
+  `--update-libs` идемпотентен. Spec — `specs/T110-containerization/
+  spec.md` Phase 1.5.
 
 ### Phase 1b — Чат-клиент (+2–3 недели, исполняется внутри контейнера после Phase 0.9)
 
