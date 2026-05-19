@@ -15,12 +15,14 @@ from adapters.inbound.cli.spice_units import (
     parse_spice_number,
 )
 from application.add_decision import add_decision as add_decision_use_case
+from application.bridge_sweep import SweepRun, bridge_sweep
 from application.create_project import create_project as create_project_use_case
 from application.delete_project import delete_project as delete_project_use_case
 from application.design_to_netlist import (
     design_to_netlist as design_to_netlist_use_case,
 )
 from application.design_to_sim import design_to_sim as design_to_sim_use_case
+from application.edit_component_model import edit_component_model
 from application.edit_component_value import (
     ComponentNotFoundError,
     MultipleMatchesError,
@@ -43,6 +45,7 @@ from application.list_projects import list_projects as list_projects_use_case
 from application.reindex_projects import (
     reindex_projects as reindex_projects_use_case,
 )
+from application.schematic_snapshot import SchematicSnapshot
 from application.sim_run import sim_run as sim_run_use_case
 from application.update_project import (
     PhaseUpdate,
@@ -1405,9 +1408,9 @@ def build_app(
         T004b: изменить value-properties компонентов в `.kicad_sch`.
 
         Использует `application.edit_component_value` (text-based atomic
-        replace). Atomic per-edit, но НЕ atomic on multi-edit (T021 в
-        Phase 2 backlog добавит snapshot/rollback). Combined edit+resim
-        в Python — через `application.edit_and_resim`.
+        replace). T004b Phase 1: multi-edit обёрнут в `SchematicSnapshot`
+        — на failure любого edit'а откатывается весь batch. Combined
+        edit+resim в Python — через `application.edit_and_resim`.
         """
 
         async def _resolve_schematic_path() -> Path:
@@ -1443,12 +1446,188 @@ def build_app(
             ref, _, val = spec_str.partition('=')
             edits.append((ref.strip(), val.strip()))
 
-        for ref, new_value in edits:
-            try:
-                old_value = edit_component_value(schematic_path, ref, new_value)
-            except (ComponentNotFoundError, MultipleMatchesError) as exc:
-                typer.echo(str(exc), err=True)
-                raise typer.Exit(code=1) from exc
-            typer.echo(f'{ref}: {old_value!r} → {new_value!r}')
+        with SchematicSnapshot(schematic_path) as snap:
+            for ref, new_value in edits:
+                try:
+                    old_value = edit_component_value(
+                        schematic_path,
+                        ref,
+                        new_value,
+                    )
+                except (ComponentNotFoundError, MultipleMatchesError) as exc:
+                    typer.echo(str(exc), err=True)
+                    typer.echo(
+                        "Rollback: предыдущие edit'ы отменены, schematic восстановлен.",
+                        err=True,
+                    )
+                    raise typer.Exit(code=1) from exc
+                typer.echo(f'{ref}: {old_value!r} → {new_value!r}')
+            snap.commit()
+
+    @bridge_app.command('edit-model')
+    def bridge_edit_model(
+        project: Annotated[str, typer.Argument(help='Имя проекта')],
+        *,
+        schematic: Annotated[
+            str,
+            typer.Option('--schematic', help='Путь к .kicad_sch'),
+        ],
+        ref: Annotated[
+            str,
+            typer.Option('--ref', help='Reference компонента (X1, D1, ...)'),
+        ],
+        model: Annotated[
+            str,
+            typer.Option('--model', help='ID SPICE-модели (6P14P, 1N4007, ...)'),
+        ],
+    ) -> None:
+        """
+        T005 Phase 1: swap SPICE-модели для существующего subckt-компонента.
+
+        Resolve `--model` через SpiceModelLibrary (любая категория —
+        tube/diode/transformer/load), затем edit_component_model обновит
+        `Value`, `Sim.Library`, `Sim.Name` properties атомарно.
+        """
+
+        async def _resolve() -> tuple[Path, SpiceModel]:
+            project_obj = await get_project_use_case(
+                name=project,
+                repo=metadata_repository,
+                manifest_repo=manifest_repository,
+            )
+            sch_path = (project_obj.path / schematic).resolve()
+            spice_model = await spice_library.get_by_id(model)
+            return sch_path, spice_model
+
+        try:
+            schematic_path, spice_model = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'bridge.edit_model',
+                    project=project,
+                    payload={
+                        'schematic': schematic,
+                        'ref': ref,
+                        'model': model,
+                    },
+                    fn=_resolve,
+                ),
+            )
+        except ProjectNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        except SpiceModelNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+
+        try:
+            old_values = edit_component_model(
+                schematic_path,
+                ref,
+                spice_model,
+            )
+        except (ComponentNotFoundError, MultipleMatchesError) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        for prop_name, old_value in old_values.items():
+            typer.echo(f'  {prop_name}: {old_value!r} → ...')
+        typer.echo(f'{ref}: model swap → {spice_model.id}')
+
+    @bridge_app.command('sweep')
+    def bridge_sweep_cli(
+        project: Annotated[str, typer.Argument(help='Имя проекта')],
+        *,
+        schematic: Annotated[
+            str,
+            typer.Option('--schematic', help='Путь к .kicad_sch'),
+        ],
+        param: Annotated[
+            list[str],
+            typer.Option(
+                '--param',
+                help='REF=v1,v2,v3 (можно несколько раз). Cartesian '
+                'product даёт N комбинаций. Пример: --param R1=1k,10k '
+                '--param C1=100n,1u → 4 запуска OP',
+            ),
+        ],
+        netlist_dir: Annotated[
+            str | None,
+            typer.Option(
+                '--netlist-dir',
+                help='Папка для netlist debug-файлов (per combination)',
+            ),
+        ] = None,
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout', help='Per-run timeout (default 60s)'),
+        ] = 60.0,
+    ) -> None:
+        """
+        T004b Phase 1: параметрический OP sweep.
+
+        Для каждой combination параметров: копия schematic → apply
+        value edits → kicad-cli netlist → ngspice OP. Failure на
+        конкретной combination не аборт sweep'а — записывается с
+        `error=...`. Output: tabular print parameters + key voltages
+        per run. TRAN/AC sweep'ы — Phase 2 backlog T021/T022.
+        """
+        params_dict: dict[str, list[str]] = {}
+        for spec_str in param:
+            if '=' not in spec_str:
+                typer.echo(
+                    f'--param требует REF=v1,v2,..., получено {spec_str!r}',
+                    err=True,
+                )
+                raise typer.Exit(code=2)
+            r, _, vals_str = spec_str.partition('=')
+            params_dict[r.strip()] = [
+                v.strip() for v in vals_str.split(',') if v.strip()
+            ]
+
+        async def _resolve_path() -> Path:
+            project_obj = await get_project_use_case(
+                name=project,
+                repo=metadata_repository,
+                manifest_repo=manifest_repository,
+            )
+            return (project_obj.path / schematic).resolve()
+
+        try:
+            schematic_path = asyncio.run(_resolve_path())
+        except ProjectNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+
+        nd = Path(netlist_dir).resolve() if netlist_dir else None
+
+        async def _run() -> list[SweepRun]:
+            return await bridge_sweep(
+                schematic=schematic_path,
+                parameters=params_dict,
+                analysis=OpAnalysis(),
+                exporter=schematic_exporter,
+                simulator=simulator,
+                netlist_dir=nd,
+                timeout_seconds=timeout,
+            )
+
+        runs = asyncio.run(
+            _log_command(
+                session_logger,
+                'bridge.sweep',
+                project=project,
+                payload={'schematic': schematic, 'param': param},
+                fn=_run,
+            ),
+        )
+        typer.echo(f'Sweep complete: {len(runs)} combinations.')
+        for run in runs:
+            params_repr = ' '.join(f'{k}={v}' for k, v in run.parameters.items())
+            if run.result is None:
+                typer.echo(f'  [{params_repr}]  FAILED: {run.error}')
+                continue
+            op = run.result.operating_points or {}
+            op_repr = ' '.join(f'{k}={v:.4g}' for k, v in sorted(op.items()))
+            typer.echo(f'  [{params_repr}]  {op_repr}')
 
     return app
