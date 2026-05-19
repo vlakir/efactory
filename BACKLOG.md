@@ -190,6 +190,29 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   — отдельно, тяжёлые) в `$HOME/efactory-libs/`, идемпотентно при
   повторе. Зафиксировано как out-of-scope T121 (Vladimir 2026-05-19,
   variant C).
+- **T123** — [2026-05-20] **Убрать KiCad warning «Sim.Library не
+  в symbol-library-table»** при открытии demo / любого
+  efactory-сгенерированного `.kicad_sch`. Источник — путаница в
+  KiCad 10: на открытии schematic смотрит каждое `Sim.Library`-
+  property компонента и сравнивает с `sym-lib-table` (хотя `.lib`
+  — это SPICE, а не symbol). Симуляция работает, warning безвреден,
+  но появляется при каждом открытии — раздражает.
+  Acceptance: при `./efactory-up --demo` (или любой схеме,
+  сгенерированной через `adapters/outbound/schematic_kicad/facade`)
+  KiCad открывает schematic без диалога «не в таблице».
+  Два возможных пути (выбрать после исследования):
+  (a) **Inline `.subckt`** в `Sim.Params` (или новый property) —
+      без внешней `Sim.Library`. Минус: каждое использование одной
+      и той же модели дублируется в schematic.
+  (b) **Well-known path для всех SPICE-libs** — система регистрирует
+      их где-то под `/usr/share/kicad/spice/` (или внутри
+      `kicad_common.json`) так, чтобы KiCad сразу видел и не
+      жаловался. Минус: нужно понять, что именно KiCad 10 проверяет
+      и считает «валидным» путём.
+  Затрагивает `src/adapters/outbound/schematic_kicad/facade.py`
+  (метод `_add_simulation_props` и аналоги). T100-test'ы должны
+  остаться зелёными (netlist export не меняется, меняется только
+  GUI-warning поведение).
 
 ### Phase 1b — Чат-клиент (+2–3 недели, исполняется внутри контейнера после Phase 0.9)
 
