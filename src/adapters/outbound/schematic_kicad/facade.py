@@ -274,6 +274,48 @@ _TRANSFORMER_1P_1S = _SymbolDef(
     label_offsets=_LabelOffsets(ref=(0.0, -8.89), value=(0.0, 8.89)),
 )
 
+# Custom Soviet tube snippets (T107) — нет в стандартной Valve.kicad_sym,
+# generated as copy-rename из EL84/ECC81 базовых форм. Visually одинаковы
+# (pentode/triode shape), отличаются только lib_id name и default Value.
+# Pin numbers сохранены от source snippet (KiCad-side pin numbers ≠
+# datasheet pinouts реальных советских ламп, но это OK — SPICE pinout
+# через Sim.Pins property mapping всё равно работает).
+_TUBES_SOVIET_GU50 = _SymbolDef(
+    lib_id='Tubes_Soviet:GU50',
+    pins=(
+        _PinLayout('2', (-7.62, 1.27)),  # G1 (control grid)
+        _PinLayout('3', (-2.54, 8.89)),  # K_G3 (cathode)
+        _PinLayout('7', (0.0, -11.43)),  # A (anode/plate)
+        _PinLayout('9', (7.62, -1.27)),  # G2 (screen)
+    ),
+    spice_pin_names=('G', 'K', 'P', 'G2'),
+    unit=1,
+    label_offsets=_LabelOffsets(ref=(7.62, -10.16), value=(7.62, 7.62)),
+)
+
+_TUBES_SOVIET_6P45S = _SymbolDef(
+    lib_id='Tubes_Soviet:6P45S',
+    pins=_TUBES_SOVIET_GU50.pins,  # Same pentode shape
+    spice_pin_names=_TUBES_SOVIET_GU50.spice_pin_names,
+    unit=1,
+    label_offsets=_TUBES_SOVIET_GU50.label_offsets,
+)
+
+# 6Н6П — single-triode shape (copy ECC81 unit 1, strip unit 2). T006
+# SPICE модель .SUBCKT 6N6P P G K (single half) — match ECC81 unit 1
+# pins (A=6, G=7, K=8).
+_TUBES_SOVIET_6N6P = _SymbolDef(
+    lib_id='Tubes_Soviet:6N6P',
+    pins=(
+        _PinLayout('6', (0.0, -10.16)),
+        _PinLayout('7', (-7.62, 0.0)),
+        _PinLayout('8', (-2.54, 10.16)),
+    ),
+    spice_pin_names=('P', 'G', 'K'),
+    unit=1,
+    label_offsets=_TRIODE_LABEL_OFFSETS,
+)
+
 # Registry: key — alias for user (может отличаться от lib_id для
 # multi-unit aliases типа `Valve:ECC81B`). lib_id из _SymbolDef
 # используется внутри ComponentSpec.
@@ -286,6 +328,9 @@ _SYMBOL_REGISTRY: dict[str, _SymbolDef] = {
     'Valve:ECC88': _VALVE_ECC88,
     'Valve:ECC88B': _VALVE_ECC88_B,
     'Valve:EC92': _VALVE_EC92,
+    'Tubes_Soviet:GU50': _TUBES_SOVIET_GU50,
+    'Tubes_Soviet:6P45S': _TUBES_SOVIET_6P45S,
+    'Tubes_Soviet:6N6P': _TUBES_SOVIET_6N6P,
     'Device:Transformer_1P_1S': _TRANSFORMER_1P_1S,
 }
 

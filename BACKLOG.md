@@ -70,15 +70,16 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      ECC83 self-contained (без extends), multi-unit dual-triode
      instancing (Valve:ECC81B / ECC83B / ECC88B registry entries). -->
 
-- **T107** — [2026-05-19] **Custom Soviet tube snippets** (vector
-  drawing). Уникальные советские лампы без western аналога —
-  GU50 (octal HV pentode, top-cap anode), 6П45С (sweep beam tetrode),
-  6Н6П (medium-µ dual-triode для phase-splitter). Embed в
-  `lib_symbols/Tubes_Custom.*.sexp` — drawing-heavy work (vector
-  polylines + pins по datasheet pinout). Не блокирует Phase 1b
-  (LLM chat может работать с EL84/ECC81 mappings). Acceptance:
-  3 кастомных snippet, integration test SPICE-сборка-симуляция для
-  одного из (GU50 power amp recommended).
+<!-- T107 закрыт 2026-05-19, перенесён в BOARD.md → Done. -->
+
+- **T107 Phase 1 (deferred)** — datasheet-accurate symbol drawing для
+  советских ламп. Phase 0 реализован через copy-rename базовых
+  EL84/ECC81 форм (visually одинаковы, отличается lib_id и Value).
+  Phase 1 — нарисовать оригинальные shapes: GU50 (octal base с top-cap
+  anode), 6П45С (specific beam tetrode shape), 6Н6П (octal dual triode
+  layout). Drawing-heavy vector polyline work. Возможно делегировать
+  LLM-vision при T032 SVG render + T106 Phase 3 beautifier готовности
+  (LLM смотрит datasheet картинку → генерирует s-expr polylines).
 
 <!-- T106 (scheme layout beautifier) перенесён в Фазу 3 после T032
      (Vladimir 2026-05-19) — связан с SVG render + LLM-vision. -->
