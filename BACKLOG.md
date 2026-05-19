@@ -119,10 +119,9 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      Phase Cross-platform (см. конец файла). -->
 
 - **T110** — [2026-05-19] **Базовый Dockerfile efactory (Linux).**
-  Ubuntu LTS base + KiCad 10 из official Ubuntu/PPA репозитория
-  (НЕ AppImage — стабильнее, чем AppImage на dev-машине Vladimir'а,
-  см. инцидент T100 Phase 0) + ngspice + Python 3.14 + uv + весь
-  efactory код + наши MCP-серверы. Заменяет T002. Spec —
+  Ubuntu LTS base + KiCad 10 из официального KiCad apt-репозитория
+  + ngspice + Python 3.14 + uv + весь efactory код + наши
+  MCP-серверы. Заменяет T002. Spec —
   `specs/T110-containerization/spec.md` (предстоит написать).
   Acceptance: `docker build` без ошибок; `docker run efactory
   uv run pytest` проходит весь тестовый набор; size 4–6 GB
@@ -130,12 +129,10 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   Ubuntu 24.04 / Fedora 41 / Arch (любой Linux с Docker Engine).
 - **T111** — [2026-05-19] **KiCad GUI passthrough.** X11/Wayland
   socket mount, Xauthority, `/dev/dri` для Intel/AMD GPU
-  acceleration (или nvidia-runtime для NVIDIA). Проверка: KiCad
-  eeschema / pcbnew / 3D viewer запускается из контейнера,
-  открывается на хосте, не OOM-ит на reopen/save (vs T100
-  Phase 0 инцидент с AppImage). Acceptance: открыть SE-amp
-  фикстуру, сохранить, переоткрыть — без падений на >50
-  cycles.
+  acceleration (или nvidia-runtime для NVIDIA). KiCad eeschema /
+  pcbnew / 3D viewer запускается из контейнера, открывается на
+  хосте. Acceptance: открыть SE-amp фикстуру, сохранить,
+  переоткрыть — стабильно на >50 cycles.
 - **T112** — [2026-05-19] **FreeCAD CLI + GUI в образе.**
   FreeCAD 1.0+ из репозитория, freecad-mcp в Python-стеке,
   Sheet Metal workbench как addon. Absorbs T066 (FreeCAD
@@ -176,6 +173,21 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   Acceptance: первый merge после T110-T114 → GHCR содержит
   pull-able образ, `docker pull ghcr.io/vlakir/efactory:linux-
   latest` работает на чистой машине.
+- **T120** — [2026-05-19] **Cleanup: удалить AppImage-detection
+  из `platform_layer`.** После Phase 0.9 KiCad/FreeCAD внутри
+  контейнера всегда через apt (в PATH); AppImage-fallback в
+  `src/adapters/outbound/platform_native/platform_layer.py`
+  становится dead code. Удалить `_scan_appimage_locations`,
+  `_detect_kicad_cli_via_kicad_appimage`, multi-call AppImage
+  logic; почистить glob-патрены и known locations
+  (`~/Загрузки/`, `~/AppImages/`, `~/<app>/`). Подправить
+  тесты в `tests/integration/adapters/platform_native/`:
+  убрать AppImage reality-tests, оставить PATH-detection через
+  apt. Пройтись по `pytest.mark.skipif` в integration/e2e —
+  оставить только условие «kicad in PATH». Spec T009 пометить
+  как partially-replaced. Acceptance: 0 строк кода специфичных
+  для AppImage; все тесты зелёные при KiCad из apt; PR ловится
+  pre-push gate как обычно.
 
 ### Phase 1b — Чат-клиент (+2–3 недели, исполняется внутри контейнера после Phase 0.9)
 
