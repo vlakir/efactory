@@ -44,15 +44,45 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- Задачи признанные нужными, но без активного владельца / времени.
      Не идут в Doing до явного решения Разработчика «берём». -->
 
-- **T002** — [2026-05-15, parked 2026-05-19] bootstrap.sh для Linux:
-  установка KiCad, ngspice, FreeCAD, FEMM, Python, MCP-серверов по
-  `compatibility.toml`. Acceptance: на чистой Ubuntu 24.04
-  `./bootstrap.sh` без ошибок, smoke-тест зелёный. **Parked:**
-  Разработчик пока откладывает (когда — не определено).
-- **T003** — [2026-05-15, parked 2026-05-19] bootstrap.ps1 для
-  Windows: то же самое через winget/chocolatey + pip. Acceptance:
-  на чистой Windows 11 `bootstrap.ps1` без ошибок, smoke-тест
-  зелёный. **Parked:** аналогично T002.
+- **T002** — [2026-05-15, replaced 2026-05-19 by T110] ~~bootstrap.sh
+  для Linux: установка KiCad, ngspice, FreeCAD, FEMM, Python,
+  MCP-серверов по `compatibility.toml`.~~ **Replaced by T110
+  (Dockerfile с полным стеком).** ADR — `DECISIONS.md` 2026-05-19,
+  «Distribution: Linux Docker image».
+- **T003** — [2026-05-15, parked 2026-05-19 до Phase Cross-platform]
+  bootstrap.ps1 для Windows: то же самое через winget/chocolatey +
+  pip. **Parked:** efactory переходит на Docker-distribution (Linux
+  only в текущей фазе). Windows-поддержка — через Docker Desktop /
+  WSLg в отдельной Phase Cross-platform (см. ниже).
+- **T011** — [2026-05-15, parked 2026-05-19] `kicad-sim-chat`:
+  терминальный UI на Rich (история, ввод, рендер ответов).
+  Acceptance: интерактивный чат работает в любом современном
+  терминале, поддерживает прокрутку и подсветку. **Parked:**
+  решено использовать Claude Code как frontend (см. T108 OpenCode
+  pilot и будущий ADR «Frontend = готовый AI-терминал, а не свой
+  клиент»). Возвращать к T011 — только если оба готовых решения
+  не подойдут после пилота.
+- **T108** — [2026-05-19] **Spike: пилотное знакомство с OpenCode**
+  как альтернативным frontend'ом efactory (MIT, Go-based TUI,
+  multi-provider через Models.dev, MCP local+remote, mid-session
+  model switch). Цель — оценить, закрывает ли OpenCode дух
+  T012-T019 «бесплатно» и стоит ли менять Claude Code → OpenCode
+  как основной фронтенд.
+  Acceptance: за одну вечернюю сессию проверены и зафиксированы
+  выводы в `specs/T108-opencode-pilot/notes.md`:
+  (a) установка и запуск на dev-машине Владимира (Linux);
+  (b) подключение хотя бы одного efactory MCP-сервера через
+  `opencode.json`, вызов тула из чата;
+  (c) переключение моделей mid-session (Anthropic ↔ OpenAI-compat
+  ↔ локальный Ollama, что доступно);
+  (d) есть ли аналог `CLAUDE.md` (project-level system prompt) и
+  слэш-команд;
+  (e) рендер markdown / code / таблиц в TUI на качественном
+  уровне;
+  (f) поддержка side-by-side `/compare`-сценария (T020) — есть /
+  нет / можно ли добавить плагином.
+  По итогам — ADR «Frontend для efactory: Claude Code vs OpenCode»
+  в `DECISIONS.md` и решение по судьбе T011-T019.
 
 ### Фаза 1a — MVP-ядро (3–4 недели)
 
@@ -78,12 +108,85 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      (Vladimir 2026-05-19) — связан с SVG render + LLM-vision. -->
 
 
-### Фаза 1b — Чат-клиент (+2–3 недели)
+### Phase 0.9 — Containerization (новая фаза, 2026-05-19)
 
-- **T011** — [2026-05-15] `kicad-sim-chat`: терминальный UI на Rich
-  (история, ввод, рендер ответов).
-  Acceptance: интерактивный чат работает в любом современном
-  терминале, поддерживает прокрутку и подсветку.
+<!-- Введена решением 2026-05-19 (DECISIONS.md «Distribution:
+     Linux Docker image с полным стеком»). Ставится между Phase
+     1a и Phase 1b: до того, как развивать chat-client / runtime-
+     агента, упаковать весь инструментарий в один воспроизводимый
+     образ. После завершения Phase 0.9 все дальнейшие фазы
+     исполняются внутри контейнера. Linux-only; Mac/Windows —
+     Phase Cross-platform (см. конец файла). -->
+
+- **T110** — [2026-05-19] **Базовый Dockerfile efactory (Linux).**
+  Ubuntu LTS base + KiCad 10 из official Ubuntu/PPA репозитория
+  (НЕ AppImage — стабильнее, чем AppImage на dev-машине Vladimir'а,
+  см. инцидент T100 Phase 0) + ngspice + Python 3.14 + uv + весь
+  efactory код + наши MCP-серверы. Заменяет T002. Spec —
+  `specs/T110-containerization/spec.md` (предстоит написать).
+  Acceptance: `docker build` без ошибок; `docker run efactory
+  uv run pytest` проходит весь тестовый набор; size 4–6 GB
+  (без GUI-стека, GUI добавится в T111/T112); запускается на
+  Ubuntu 24.04 / Fedora 41 / Arch (любой Linux с Docker Engine).
+- **T111** — [2026-05-19] **KiCad GUI passthrough.** X11/Wayland
+  socket mount, Xauthority, `/dev/dri` для Intel/AMD GPU
+  acceleration (или nvidia-runtime для NVIDIA). Проверка: KiCad
+  eeschema / pcbnew / 3D viewer запускается из контейнера,
+  открывается на хосте, не OOM-ит на reopen/save (vs T100
+  Phase 0 инцидент с AppImage). Acceptance: открыть SE-amp
+  фикстуру, сохранить, переоткрыть — без падений на >50
+  cycles.
+- **T112** — [2026-05-19] **FreeCAD CLI + GUI в образе.**
+  FreeCAD 1.0+ из репозитория, freecad-mcp в Python-стеке,
+  Sheet Metal workbench как addon. Absorbs T066 (FreeCAD
+  bootstrap). Acceptance: freecadcmd работает headless,
+  FreeCAD GUI запускается через X11 из контейнера, addon
+  Sheet Metal доступен.
+- **T113** — [2026-05-19] **FEM-solver: пилот и интеграция.**
+  Заменяет FEMM (см. ADR от 2026-05-19 «Magnetic field
+  verification: Linux-native FEM-solver»). Пилот сравнивает
+  **Elmer FEM (primary)** vs **GetDP + Gmsh (fallback)** на
+  фикстурах: OPT 6П14П single-ended, силовой трансформатор
+  50 Гц, flyback SMPS дроссель. Критерии выбора: качество
+  результатов vs аналитики (PyOpenMagnetics), API-удобство
+  для LLM-orchestration, время счёта, размер в образе.
+  Absorbs T058 (FEMM bootstrap). После выбора — интеграция
+  через `adapters/outbound/fem_solver/` (solver-agnostic
+  port `MagneticFieldSolver`), MAS JSON → solver input
+  (~50–100 строк). Acceptance: для тестового OPT 6П14П
+  расчётная индуктивность через solver совпадает с
+  аналитической в пределах ±10%; решение зафиксировано в
+  ADR.
+- **T114** — [2026-05-19] **`efactory-up` wrapper-скрипт.**
+  Shell-скрипт для запуска efactory: pull последнего образа
+  (опционально, через флаг), `xhost +local:docker` для X11
+  permissions, `docker run` с правильными volume mounts
+  (проекты, библиотеки, `~/.claude/.credentials.json:ro`),
+  env-переменными (`DISPLAY`, `XAUTHORITY`), `--device /dev/dri`
+  для GPU, `--user $(id -u):$(id -g)` для правильных прав на
+  volume-файлах. Acceptance: одной командой `./efactory-up`
+  пользователь получает работающую сессию агента + KiCad GUI
+  по запросу.
+- **T115** — [2026-05-19] **CI: сборка и публикация образа.**
+  GitHub Actions / GHCR workflow: на каждый merge в `main`
+  пересобираем образ, прогоняем smoke-test внутри (kicad-cli
+  ERC + ngspice OP + FreeCAD headless rendering + solver
+  unit-test), публикуем в GHCR с tag = git SHA + `linux-latest`.
+  Релизы (0.X.0) дополнительно теггируются `linux-0.X.0`.
+  Acceptance: первый merge после T110-T114 → GHCR содержит
+  pull-able образ, `docker pull ghcr.io/vlakir/efactory:linux-
+  latest` работает на чистой машине.
+
+### Phase 1b — Чат-клиент (+2–3 недели, исполняется внутри контейнера после Phase 0.9)
+
+<!-- T011 перенесён в Tech Debt 2026-05-19: решено использовать
+     Claude Code как frontend; пилот OpenCode = T108. Судьба
+     T012-T016 (бэкенды, MCP-клиент, slash-команды, контекст-
+     менеджмент, system prompt) будет переоценена после T108
+     ADR — большая часть закрывается готовым frontend'ом
+     "из коробки". Frontend живёт внутри Docker-образа
+     (см. Phase 0.9). -->
+
 - **T012** — [2026-05-15] `kicad-sim-chat`: бэкенд `claude-code-max`
   через `claude -p` (только генерация текста / tool_use, без
   исполнения).
@@ -236,11 +339,15 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   `export_schematic_publication`, `export_sim_report`.
   Acceptance: схема → SVG/PDF для статьи; результаты симуляции →
   Markdown-отчёт с графиками.
-- **T036** — [2026-05-15] Стратегия обновлений: флаги `--update`,
-  `--update-models`, `--doctor` в bootstrap + CLI.
-  Acceptance: `--update` обновляет зависимости, гонит smoke-тест,
-  при успехе обновляет `compatibility.toml`; `--doctor` диагностирует
-  окружение.
+- **T036** — [2026-05-15, re-evaluate 2026-05-19 после Phase 0.9]
+  Стратегия обновлений: флаги `--update`, `--update-models`,
+  `--doctor` в bootstrap + CLI.
+  **Re-evaluate:** после Phase 0.9 Containerization большая часть
+  заменяется на `docker pull efactory:linux-latest`. Что
+  остаётся актуальным — `--doctor` внутри образа (диагностика
+  тулчейна, проверка GPU/X11 passthrough) и `--update-models`
+  для пользовательских SPICE-моделей вне образа. Acceptance
+  переоценить при взятии в работу.
 
 ### Фаза 4 — PCB-модуль (+3–4 недели)
 
@@ -328,10 +435,17 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   совместимой со SPICEBridge.
   Acceptance: расчётный `.subckt` загружается в pipeline моделирования,
   АЧХ трансформатора совпадает с расчётной в пределах допуска.
-- **T055** — [2026-05-15] `mag_verify_femm`: верификация магнитного
-  поля через FEMM (pyFEMM/Lua) — экспорт скрипта, запуск, парсинг.
-  Acceptance: распределение поля и значения индуктивности из FEMM
-  возвращаются в чат; рассогласование с расчётом подсвечивается.
+- **T055** — [2026-05-15, renamed/refactored 2026-05-19]
+  `mag_verify_field` (solver-agnostic, бывш. `mag_verify_femm`):
+  верификация магнитного поля через Linux-native FEM-solver
+  (Elmer FEM primary, GetDP fallback — выбор по T113).
+  Экспорт solver input, запуск, парсинг. ADR — `DECISIONS.md`
+  2026-05-19 «Magnetic field verification: Linux-native
+  FEM-solver». Acceptance: распределение поля и значения
+  индуктивности возвращаются в чат; рассогласование с
+  PyOpenMagnetics-расчётом подсвечивается; solver-agnostic
+  port в `adapters/outbound/fem_solver/` позволяет подменить
+  backend без слома domain.
 - **T056** — [2026-05-15] `mag_build_3d`: 3D-модель магнитного
   компонента через MVB → FreeCAD (сердечник + каркас + обмотки) +
   экспорт STEP.
@@ -342,10 +456,12 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   порядок намотки, изоляция, пропитка, параметры приёмки.
   Acceptance: спецификация валидируется на тестовом OPT — все поля
   заполнены, диаграмма послойной намотки читается.
-- **T058** — [2026-05-15] Bootstrap: установка FEMM (системно) +
-  pyFEMM (Python) на Linux и Windows; обновление `compatibility.toml`.
-  Acceptance: `bootstrap` ставит FEMM на чистой машине; smoke-тест
-  pyFEMM зелёный.
+- **T058** — [2026-05-15, absorbed 2026-05-19 by T113] ~~Bootstrap:
+  установка FEMM (системно) + pyFEMM (Python) на Linux и Windows;
+  обновление `compatibility.toml`.~~ **Absorbed by T113** (FEM-solver
+  pilot + integration в Phase 0.9): Linux-native solver (Elmer /
+  GetDP) ставится в Dockerfile, отдельная bootstrap-задача не
+  нужна. FEMM сам заменён в ADR от 2026-05-19.
 
 ### Фаза 6 — Проектирование корпуса (+3–4 недели)
 
@@ -383,10 +499,11 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   визуального контроля (PNG/SVG в чат через freecad-mcp).
   Acceptance: рендер показывается в терминале (Sixel/Kitty) или
   открывается внешне.
-- **T066** — [2026-05-15] Bootstrap: установка FreeCAD 1.0+ + addon
-  Sheet Metal на Linux и Windows; обновление `compatibility.toml`.
-  Acceptance: `bootstrap` ставит FreeCAD; Sheet Metal workbench
-  доступен; smoke-тест зелёный.
+- **T066** — [2026-05-15, absorbed 2026-05-19 by T112] ~~Bootstrap:
+  установка FreeCAD 1.0+ + addon Sheet Metal на Linux и Windows;
+  обновление `compatibility.toml`.~~ **Absorbed by T112** (FreeCAD
+  CLI + GUI в образе, Phase 0.9): FreeCAD и Sheet Metal addon
+  ставятся в Dockerfile, отдельная bootstrap-задача не нужна.
 
 ### Фаза 7 — Производственная документация (+2 недели)
 
@@ -475,3 +592,38 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   Acceptance: для RF-проекта (тестовый антенный согласователь)
   снимаются S-параметры, рендерится Smith chart, сравнение с
   симуляцией.
+
+### Phase Cross-platform — Mac/Windows поддержка (после стабилизации Linux Docker workflow)
+
+<!-- Введена решением 2026-05-19 (DECISIONS.md «Distribution:
+     Linux Docker image»). Отдельная фаза с собственным
+     acceptance, чтобы не блокировать Linux-only итерацию.
+     Берётся в работу после того, как Phase 0.9 + 1a + 1b
+     стабильно работают на Linux. -->
+
+- **T116** — [2026-05-19] Docker Desktop на Windows: запуск
+  efactory через WSL2 / WSLg для GUI passthrough. Документация
+  по установке и known-issues. Acceptance: на чистой Windows 11
+  + Docker Desktop + WSLg `./efactory-up.ps1` (или эквивалент)
+  запускает KiCad GUI из контейнера; задача создания SE-amp
+  проходит end-to-end.
+- **T117** — [2026-05-19] Docker Desktop на macOS: запуск
+  efactory через Docker Desktop + XQuartz (Intel) или
+  Docker Desktop + native macOS XQuartz (Apple Silicon).
+  Multi-arch image (linux/amd64 + linux/arm64) для Apple
+  Silicon — проверить, что весь стек собирается на arm64
+  (KiCad да; FreeCAD да; FEM-solver — проверить Elmer/GetDP
+  на arm64). Acceptance: на чистой macOS 14+ задача SE-amp
+  проходит end-to-end.
+- **T118** — [2026-05-19] **Опционально:** native FEMM fallback
+  для пользователей, которым нужна совместимость с
+  существующими FEMM-моделями индустрии. Реализуется только
+  если возникнет реальный запрос. ADR — `DECISIONS.md`
+  2026-05-19 «Magnetic field verification».
+  Acceptance: opt-in путь через флаг конфигурации,
+  переключающий FEM-backend с Elmer/GetDP на FEMM (native
+  на хосте, не в контейнере).
+- **T119** — [2026-05-19] Native fallback distribution для
+  пользователей без Docker (corporate restrictions и т.п.):
+  возрождение T002/T003 как opt-in пути. Acceptance —
+  переоценить при реальном запросе.

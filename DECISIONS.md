@@ -25,6 +25,171 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-05-19 — Distribution: Linux Docker image с полным стеком (включая GUI), кроссплатформенность отложена в отдельную фазу
+
+- **Контекст:** efactory интегрирует разнородный тулчейн —
+  KiCad 10 (GUI + CLI), ngspice, FreeCAD (CLI + GUI), FEM-solver
+  для магнетики, Python 3.14 stack, Claude Code как frontend
+  агента, MCP-серверы. Установка этого стека на машину
+  пользователя выглядела как **T002 (bootstrap.sh для Linux)** +
+  **T003 (bootstrap.ps1 для Windows)** + **T036 (--update /
+  --doctor)** + **T058 (FEMM bootstrap)** + **T066 (FreeCAD
+  bootstrap)** — суммарно ~500 строк bash+ps1 + ручное
+  координирование версий через `compatibility.toml`. На
+  dev-машине Владимира KiCad 10.0.2 AppImage уже даёт OOM на
+  reopen/save (T100 Phase 0 инцидент 2026-05-18) — версионная
+  hell начинается сразу. Параллельно встал вопрос **изоляции
+  runtime-агента** от dev-инстанса Claude Code (mem0, методика
+  dreamteam, личные настройки) — для чистоты эксперимента и
+  будущей передачи продукта пользователям.
+- **Решение:** **Distribution = Linux Docker image с полным
+  стеком, включая GUI.** Один образ `efactory:linux` содержит:
+  KiCad из официального Ubuntu/PPA-репозитория (не AppImage),
+  ngspice, FreeCAD из репозитория, Linux-native FEM-solver
+  (см. отдельный ADR от 2026-05-19 о замене FEMM), Python 3.14
+  + uv + весь efactory код, Claude Code как frontend агента,
+  наши MCP-серверы. GUI приложений (eeschema, pcbnew, FreeCAD)
+  выкидывается через X11/Wayland passthrough; GPU acceleration —
+  через `/dev/dri` (Intel/AMD) или nvidia-runtime. Наружу через
+  volume mounts: папка проектов пользователя, папка библиотек,
+  `~/.claude/.credentials.json:ro` для Claude Code auth.
+  Запуск — единым shell-скриптом `efactory-up`. **Никакого
+  AppImage** — KiCad берётся из official репов в контейнере,
+  стабильнее на dev-машине Владимира. **Кроссплатформенность
+  отложена** в отдельную фазу «Cross-platform» (Docker Desktop /
+  WSLg / Colima support — Phase 8 или позже).
+- **Альтернативы:**
+  - **Native install через bootstrap-скрипты (status quo, T002/
+    T003)** — отвергли: пять разных тулов с независимыми
+    релизными циклами + Wine для FEMM + AppImage-нестабильность
+    KiCad на конкретной машине = постоянный versioning hell.
+    Compatibility.toml лечит только знание, не сам факт
+    рассогласования у пользователя.
+  - **Headless Docker гибрид (Docker для CLI, native KiCad на
+    хосте для GUI)** — рассматривался как промежуточный шаг.
+    Отвергли: пользователь всё равно должен установить KiCad
+    нативно (та же versioning-hell), Docker даёт только CLI-
+    изоляцию. Меньше выигрыш ценой архитектурной двойственности
+    «что внутри, что снаружи».
+  - **Полный Docker с кроссплатформенностью с первого дня**
+    (Mac/Win Docker Desktop с XQuartz / WSLg) — отвергли как
+    стартовую цель: GUI passthrough на Mac/Win нетривиальный,
+    overhead через VM (Docker Desktop на не-Linux крутит свою
+    Linux VM), Wine FEMM в двойной виртуализации = боль.
+    Linux-only сейчас даёт чистый прирост без этих рисков;
+    cross-platform как отдельная фаза с собственным acceptance.
+  - **Подождать KiCad schematic IPC API (Phase 8 концепта)** —
+    отвергли как несвязанный вопрос: IPC API про коммуникацию
+    с KiCad-процессом, distribution-проблема не уходит.
+- **Последствия:**
+  - **T002 (bootstrap.sh Linux) → replaced by T110 (Dockerfile).**
+    Native bootstrap для Linux больше не пишется — функция
+    закрыта образом.
+  - **T003 (bootstrap.ps1 Windows) → parked** до Phase
+    Cross-platform; реализация отложена до тех пор, пока
+    Linux-only Docker workflow не отшлифован.
+  - **T036 (--update / --doctor / --update-models)** →
+    re-evaluate. Часть функциональности заменяется
+    `docker pull efactory:latest` + `docker run efactory --doctor`
+    (внутрь образа кладём диагностику тулчейна).
+  - **T058 (FEMM bootstrap), T066 (FreeCAD bootstrap)** →
+    absorbed в T113/T112 (FEM-solver и FreeCAD ставятся в
+    Dockerfile, отдельные bootstrap-задачи не нужны).
+  - **Изоляция runtime-агента от dev-инстанса (рассматривалась
+    через `CLAUDE_CONFIG_DIR`)** — закрыта **бесплатно как
+    побочный эффект Docker**. Контейнер не видит ни моего
+    `~/.claude/CLAUDE.md`, ни mem0, ни tools-MCP — туда попадает
+    только то, что заложено в Dockerfile.
+  - **`compatibility.toml`** становится **информационным**
+    артефактом (для отчётности по версиям внутри образа);
+    источник истины — Dockerfile с pinned версиями.
+  - **Кроссплатформенность как принцип в README** ослабляется:
+    «Linux первой фазой, кросс-платформа как отдельная Phase
+    Cross-platform». Не отказ от поддержки Mac/Windows, а
+    осознанная decomposition по времени.
+  - **Размер образа** ожидаемо 8–12 GB (KiCad libraries ~3 GB +
+    FreeCAD ~1.5 GB + FEM-solver ~500 MB + Python stack).
+    Приемлемо для desktop-distribution, не для CI fat-pull;
+    для CI-нагрузок будем держать минимальный slim-вариант без
+    GUI (`efactory:linux-headless`) — детали в spec T110.
+  - **Новая фаза в roadmap** — «Phase 0.9 Containerization»
+    встаёт **между Phase 1a и Phase 1b**: до того, как делать
+    chat-client / runtime-агента, нужно положить весь
+    инструментарий в один воспроизводимый образ. Задачи:
+    T110-T115 (см. BACKLOG.md). После Phase 0.9 все
+    дальнейшие фазы исполняются внутри контейнера.
+
+### 2026-05-19 — Magnetic field verification: Linux-native FEM-solver (Elmer FEM primary, GetDP+Gmsh fallback), FEMM как legacy
+
+- **Контекст:** ADR от 2026-05-15 фиксировал **FEMM + pyFEMM**
+  как 2D-FEA для верификации магнитного поля трансформаторов и
+  дросселей (T055 `mag_verify_femm`). FEMM — это нативно-
+  Windows-приложение; на Linux запускается через Wine. При
+  переходе на Linux Docker distribution (ADR от 2026-05-19
+  выше) FEMM/Wine становится узкой точкой:
+  - Wine layer внутри Docker = двойная виртуализация на
+    Mac/Windows (когда дойдёт до Phase Cross-platform).
+  - FEMM не обновляется активно (последний major release ~2019).
+  - GUI FEMM через Wine + X11 passthrough — лишний шаг с
+    хрупким UX.
+  - На Linux есть зрелые native-альтернативы для magnetostatic
+    2D/3D FEA.
+- **Решение:** **FEMM заменяется Linux-native FEM-solver'ом**.
+  Кандидаты для пилотного выбора в рамках T113:
+  - **Elmer FEM (primary)** — open-source multi-physics solver,
+    Linux-native, имеет GUI (ElmerGUI), Python API через
+    elmer-tools / ElmerSolver CLI, лучше параллелится,
+    активно развивается. Используется в академии и индустрии
+    для электромашин и трансформаторов.
+  - **GetDP + Gmsh (fallback)** — академический мейнстрим для
+    электромагнитики (авторы — те же люди, что делают Gmsh),
+    более низкоуровневый (требует weak form), но проверен на
+    десятилетиях работ с трансформаторами и электромашинами.
+  Окончательный выбор — после пилотного сравнения в **T113**
+  (Containerization phase): какой solver проще интегрировать
+  в efactory pipeline (input — MAS JSON от PyOpenMagnetics,
+  output — поля + индуктивности + потери), какой даёт
+  стабильные результаты на тестовых OPT/SMPS-трансформаторах,
+  какой проще для LLM-driven автоматизации. **PyOpenMagnetics
+  остаётся** как ядро магнитного дизайна — заменяется только
+  FEM-верификация.
+- **Альтернативы:**
+  - **FEMM в Docker через Wine** — отвергли: двойная
+    виртуализация на не-Linux, хрупкий GUI passthrough,
+    FEMM не активно развивается, упускаем возможность
+    перейти на нативный Linux-инструмент.
+  - **FreeFEM** — рассматривался: magnetostatic module есть,
+    но ориентирован на исследователей-математиков (DSL для
+    weak form), менее инженерный workflow, чем Elmer.
+  - **FEniCS / FEniCSx** — мощнейший Python-FEM framework,
+    но требует написания weak form вручную; overhead обучения
+    для нашего use case (готовый magnetostatic workflow
+    интереснее, чем PDE-конструктор).
+  - **Подождать Linux-port FEMM** — нет таких планов в upstream
+    (FEMM поддерживается одним мейнтейнером с 2019, native
+    Linux никогда не был приоритетом).
+  - **Коммерческие (Ansys Maxwell, COMSOL)** — отвергли по
+    тому же принципу первого ADR (open-source-first).
+- **Последствия:**
+  - **ADR от 2026-05-15 «PyOpenMagnetics + FEMM»** — **частично
+    заменён** этим ADR в части FEMM. PyOpenMagnetics остаётся
+    как ядро магнитного дизайна; FEMM-секция заменяется на
+    Linux-native solver (выбор после T113 пилота).
+  - **T055 (`mag_verify_femm`)** — переименование и переоценка
+    acceptance: solver-agnostic API в efactory (`mag_verify_field`
+    с pluggable backend), внутри которого первая реализация —
+    через Elmer (или GetDP по результатам T113).
+  - **T058 (FEMM bootstrap)** — переименуется в T113
+    (FEM-solver pilot + integration) и absorbed в Dockerfile.
+  - **MAS JSON формат** остаётся как input стандарт — Elmer/
+    GetDP принимают meshing input (geometry + материалы),
+    преобразование MAS → solver input делает наш orchestration
+    layer (~50–100 строк Python в `adapters/outbound/fem_solver/`).
+  - **Phase Cross-platform (будущее):** возможно появится
+    fallback на нативный FEMM/Wine для пользователей, которым
+    нужна совместимость с существующими FEMM-моделями
+    индустрии — но это **opt-in**, не основной путь.
+
 ### 2026-05-19 — Сторонние review-боты: CodeRabbit как best-effort, primary path = self-review + опциональный `/ultrareview`
 
 - **Контекст:** T094 закрытие — что делать с CodeRabbit integration.
@@ -687,6 +852,13 @@ ADR-Lite: компактный лог архитектурных решений 
   обновления и совместимости (но обе MIT, PyPI).
 
 ### 2026-05-15 — PyOpenMagnetics + FEMM для намоточных изделий
+
+> **Частично заменено решением от 2026-05-19** (см. «Magnetic
+> field verification: Linux-native FEM-solver...» выше). FEMM
+> заменяется Linux-native solver'ом (Elmer / GetDP, выбор по
+> итогам T113); PyOpenMagnetics + MAS-формат остаются как ядро
+> магнитного дизайна.
+
 
 - **Контекст:** проектирование заказных трансформаторов, дросселей,
   катушек индуктивности — от подбора сердечника до спецификации для
