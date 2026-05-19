@@ -70,16 +70,9 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      ECC83 self-contained (без extends), multi-unit dual-triode
      instancing (Valve:ECC81B / ECC83B / ECC88B registry entries). -->
 
-<!-- T107 закрыт 2026-05-19, перенесён в BOARD.md → Done. -->
-
-- **T107 Phase 1 (deferred)** — datasheet-accurate symbol drawing для
-  советских ламп. Phase 0 реализован через copy-rename базовых
-  EL84/ECC81 форм (visually одинаковы, отличается lib_id и Value).
-  Phase 1 — нарисовать оригинальные shapes: GU50 (octal base с top-cap
-  anode), 6П45С (specific beam tetrode shape), 6Н6П (octal dual triode
-  layout). Drawing-heavy vector polyline work. Возможно делегировать
-  LLM-vision при T032 SVG render + T106 Phase 3 beautifier готовности
-  (LLM смотрит datasheet картинку → генерирует s-expr polylines).
+<!-- T107 Phase 0 закрыт 2026-05-19 (BOARD.md → Done), Phase 1
+     deferred перенесён в Фазу 3 перед T106 (Vladimir 2026-05-19) —
+     связан с T032 SVG-render + T106 LLM-vision beautifier. -->
 
 <!-- T106 (scheme layout beautifier) перенесён в Фазу 3 после T032
      (Vladimir 2026-05-19) — связан с SVG render + LLM-vision. -->
@@ -180,6 +173,15 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   визуальная проверка LLM (vision-режим, где доступно).
   Acceptance: схема → SVG → опционально показывается LLM для
   валидации топологии.
+- **T107 Phase 1 (deferred)** — datasheet-accurate symbol drawing для
+  советских ламп. Phase 0 (закрыт 2026-05-19, PR #46) реализован
+  через copy-rename базовых EL84/ECC81 форм (visually одинаковы,
+  отличается lib_id и Value). Phase 1 — нарисовать оригинальные
+  shapes: GU50 (octal base с top-cap anode), 6П45С (specific beam
+  tetrode shape), 6Н6П (octal dual triode layout). Drawing-heavy
+  vector polyline work. Возможно делегировать LLM-vision при T032
+  SVG render + T106 Phase 3 beautifier готовности (LLM смотрит
+  datasheet картинку → генерирует s-expr polylines).
 - **T106** — [2026-05-19] **Scheme layout beautifier.** Post-process
   валидного `.kicad_sch` (после ERC) для «textbook look»: убрать
   collisions подписей/компонентов/проводников, выровнять reference/
