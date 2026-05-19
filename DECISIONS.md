@@ -52,9 +52,10 @@ ADR-Lite: компактный лог архитектурных решений 
   через `/dev/dri` (Intel/AMD) или nvidia-runtime. Наружу через
   volume mounts: папка проектов пользователя, папка библиотек,
   `~/.claude/.credentials.json:ro` для Claude Code auth.
-  Запуск — единым shell-скриптом `efactory-up`. **Кроссплатфо-
-  рменность отложена** в отдельную фазу «Cross-platform»
-  (Docker Desktop / WSLg / Colima support — Phase 8 или позже).
+  Запуск — единым shell-скриптом `efactory-up`.
+  **Кроссплатформенность отложена** в отдельную фазу
+  «Cross-platform» (Docker Desktop / WSLg / Colima support —
+  Phase 8 или позже).
 - **Альтернативы:**
   - **Native install через bootstrap-скрипты (status quo, T002/
     T003)** — отвергли: пять разных тулов с независимыми
