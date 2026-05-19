@@ -29,6 +29,60 @@ T-ID между релизами — `CHANGELOG.md` единственное per
      версию `[N.M.0]`. При закрытии milestone — переименовывается
      в очередную версию, ниже создаётся новая пустая `[Unreleased]`. -->
 
+### Added
+
+- **Phase 0.9 — Containerization** (новая фаза в roadmap): T110
+  (базовый Dockerfile efactory с KiCad из official репов, ngspice,
+  Python 3.14, agent), T111 (KiCad GUI passthrough — X11/Wayland +
+  GPU acceleration), T112 (FreeCAD CLI + GUI в образе, absorbs T066),
+  T113 (FEM-solver: пилот Elmer vs GetDP + интеграция, absorbs T058),
+  T114 (`efactory-up` wrapper-скрипт), T115 (CI: сборка и публикация
+  образа в GHCR). Ставится между Phase 1a и Phase 1b: после Phase 0.9
+  все дальнейшие фазы исполняются внутри контейнера. (T110-T115)
+
+- **Phase Cross-platform** (новая отложенная фаза): T116 (Windows
+  через Docker Desktop + WSLg), T117 (macOS через Docker Desktop +
+  XQuartz, multi-arch image), T118 (опциональный native FEMM
+  fallback), T119 (native distribution без Docker для пользователей
+  с corporate restrictions). Берётся в работу после стабилизации
+  Linux-only workflow. (T116-T119)
+
+### Changed
+
+- **T110 ADR — Distribution efactory переходит на Linux Docker image
+  как primary.** Один образ с полным стеком (KiCad из official репов,
+  ngspice, FreeCAD, Linux-native FEM-solver, Python, Claude Code,
+  MCP-серверы), GUI через X11/Wayland passthrough. Никакого AppImage.
+  Кроссплатформенность отложена в Phase Cross-platform. ADR в
+  `DECISIONS.md` 2026-05-19 «Distribution: Linux Docker image».
+  Принцип «Кроссплатформенность» в `README.md` ослаблен до «Linux
+  первой фазой, кросс-платформа отдельной фазой». В этом milestone
+  — только ADR и обновление roadmap, без Dockerfile. Реализация —
+  следующими PR. (T110)
+
+- **T113 ADR — FEMM заменяется Linux-native FEM-solver'ом.** Elmer
+  FEM primary, GetDP+Gmsh fallback. Финальный выбор — по итогам
+  пилота в T113. PyOpenMagnetics остаётся как ядро магнитного
+  дизайна. ADR в `DECISIONS.md` 2026-05-19 «Magnetic field
+  verification: Linux-native FEM-solver». Старый ADR от 2026-05-15
+  «PyOpenMagnetics + FEMM» помечен как частично заменённый в части
+  FEMM. T055 переименован `mag_verify_field` (solver-agnostic
+  port + adapter). (T113)
+
+### Deprecated / Removed
+
+- **T002 (bootstrap.sh для Linux)** — replaced by T110 (Dockerfile).
+  Native bootstrap для Linux больше не пишется. (T002, T110)
+- **T003 (bootstrap.ps1 для Windows)** — parked до Phase
+  Cross-platform. Windows-поддержка — через Docker Desktop / WSLg.
+  (T003)
+- **T058 (FEMM bootstrap)** — absorbed by T113. FEM-solver
+  ставится в Dockerfile, отдельная bootstrap-задача не нужна. (T058)
+- **T066 (FreeCAD bootstrap)** — absorbed by T112. FreeCAD ставится
+  в Dockerfile. (T066)
+- **T036 (стратегия обновлений)** — re-evaluate после Phase 0.9.
+  Большая часть заменяется `docker pull efactory:linux-latest`. (T036)
+
 ---
 
 ## [0.6.0] — 2026-05-19
