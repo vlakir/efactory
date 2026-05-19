@@ -25,6 +25,76 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-05-20 — FreeCAD distribution: AppImage 1.1.1 внутри образа (а не apt)
+
+- **Контекст:** Phase 2 контейнеризации (T112) требует FreeCAD 1.0+
+  CLI + GUI + Sheet Metal workbench в `efactory:linux`. ADR от
+  2026-05-19 («Distribution: Linux Docker image») фиксирует принцип
+  «всё через apt из официальных репов», как KiCad из
+  `ppa:kicad/kicad-10.0-releases`. Для FreeCAD этот принцип
+  ломается:
+  - Ubuntu 24.04 universe: пакет `freecad` отсутствует.
+  - `ppa:freecad-maintainers/freecad-stable`: 0.21.2 (PPA
+    отстал — spec требует 1.0+, ввиду новых Sheet Metal API
+    и общих улучшений).
+  - `ppa:freecad-maintainers/freecad-daily`: `1.1~pre1` (preview-
+    сборка, версия плавает между обновлениями PPA).
+  - Sheet Metal workbench — community addon из репозитория
+    `shaise/FreeCAD_SheetMetal`, apt-пакета не существует ни в
+    одном источнике (раньше `freecad-addon-sheetmetal` был
+    под старые версии Ubuntu, исчез в noble).
+- **Решение:** **FreeCAD 1.1.1 AppImage** (latest stable, релиз
+  2026-04-14 на `github.com/FreeCAD/FreeCAD`), скачивается в build-
+  time, распаковывается через `--appimage-extract` в `/opt/freecad/`
+  внутри образа (без FUSE на runtime — extracted каталог как
+  обычное дерево файлов). Версия зафиксирована release-тегом
+  (`1.1.1`), URL — детерминированный. **Sheet Metal addon** —
+  git clone pinned commit `8076898be2d888c3c634dee343af2349c974a1d0`
+  (master HEAD на момент принятия решения, package.xml 0.8.11) в
+  `/opt/freecad/usr/Mod/SheetMetal/`. PoC подтвердил: `freecadcmd
+  --version` headless OK; GUI через X11 + Qt6 runtime deps
+  (libxcb-cursor0 и др.) запускается; Sheet Metal появляется в
+  Workbench-меню после mount'а в `Mod/`.
+- **Альтернативы:**
+  - **`freecad-stable` 0.21.2 + Sheet Metal git clone** — отвергли:
+    spec T112 требует 1.0+ (Sheet Metal API расходится между
+    0.21 и 1.x, плюс общая стабильность ядра).
+  - **`freecad-daily` 1.1-pre + Sheet Metal git clone** — отвергли:
+    «daily/preview» не даёт воспроизводимости (PPA-tag плавает,
+    upstream может breaking-change в любой день); pin через apt
+    хрупкий — старая версия может уехать из репо.
+  - **Снять требование `1.0+` в spec T112 (degrade до 0.21)** —
+    отвергли: 0.21 не соответствует CONCEPT (Sheet Metal — ключевой
+    workflow для корпусов РЭА), regression относительно текущих
+    upstream практик.
+  - **Подождать обновления `freecad-stable` PPA до 1.0+** —
+    отвергли: блокирует Phase 2 на неопределённый срок (PPA-
+    maintainer'ы не публикуют roadmap; 1.0 вышел в ноябре 2024,
+    PPA не обновился за 1.5 года).
+- **Последствия:**
+  - **Размер образа +3 GB** (extracted AppImage). Slim 2.45 GB
+    (T111) → ~5.5 GB после T112. Vladimir подтвердил приемлемость
+    2026-05-20 (acceptance T121 «≤ 3 GB» больше не применяется
+    после T112, фиксируется отдельным acceptance).
+  - **Self-contained FreeCAD**: AppImage несёт свой Python 3.11,
+    Qt6, OCCT, GMSH, CalculiX (`ccx`), graphviz. Бонус для T113
+    (FEM-solver pilot) — `ccx` уже доступен в образе.
+  - **`platform_layer` AppImage-detection** (T120 cleanup) **не
+    касается этого решения**: T120 убирает host-side AppImage-
+    detection (когда пользователь скачивал AppImage на host'е).
+    Внутри образа AppImage — build-time distribution mechanism,
+    не «AppImage runtime». FreeCAD в `PATH` через симлинки на
+    `freecadcmd` и `freecad` (== `AppRun`), `platform_layer`
+    видит их как обычные binaries.
+  - **Обновление версии** — пересборка образа с новым `ARG
+    FREECAD_VERSION`. На GHCR (T115) tag по версии efactory
+    одновременно фиксирует FreeCAD-версию.
+  - **Sheet Metal** обновляется через изменение `ARG
+    SHEETMETAL_SHA` в Dockerfile — детерминированно.
+  - **Прецедент**: при появлении в spec'ах будущих фаз тулов с
+    отсутствующим apt-пакетом — AppImage внутри образа допустим
+    как fallback с явным ADR.
+
 ### 2026-05-19 — Distribution: Linux Docker image с полным стеком (включая GUI), кроссплатформенность отложена в отдельную фазу
 
 - **Контекст:** efactory интегрирует разнородный тулчейн —

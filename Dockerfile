@@ -12,8 +12,13 @@
 # зависимости в Phase 0. Один образ (`efactory:linux`); разделение на
 # slim CI-variant — T120/T121.
 #
-# FreeCAD (T112), FEM-solver (T113), wrapper (T114), CI (T115),
-# AppImage cleanup (T120), externalize libraries (T121) — отдельные
+# Phase 2 (T112): FreeCAD 1.1.1 через AppImage (variant C, ADR
+# 2026-05-20 в DECISIONS.md). Отдельный stage `freecad-appimage`
+# скачивает AppImage + Sheet Metal addon в build-time; final stage
+# копирует /opt/freecad/ + симлинки на freecadcmd / freecad. Qt6
+# runtime deps добавлены в base stage. +3 GB к образу.
+#
+# FEM-solver (T113), CI (T115), AppImage cleanup (T120) — отдельные
 # фазы внутри Phase 0.9, отдельные PR.
 
 
@@ -35,6 +40,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 #   - `x11-apps` + `x11-utils` — `xeyes`/`xdpyinfo` для smoke-теста.
 #   - `libcanberra-gtk3-module` — GTK system sounds (без него startup
 #     warning «Failed to load module canberra-gtk-module», cosmetic).
+# Qt6 runtime для FreeCAD AppImage (T112): FreeCAD 1.1 bundle несёт Qt6,
+# но depends-on system shared libs для xcb-plugin / EGL / audio / NSS.
+# Если этих deps нет — `freecad --version` падает с `Could not load the
+# Qt platform plugin "xcb"`. KiCad apt-пакет покрывает только Qt5 — Qt6
+# отдельно.
 # Locales (T111): `locales` + locale-gen для `ru_RU.UTF-8` и `en_US.UTF-8`.
 # KiCad sample translations (`/usr/share/kicad/internat/<lang>/kicad.mo`)
 # уже в `kicad` apt-пакете; недостаёт только сгенерированных locale —
@@ -61,6 +71,22 @@ RUN apt-get update \
       x11-apps \
       x11-utils \
       xauth \
+      libasound2t64 \
+      libegl1 \
+      libnss3 \
+      libopengl0 \
+      libxcb-cursor0 \
+      libxcb-icccm4 \
+      libxcb-image0 \
+      libxcb-keysyms1 \
+      libxcb-render-util0 \
+      libxcb-shape0 \
+      libxcb-xkb1 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxkbcommon-x11-0 \
+      libxrandr2 \
+      libxtst6 \
  && sed -i \
       -e 's/^# *\(en_US.UTF-8 UTF-8\)/\1/' \
       -e 's/^# *\(ru_RU.UTF-8 UTF-8\)/\1/' \
@@ -100,10 +126,14 @@ RUN uv sync --frozen --no-install-project
 FROM python-deps AS efactory-code
 
 # Сорсы и данные. Тесты копируются — Phase 0 acceptance гоняет pytest
-# внутри образа. .dockerignore исключает .git/, кэши, output-фикстуры.
+# внутри образа. `scripts/` копируется потому что gen-bracket-demo.py
+# (T112) запускается через `freecadcmd` внутри контейнера (FreeCAD API
+# доступен только в образе; host у пользователя FreeCAD не имеет).
+# `.dockerignore` исключает `.git/`, кэши, output-фикстуры.
 COPY src/ ./src/
 COPY data/ ./data/
 COPY tests/ ./tests/
+COPY scripts/ ./scripts/
 COPY hatch_build.py README.md alembic.ini ./
 
 # Editable install: T114 `efactory-up --dev` сможет bind-mount'ить
@@ -111,6 +141,46 @@ COPY hatch_build.py README.md alembic.ini ./
 # hatch_build хук (T095) silently skips при отсутствии `.git/`
 # (см. hatch_build.py).
 RUN uv sync --frozen
+
+
+# ============================================================================
+# Stage 3.5: freecad-appimage — extract FreeCAD AppImage + Sheet Metal addon.
+# ============================================================================
+# T112 (variant C, ADR 2026-05-20). FreeCAD 1.1+ нет в apt — берём AppImage
+# с GitHub releases, распаковываем `--appimage-extract` в /opt/freecad/ (без
+# FUSE на runtime). Sheet Metal addon — git clone pinned SHA в Mod/.
+# SHA256 проверяется против upstream `.AppImage-SHA256.txt` (поставляется
+# на том же releases-странице).
+# Используется минимальный base (ubuntu:24.04 без apt-stack из stage 1) —
+# stage идёт через `COPY --from=...` в final, никакие apt-зависимости не
+# тащутся.
+FROM ubuntu:24.04 AS freecad-appimage
+
+ARG FREECAD_VERSION=1.1.1
+ARG FREECAD_SHA256=e2006138400b2fa85fa2e160e872d00767eb32964e85075830f7e198a3a876e1
+ARG SHEETMETAL_SHA=8076898be2d888c3c634dee343af2349c974a1d0
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      git \
+ && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+
+WORKDIR /tmp/freecad
+RUN curl -fsSL -o fc.AppImage \
+      "https://github.com/FreeCAD/FreeCAD/releases/download/${FREECAD_VERSION}/FreeCAD_${FREECAD_VERSION}-Linux-x86_64-py311.AppImage" \
+ && echo "${FREECAD_SHA256}  fc.AppImage" | sha256sum -c - \
+ && chmod +x fc.AppImage \
+ && ./fc.AppImage --appimage-extract >/dev/null \
+ && mv squashfs-root /opt/freecad \
+ && rm fc.AppImage \
+ && git clone --no-checkout https://github.com/shaise/FreeCAD_SheetMetal.git \
+      /opt/freecad/usr/Mod/SheetMetal \
+ && git -C /opt/freecad/usr/Mod/SheetMetal checkout "${SHEETMETAL_SHA}" \
+ && rm -rf /opt/freecad/usr/Mod/SheetMetal/.git
 
 
 # ============================================================================
@@ -131,6 +201,15 @@ ENV PATH=/opt/efactory/.venv/bin:/usr/local/bin:/usr/bin:/bin \
 # подменит на `--user $(id -u):$(id -g)` хоста; пока uid 1000 на dev-
 # машине совпадает с vlakir.
 RUN chown -R 1000:1000 /opt/efactory
+
+# T112 — FreeCAD: копируем extracted AppImage + Sheet Metal addon из
+# stage 3.5; root-owned read-only достаточно (пользователь только читает).
+# Симлинки в /usr/local/bin/ — добавляем `freecadcmd` и `freecad` в PATH.
+# `freecad` указывает на AppRun (выставляет LD_LIBRARY_PATH / PYTHONPATH
+# bundled Qt/Python из AppImage перед exec'ом FreeCAD).
+COPY --from=freecad-appimage /opt/freecad /opt/freecad
+RUN ln -s /opt/freecad/usr/bin/freecadcmd /usr/local/bin/freecadcmd \
+ && ln -s /opt/freecad/AppRun /usr/local/bin/freecad
 
 # C3 mount targets: user-agnostic пути (spec §5 «Volume mounts»).
 # `/efactory/.claude` — credentials для Claude Code (T114), `/workspace`

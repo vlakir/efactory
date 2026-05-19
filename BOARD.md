@@ -61,6 +61,23 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T112** — [2026-05-20, taken into Doing] **FreeCAD CLI + GUI в
+  образе.** Phase 2 контейнеризации, absorbs T066.
+  Acceptance:
+  - `freecadcmd --version` отвечает headless.
+  - FreeCAD GUI запускается через X11 из контейнера.
+  - Sheet Metal workbench доступен в Workbench-меню GUI.
+  - `./efactory-up --demo-freecad` открывает sheet-metal-bracket
+    demo-фикстуру (Vladimir's GUI-acceptance ритуал перед merge).
+
+  **Variant выбран (PoC 2026-05-20):** FreeCAD 1.1.1 AppImage
+  (extracted в build-time) + Sheet Metal через git clone master HEAD
+  `8076898b` в `Mod/`. apt-стек отверг: FreeCAD 1.0+ в apt отсутствует
+  (PPA `freecad-stable` отстал на 0.21.2; `freecad-daily` — 1.1-pre),
+  Sheet Metal apt-пакета не существует. ADR — `DECISIONS.md` 2026-05-20.
+  Spec — `specs/T110-containerization/spec.md` Phase 2.
+  freecad-mcp вынесен в T124. Ветка: `T112-freecad`.
+
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем

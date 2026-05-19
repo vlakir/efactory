@@ -571,6 +571,52 @@ merge (Vladimir's KiCad-GUI ритуал, см. memory).
 **Acceptance:** Sheet Metal workbench доступен в GUI;
 `freecadcmd` запускается; freecad-mcp подключается.
 
+**Implementation note (2026-05-20, T112 in progress, variant C):**
+- **apt-стек отверг** — apt-пакета FreeCAD 1.0+ нет (PPA
+  `freecad-stable` отстал на 0.21.2, `freecad-daily` даёт
+  `1.1~pre1` preview), Sheet Metal apt-пакета не существует
+  ни в одном источнике. ADR — `DECISIONS.md` 2026-05-20
+  «FreeCAD distribution: AppImage 1.1.1 внутри образа».
+- **FreeCAD 1.1.1 AppImage** (release-тег `1.1.1`, 2026-04-14)
+  скачивается в build-time через `curl`, распаковывается
+  `--appimage-extract` в `/opt/freecad/` (без FUSE — extracted
+  каталог как обычные файлы). Размер: 783 MB AppImage →
+  3.1 GB extracted. Pin через `ARG FREECAD_VERSION=1.1.1`
+  + SHA256 проверка.
+- **Sheet Metal** — git clone pinned commit
+  `8076898be2d888c3c634dee343af2349c974a1d0` (master HEAD
+  2026-05-10, package.xml 0.8.11) в `/opt/freecad/usr/Mod/
+  SheetMetal/`. Pin через `ARG SHEETMETAL_SHA`.
+- **Qt6 runtime deps** добавляются в base stage: `libxcb-cursor0`,
+  `libxkbcommon-x11-0`, `libxcb-icccm4`, `libxcb-image0`,
+  `libxcb-keysyms1`, `libxcb-render-util0`, `libxcb-shape0`,
+  `libxcb-xkb1`, `libegl1`, `libopengl0`, `libnss3`,
+  `libasound2t64`, `libxcomposite1`, `libxdamage1`, `libxrandr2`,
+  `libxtst6` (Wayland/X11 + audio + Qt platform plugins).
+- **Симлинки** в `/usr/local/bin/`: `freecadcmd` → `/opt/freecad/
+  usr/bin/freecadcmd`, `freecad` → `/opt/freecad/AppRun` (AppRun
+  настраивает LD_LIBRARY_PATH, PYTHONPATH для bundled Qt/Python).
+- **Demo-фикстура** — `scripts/gen-bracket-demo.py` материализует
+  простой sheet-metal-bracket (L-форма с одним bend) в `$HOME/
+  efactory-projects/sheetmetal-bracket-demo/` через FreeCAD Python
+  API. Открывается через `./efactory-up --demo-freecad`.
+- **GPU acceleration** — `efactory-up` пробрасывает `/dev/dri`
+  (по аналогии с KiCad PCB 3D в T111); software rendering как
+  fallback.
+- **Размер образа** — slim после T112 ~5.5 GB (был 2.45 GB).
+  Acceptance T121 «≤ 3 GB» больше не применяется к финальному
+  образу — фиксируется новым T112 acceptance: «≤ 6 GB» (потолок
+  из CONCEPT §13).
+- **freecad-mcp вынесен в T124** (clarify-1 Vladimir 2026-05-20):
+  изначальный acceptance «freecad-mcp подключается» переезжает
+  в отдельную задачу — wrapper и MCP-регистрация не требуют
+  FreeCAD-distribution-кода, делаются поверх готового
+  `freecadcmd` в T112.
+- **Bundled tools в AppImage**: помимо FreeCAD, AppImage несёт
+  `ccx` (CalculiX FEM), `gmsh` (mesher), `dot/unflatten` (graphviz),
+  bundled Python 3.11. Полезно для T113 (FEM-solver pilot) — `ccx`
+  уже доступен; учитывается при выборе solver'а в T113.
+
 ### Phase 3 — FEM solver pilot + integration (T113)
 
 **Цель:** выбрать между Elmer FEM и GetDP+Gmsh; интегрировать
