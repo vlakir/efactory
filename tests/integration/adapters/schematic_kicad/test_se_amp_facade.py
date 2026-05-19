@@ -127,6 +127,14 @@ _R_LOAD_AT     = (124.46, 76.2)       # pin_b@(124.46,72.39)=OPT.S1.Y, pin_a@(12
 _BPLUS_RAIL_Y     = 58.42              # горизонталь B+: V_BB.pin_minus → X=115.57 (за OPT центром)
 _BPLUS_RAIL_END_X = 115.57             # endpoint = X_opt, откуда G2 stub L-route
 _PLATE_WIRE_Y     = 67.31              # plate routes к OPT.P1 — Y=67.31 (=53·1.27, on-grid)
+# T103 follow-up (2026-05-19): AC-probe для visualization в KiCad
+# Simulator. C_probe coupling cap + R_probe pulldown → /output_probe net
+# несёт только AC компонент plate-сигнала (без 250V DC offset). На
+# симуляции V(/plate) рисуется как DC ramp 0→250V с invisible ripples;
+# V(/output_probe) показывает чистый AC swing вокруг 0V — наглядно.
+_C_PROBE_AT       = (134.62, 49.53)    # vertical: pin_a@(134.62,53.34), pin_b@(134.62,45.72)
+_R_PROBE_AT       = (134.62, 64.77)    # vertical: pin_a@(134.62,68.58)→GND, pin_b@(134.62,60.96)→/output_probe
+_GND_RPROBE_AT    = (134.62, 72.39)
 
 
 def _app_manager() -> SubprocessAppManager:
@@ -152,11 +160,21 @@ def _build_se_amp(path: Path) -> Path:
         spice_model=_opt_se_5k_8(), at=_OPT_AT,
     )
     r_load = sch.add_resistor(value='8', at=_R_LOAD_AT)                 # R3
+    # T103 follow-up: AC-probe для GUI visualization (C_probe + R_probe).
+    # Через label-based net naming подключаем plate net к C_probe.pin_b
+    # (вместо физического wire — pin лежит далеко от plate wire,
+    # label proxy чище).
+    # τ_probe = R·C = 470k·22n ≈ 10 ms; t_stop=80 ms = 8τ — output settled
+    # к steady AC ~0V DC. С τ > t_stop output_probe измеряется в transient,
+    # mean ≠ 0 (видимый DC offset visualization-defeating).
+    c_probe = sch.add_capacitor(value='22n', at=_C_PROBE_AT)            # C3
+    r_probe = sch.add_resistor(value='470k', at=_R_PROBE_AT)            # R4
     gnd_vbb = sch.add_ground(at=_GND_VBB_AT)
     gnd_vin = sch.add_ground(at=_GND_VIN_AT)
     gnd_rg = sch.add_ground(at=_GND_RG_AT)
     gnd_rk = sch.add_ground(at=_GND_RK_AT)
     gnd_ck = sch.add_ground(at=_GND_CK_AT)
+    gnd_rprobe = sch.add_ground(at=_GND_RPROBE_AT)
     flg = sch.add_pwr_flag(at=_FLG_AT, rotation=180)
 
     # === B+ rail (Y=58.42) ===
@@ -216,6 +234,13 @@ def _build_se_amp(path: Path) -> Path:
     # S2 (110.49, 74.93) → R_load.pin_a (124.46, 80.01). Manhattan L-route.
     sch.connect(xt1.pin('S2'), r_load.pin_a)
 
+    # === AC-probe (T103 follow-up): C_probe AC-couple plate → /output_probe ===
+    # Wire: C_probe.pin_a (134.62, 53.34) → R_probe.pin_b (134.62, 60.96).
+    sch.connect(c_probe.pin_a, r_probe.pin_b)
+    sch.connect(r_probe.pin_a, gnd_rprobe.pin)
+    # Label '/plate' на C_probe.pin_b — net merge с EL84.P /plate net.
+    sch.label('plate', at=c_probe.pin_b)
+
     # === GND-стержни ===
     sch.connect(v_bb.pin_plus, gnd_vbb.pin)
     sch.connect(v_in.pin_plus, gnd_vin.pin)
@@ -227,6 +252,7 @@ def _build_se_amp(path: Path) -> Path:
     # === SPICE-trace labels ===
     sch.label('input', at=v_in.pin_minus)
     sch.label('plate', at=xv1.pin('P'))
+    sch.label('output_probe', at=c_probe.pin_a)       # AC-only после C_probe
     sch.label('sec_a', at=xt1.pin('S1'))
     sch.label('sec_b', at=xt1.pin('S2'))
 
