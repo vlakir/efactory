@@ -1,14 +1,20 @@
 # syntax=docker/dockerfile:1.7
 #
-# efactory:linux-headless — Phase 0 (T110) базовый образ.
+# efactory:linux — Phase 0.9 Containerization.
 #
-# Headless slim variant: CLI-стек без X11 / KiCad GUI зависимостей.
-# Acceptance: `docker build .` зелёный, `docker run … uv run pytest`
-# прогоняет весь тест-набор efactory (тот же, что на хосте).
+# Phase 0 (T110): базовый Dockerfile с CLI-стеком (KiCad 10, ngspice,
+# uv-managed Python 3.14, editable efactory). Acceptance: `docker build`
+# зелёный, `docker run … uv run pytest` прогоняет тест-набор efactory.
 #
-# GUI passthrough (T111), FreeCAD (T112), FEM-solver (T113), wrapper
-# (T114), CI (T115), AppImage cleanup (T120), externalize libraries
-# (T121) — отдельные фазы внутри Phase 0.9, отдельные PR.
+# Phase 1 (T111): X11/Wayland GUI passthrough. Final stage расширен
+# runtime-инструментами (`x11-apps`, `x11-utils`, `libgl1`, `dbus-x11`,
+# `xauth`, `mesa-utils`); сам `kicad` apt-пакет уже тянет Qt/GUI .so
+# зависимости в Phase 0. Один образ (`efactory:linux`); разделение на
+# slim CI-variant — T120/T121.
+#
+# FreeCAD (T112), FEM-solver (T113), wrapper (T114), CI (T115),
+# AppImage cleanup (T120), externalize libraries (T121) — отдельные
+# фазы внутри Phase 0.9, отдельные PR.
 
 
 # ============================================================================
@@ -21,8 +27,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 # KiCad 10 — из официального PPA `kicad/kicad-10.0-releases`
 # (см. spec §3, ADR от 2026-05-19 «Distribution: Linux Docker image»).
 # ngspice — из universe Ubuntu 24.04.
-# `--no-install-recommends` отсекает GUI-документацию и спутниковые тулзы,
-# которых в headless контейнере нет смысла держать (spec §N1, N6).
+# X11 runtime (T111, spec §Phase 1):
+#   - `libgl1` + `mesa-utils` — OpenGL для KiCad/pcbnew рендеринга
+#     (software fallback при отсутствии `/dev/dri`).
+#   - `xauth` — обработка X-cookies через bind-mount `$XAUTHORITY`.
+#   - `dbus-x11` — D-Bus session для clipboard и Qt theming.
+#   - `x11-apps` + `x11-utils` — `xeyes`/`xdpyinfo` для smoke-теста.
+# `--no-install-recommends` отсекает GUI-документацию и спутниковые тулзы
+# (spec §N1, N6).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
@@ -35,6 +47,12 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       kicad \
       ngspice \
+      dbus-x11 \
+      libgl1 \
+      mesa-utils \
+      x11-apps \
+      x11-utils \
+      xauth \
  && apt-get purge -y software-properties-common gnupg \
  && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
@@ -83,7 +101,7 @@ RUN uv sync --frozen
 
 
 # ============================================================================
-# Stage 4: final — efactory:linux-headless.
+# Stage 4: final — efactory:linux.
 # ============================================================================
 FROM efactory-code AS final
 
@@ -101,17 +119,19 @@ ENV PATH=/opt/efactory/.venv/bin:/usr/local/bin:/usr/bin:/bin \
 # машине совпадает с vlakir.
 RUN chown -R 1000:1000 /opt/efactory
 
-# C3 placeholder: user-agnostic mount targets (см. spec §5 «Volume
-# mounts» / addendum от 2026-05-19). Phase 0 их не использует —
-# Claude Code и X11 подключаются в Phase 1 (T111). Подготавливаем
-# директории заранее, чтобы final stage не правился под T111.
+# C3 mount targets: user-agnostic пути (spec §5 «Volume mounts»).
+# `/efactory/.claude` — credentials для Claude Code (T114), `/workspace`
+# — проекты пользователя, `/libs` — custom libraries.
+# `/efactory/.Xauthority` (T111) создаёт сам docker при `-v
+# $XAUTHORITY:/efactory/.Xauthority:ro`, parent `/efactory` уже есть.
 RUN mkdir -p /efactory/.claude /workspace /libs \
- && chmod 0755 /efactory/.claude /workspace /libs
+ && chmod 0755 /efactory /efactory/.claude /workspace /libs
 
-ENV EFACTORY_VERSION=linux-headless-dev \
+ENV EFACTORY_VERSION=linux-dev \
     CLAUDE_CONFIG_DIR=/efactory/.claude \
     EFACTORY_PROJECTS_ROOT=/workspace \
     EFACTORY_LIBS_ROOT=/libs \
+    XAUTHORITY=/efactory/.Xauthority \
     HOME=/opt/efactory
 
 WORKDIR /opt/efactory
@@ -120,4 +140,4 @@ USER 1000:1000
 # Default CMD — лёгкая self-check. Acceptance Phase 0 переопределяет
 # CMD на `uv run pytest` (см. README / spec). ENTRYPOINT не задаём,
 # чтобы `docker run … <любая команда>` работал без обёртки.
-CMD ["bash", "-lc", "echo 'efactory:linux-headless ('$EFACTORY_VERSION') ready. Try: docker run --rm efactory:linux-headless uv run pytest'"]
+CMD ["bash", "-lc", "echo 'efactory:linux ('$EFACTORY_VERSION') ready. Try: docker run --rm efactory:linux uv run pytest'"]

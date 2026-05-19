@@ -61,6 +61,20 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T111** — [2026-05-19, ветка `T111-kicad-gui-passthrough`] Phase
+  0.9 Containerization, Phase 1 — KiCad GUI passthrough из контейнера
+  на хост через X11 (Wayland fallback). Расширение final stage:
+  apt-runtime `x11-apps`, `libgl1`, `dbus-x11`, `xauth`, `mesa-utils`
+  (KiCad GUI пакетные зависимости уже стянуты Phase 0). Один образ
+  (без `-headless` split — разделение в T120/T121). Smoke-script
+  `scripts/smoke-gui.sh`: X11 connectivity (`xeyes` headless probe)
+  + `kicad-cli version`; ручная финальная проверка — 50× open/save/
+  close SE-amp фикстуры у Vladimir'а. README — секция «Запуск KiCad
+  GUI из контейнера» с безопасным `xhost +SI:localuser:#$(id -u)`.
+  Spec — `specs/T110-containerization/spec.md` Phase 1.
+  Acceptance: smoke зелёный + ручная серия циклов без падений,
+  шрифты и clipboard работают.
+
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем

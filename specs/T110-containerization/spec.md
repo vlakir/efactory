@@ -477,6 +477,17 @@ ngspice работает, FreeCAD CLI работает).
 **Acceptance:** на dev-машине Vladimir'а 50 циклов open/save/close
 без падений; шрифты / clipboard работают.
 
+**Implementation note (2026-05-19, post-merge T111):**
+один образ `efactory:linux` без `-headless` split — split на slim
+CI-вариант откладывается до T120/T121 (когда `kicad-libraries`
+вынесены наружу, появится смысл вычитать GUI-libs из CI-варианта).
+Wayland passthrough автоматически работает через XWayland на GNOME
+Ubuntu 24.04; native Wayland mount (`/run/user/$UID/wayland-0`) не
+добавлен — отложено до появления Wayland-only сценария. Smoke
+автоматизирован через `scripts/smoke-gui.sh` (X11 connectivity +
+kicad-cli + xeyes); 50× open/save/close проверяется руками перед
+merge (Vladimir's KiCad-GUI ритуал, см. memory).
+
 ### Phase 1.5 — Externalize libraries (T121)
 
 **Цель:** вынести ~3 GB KiCad system libraries (symbols, footprints,

@@ -121,6 +121,43 @@ docker pull ghcr.io/vlakir/efactory:linux-latest
 Платформа: **Linux only в текущей фазе**; Mac/Windows — Phase
 Cross-platform.
 
+### Запуск KiCad GUI из контейнера (current state, T111)
+
+До появления `efactory-up` (T114) GUI запускается вручную:
+
+```bash
+# Собрать образ один раз (~2.5 GB, T110)
+docker build -t efactory:linux .
+
+# Разрешить контейнерному uid 1000 доступ к X server.
+# `+SI:localuser:#<uid>` — узкое правило, ограничено одним uid;
+# безопаснее, чем `+local:docker` (любой локальный docker-клиент).
+xhost +SI:localuser:#$(id -u)
+
+# Запустить KiCad GUI
+docker run --rm \
+    -e DISPLAY \
+    -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+    -v "${XAUTHORITY:-$HOME/.Xauthority}:/efactory/.Xauthority:ro" \
+    --device /dev/dri:/dev/dri \
+    efactory:linux \
+    kicad
+
+# Откатить правило xhost после работы
+xhost -SI:localuser:#$(id -u)
+```
+
+Smoke-проверка X11 passthrough (без интерактивного окна KiCad):
+
+```bash
+./scripts/smoke-gui.sh
+```
+
+Wayland-сессии (Ubuntu 24.04 GNOME по умолчанию) работают через
+XWayland-bridge без изменений в команде. Native Wayland-passthrough
+(`-v /run/user/$UID/wayland-0:/run/user/$UID/wayland-0`) пока не
+добавлен — пилим, когда появится Wayland-only сценарий.
+
 ### Для разработчика efactory (текущий режим разработки)
 
 Менеджер зависимостей и окружения: **`uv`** (выбран при
