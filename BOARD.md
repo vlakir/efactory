@@ -61,43 +61,40 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T111** — [2026-05-19, ветка `T111-kicad-gui-passthrough`] Phase
-  0.9 Containerization, Phase 1 — KiCad GUI passthrough из контейнера
-  на хост через X11. Расширение final stage: apt-runtime
-  `x11-apps`, `x11-utils`, `libgl1`, `dbus-x11`, `xauth`,
-  `mesa-utils`, `libcanberra-gtk3-module`, `locales`
-  (`ru_RU.UTF-8` + `en_US.UTF-8` сгенерированы). `ENV NO_AT_BRIDGE=1`
-  + `LANG=C.UTF-8` default; `LANG/LC_ALL/LANGUAGE` пробрасываются
-  из host. Один образ `efactory:linux` (без `-headless` split —
-  разделение в T120/T121). Persistent state mount'ы для KiCad:
-  `$HOME/efactory-state/{config,cache,local}` → `/opt/efactory/.{config,
-  cache,local}` (setup wizard выполняется один раз).
-  Wrapper-скрипты для ритуала ручной проверки:
-  `scripts/run-kicad.sh` (запуск GUI из контейнера с `xhost
-  +SI:localuser:#$(id -u)` + state mount'ы + locale pass-through +
-  опциональный `--demo` mount $HOME/efactory-projects/),
+## Done
+
+<!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
+     релизе или значимой точке. После переноса — очищаем. -->
+
+- **T111** — [closed 2026-05-19, PR #53] Phase 0.9 Containerization,
+  Phase 1 — KiCad GUI passthrough из контейнера на хост через X11.
+  Расширение final stage: apt-runtime `x11-apps`, `x11-utils`,
+  `libgl1`, `dbus-x11`, `xauth`, `mesa-utils`,
+  `libcanberra-gtk3-module`, `locales` (`ru_RU.UTF-8` + `en_US.UTF-8`
+  сгенерированы). `ENV NO_AT_BRIDGE=1` + `LANG=C.UTF-8` default;
+  `LANG/LC_ALL/LANGUAGE` пробрасываются из host. Один образ
+  `efactory:linux` (без `-headless` split — разделение в T120/T121).
+  Persistent state mount'ы для KiCad: `$HOME/efactory-state/
+  {config,cache,local}` → `/opt/efactory/.{config,cache,local}`
+  (setup wizard выполняется один раз). Wrapper-скрипты для ритуала
+  ручной проверки: `scripts/run-kicad.sh` (запуск GUI из контейнера
+  с `xhost +SI:localuser:#$(id -u)` + state mount'ы + locale
+  pass-through + опциональный `--demo` mount $HOME/efactory-projects/),
   `scripts/gen-se-amp-demo.py` (материализует SE-amp 6П14П
   acceptance-фикстуру в `$HOME/efactory-projects/se-amp-demo/`
   с относительными `Sim.Library`-путями и минимальным `.kicad_pro`
   для Simulator). Smoke-script `scripts/smoke-gui.sh`: X11
   connectivity (`xdpyinfo`) + `kicad-cli version` + `xeyes`
-  end-to-end. Spec — `specs/T110-containerization/spec.md`
-  Phase 1, дополнено implementation note про deferred split и
-  Wayland (XWayland-bridge работает, native Wayland mount пока
-  не нужен).
+  end-to-end. Spec — `specs/T110-containerization/spec.md` Phase 1,
+  дополнено implementation note про deferred split и Wayland
+  (XWayland-bridge работает, native Wayland mount пока не нужен).
+  Image: 2.45 GB (+~30 MB на locales+canberra vs. T110 Phase 0).
+  pytest 587/8 skipped, coverage 87.29% — без регрессии.
   **Known limitation, deferred to T121:** в образе нет
   `kicad-symbols/footprints/packages3d` — Symbol Library Browser
   показывает «библиотека не найдена». Inline `lib_symbols` (T100)
   обеспечивает рендеринг конкретного `.kicad_sch` и Simulator;
   броузер UI-сценарии закроет T121 (externalize libraries).
-  Acceptance: smoke зелёный + ручные циклы у Vladimir'а без
-  падений, шрифты и clipboard работают, Simulator прогоняет
-  `.tran` SE-amp.
-
-## Done
-
-<!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
-     релизе или значимой точке. После переноса — очищаем. -->
 
 - **T110 Phase 0** — [closed 2026-05-19, PR #52] Phase 0.9
   Containerization, Phase 0 — базовый Dockerfile `efactory:linux-
