@@ -66,15 +66,7 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
 <!-- T004b + T005 перенесены в BOARD.md → Done (2026-05-19, common PR). -->
 
-- **T004b/T005 Phase 1 (deferred)** — расширение бoyond minimal MVP:
-  (а) **bridge_sweep** — параметрический run (R1=1k,10k → N симуляций
-  + delta-таблица), требует sweep-domain VO и итеративную orchestration
-  логику; (б) **model_assign** через CLI (`efactory model assign`) —
-  swap `Sim.Library`/`Sim.Name` properties для tube/diode/transformer
-  instances в schematic (currently only `value` edit поддерживается);
-  (в) snapshot/rollback на multi-edit failure (atomicity beyond
-  per-edit). MCP-server обвязка `models_manager` — T013 в Phase 1b
-  (LLM chat MCP-client integration).
+<!-- T004b/T005 Phase 1 перенесены в BOARD.md → Done (2026-05-19). -->
 <!-- T101 перенесена в BOARD.md → Done (2026-05-19). -->
 <!-- T102 перенесена в BOARD.md → Doing (2026-05-18). -->
 
