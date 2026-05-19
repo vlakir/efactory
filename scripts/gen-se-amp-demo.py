@@ -117,7 +117,7 @@ def main() -> int:
     print(f'project  : {pro_path}')
     print()
     print('Открыть в контейнере:')
-    print('    ./scripts/run-kicad.sh --demo')
+    print('    ./efactory-up --demo')
     return 0
 
 

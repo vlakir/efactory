@@ -66,6 +66,46 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
 
+- **T114 + T121** — [closed 2026-05-20, PR #54] Phase 0.9
+  Containerization, Phases 4 + 1.5 объединены в один PR
+  (variant C, Vladimir 2026-05-19): T114 (`efactory-up` wrapper)
+  задаёт runtime entrypoint, T121 (externalize libraries)
+  надстраивает library bootstrap внутри него.
+  - **T114** (`efactory-up`): wrapper в корне репозитория.
+    Pre-flight (docker daemon, $DISPLAY, $XAUTHORITY), узкое xhost
+    `+SI:localuser:#$(id -u)` с EXIT trap, persistent state mount'ы,
+    projects mount, libs mount, locale pass-through. Флаги: `--pull`
+    (обновить efactory:linux), `--version`, `--headless` (CI/pytest
+    режим, без GUI mount'ов), `--update-libs` (пересоздать
+    $HOME/efactory-libs/), `--with-3dmodels` (опциональный 3D-bootstrap),
+    `--demo` (открыть SE-amp фикстуру), `-- ARGS` форвардинг в KiCad.
+  - **T121** (libraries externalization): `Dockerfile.libs` собирает
+    два tag'а — `efactory-libs:linux-dev` (slim ~450 MB: symbols
+    221 MB + footprints 181 MB + templates 5.7 MB) и
+    `efactory-libs:linux-dev-3d` (~4 GB: + packages3d 3.2 GB) через
+    ARG INCLUDE_3DMODELS. Bootstrap-логика в `efactory-up`:
+    `docker create` + `docker cp` 4× subdir → host
+    `$HOME/efactory-libs/{symbols,footprints,template,3dmodels}`.
+    Runtime per-subdir mount на `/usr/share/kicad/{...}` ro;
+    3dmodels mount'ится только при непустой host-директории.
+    Сброс user-level sym/fp-lib-table при первом bootstrap для
+    re-init из system default (фиксит residual broken state от T111).
+  - Удаление `scripts/run-kicad.sh` (subsumed by `efactory-up`);
+    обновление `scripts/gen-se-amp-demo.py` output и README
+    («Запуск KiCad GUI из контейнера» переписана с таблицей
+    mount'ов).
+  - **Out of scope T114+T121 (BACKLOG):** GHCR publish (T115),
+    fallback git clone (T122), KiCad Sim.Library warning suppress (T123).
+  - Spec — `specs/T110-containerization/spec.md` Phases 4 + 1.5,
+    дополнено implementation note про combine variant C, split
+    slim/3D и deferred items.
+  - Acceptance: `./efactory-up` с чистого host'а → KiCad GUI с
+    Symbol Library Browser, видящим Device/power/Valve/etc.
+    `--update-libs` идемпотентен. `--headless` — 587/8 skipped,
+    coverage 87.29% (== T111 baseline). Slim image 2.45 GB
+    (acceptance ≤ 3 GB выполнен T111). Vladimir прогнал
+    Simulator на SE-amp demo — `.tran` отрабатывает.
+
 - **T111** — [closed 2026-05-19, PR #53] Phase 0.9 Containerization,
   Phase 1 — KiCad GUI passthrough из контейнера на хост через X11.
   Расширение final stage: apt-runtime `x11-apps`, `x11-utils`,

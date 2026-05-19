@@ -528,6 +528,35 @@ merge (Vladimir's KiCad-GUI ритуал, см. memory).
 - Пользователь может переопределить полностью через свой
   `-v ~/my-libs:/usr/share/kicad/` mount без правок efactory-up.
 
+**Implementation note (2026-05-20, post-merge T114+T121):**
+- **Split на slim + 3D-вариант** (variant C, Vladimir 2026-05-20):
+  PPA-пакет `kicad-packages3d` неожиданно весит 3.2 GB (90% всего
+  libraries), при том что 3D-preview не нужен на schematic /
+  Simulator / PCB-layout этапах. Поэтому `Dockerfile.libs` строит
+  **два tag'а** через `ARG INCLUDE_3DMODELS`:
+  - `efactory-libs:linux-dev` (slim, ~450 MB): symbols + footprints
+    + templates. Default для `--bootstrap-libs`.
+  - `efactory-libs:linux-dev-3d` (~4 GB): + packages3d. Подтягивается
+    через `efactory-up --with-3dmodels`.
+- **Slim-образ acceptance уже выполнен T111** (2.45 GB) — PPA
+  поставляет `kicad` без библиотек.
+- **Per-subdir mount'ы вместо корневого** (`/usr/share/kicad/symbols`,
+  `/usr/share/kicad/footprints`, `/usr/share/kicad/template`,
+  `/usr/share/kicad/3dmodels`) — не затрагивает образа собственные
+  директории (`scripting`, `resources`, etc.) под `/usr/share/kicad/`.
+  3dmodels mount'ится только при непустой host-директории.
+- **GHCR publish** (`ghcr.io/vlakir/efactory-libs`) — отложен на
+  T115 (CI). Сейчас образ собирается локально.
+- **Fallback `git clone` из upstream KiCad-libraries** — отложен.
+  Primary path (`docker pull` + `docker cp`) достаточен для dev;
+  fallback нужен только в degraded scenario без сети к GHCR — раньше
+  T115 (CI) смысла не имеет. Зафиксировано в BACKLOG как follow-up.
+- **User sym/fp-lib-table reset при bootstrap'е**: первый запуск
+  efactory-up в T111-окружении мог оставить тупиковые user-tables
+  (когда `/usr/share/kicad/template/` не было). Bootstrap-логика
+  удаляет user-tables, KiCad re-init'ит их из system-template при
+  следующем старте.
+
 ### Phase 2 — FreeCAD (T112)
 
 **Цель:** FreeCAD CLI + GUI + Sheet Metal addon.
@@ -575,6 +604,21 @@ merge (Vladimir's KiCad-GUI ритуал, см. memory).
 
 **Acceptance:** на чистой Linux-машине `./efactory-up` за ≤ 60s
 поднимает работающую сессию.
+
+**Implementation note (2026-05-20, post-merge T114+T121):**
+T114 и T121 объединены в один PR (variant C, Vladimir 2026-05-19) —
+spec'овские phase 4 и phase 1.5 идут параллельно, потому что T121
+bootstrap-логика естественно ложится **внутрь** `efactory-up`,
+а отдельный `scripts/bootstrap-libs.sh` создавал бы дубль pre-flight'а.
+xhost — узкое правило `+SI:localuser:#$(id -u)`, а не широкое
+`+local:docker` (security-aware). Флаги: `--pull`, `--version`,
+`--headless`, `--update-libs`, `--with-3dmodels`, `--demo` (последние
+три добавлены ради T121 и T111 demo-ритуала). Pre-flight Claude
+credentials отложен до момента, когда Claude Code попадает в
+контейнер (T114 в текущем виде не запускает Claude — только KiCad /
+headless pytest). Acceptance «≤ 60s» уточнено: первый запуск с
+bootstrap libs занимает ≤ 90s (docker create + 4 × docker cp ~ 400 MB);
+последующие запуски — ≤ 5s.
 
 ### Phase 5 — CI / GHCR publish (T115)
 
