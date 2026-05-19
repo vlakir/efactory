@@ -164,11 +164,12 @@ def _build_se_amp(path: Path) -> Path:
     # Через label-based net naming подключаем plate net к C_probe.pin_b
     # (вместо физического wire — pin лежит далеко от plate wire,
     # label proxy чище).
-    # τ_probe = R·C = 470k·22n ≈ 10 ms; t_stop=80 ms = 8τ — output settled
-    # к steady AC ~0V DC. С τ > t_stop output_probe измеряется в transient,
-    # mean ≠ 0 (видимый DC offset visualization-defeating).
-    c_probe = sch.add_capacitor(value='22n', at=_C_PROBE_AT)            # C3
-    r_probe = sch.add_resistor(value='470k', at=_R_PROBE_AT)            # R4
+    # τ_probe = R·C = 1M·1n = 1 ms (короткий — за t_start=10ms = 10τ
+    # успевает settled на 99.995%). AC attenuation @ 1 kHz: Xc=159k,
+    # |H| = R/√(R²+Xc²) = 0.988 → 1.2% loss, OK для probe.
+    # Минимальная нагрузка на plate (1M >> Z_out_pentode ≈ 38k).
+    c_probe = sch.add_capacitor(value='1n', at=_C_PROBE_AT)             # C3
+    r_probe = sch.add_resistor(value='1Meg', at=_R_PROBE_AT)            # R4
     gnd_vbb = sch.add_ground(at=_GND_VBB_AT)
     gnd_vin = sch.add_ground(at=_GND_VIN_AT)
     gnd_rg = sch.add_ground(at=_GND_RG_AT)
@@ -261,7 +262,10 @@ def _build_se_amp(path: Path) -> Path:
     # SE-amp (OPT primary как DC short между plate и B+, лампа auto-bias
     # через R_k — non-trivial nonlinear solve). τ_Ck = 270·22µF ≈ 5.9 ms;
     # t_stop = 80 ms = ~14τ — больше для надёжного settling с uic-start.
-    sch.spice_directive('.tran 10u 80m uic', at=(50.8, 115.57))
+    # t_start = 10 ms — ngspice выводит данные только после 10 ms
+    # (= 10τ_probe), переходный процесс /output_probe не попадает в
+    # waveform-output, KiCad Simulator рисует только steady-state AC.
+    sch.spice_directive('.tran 10u 80m 10m uic', at=(50.8, 115.57))
 
     return sch.save(path)
 
