@@ -1,0 +1,53 @@
+# Python / uv runtime
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Test / lint caches
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+
+# Test fixture outputs (генерируются прогоном, не нужны в образе)
+tests/fixtures/output/
+
+# Git история — внутри образа не нужна (hatch_build T095 видит .git
+# отсутствие и silently skips pre-push hook auto-install).
+.git/
+.gitignore
+
+# Secrets — никогда не в образ
+.secrets
+.secrets.*
+.env
+secrets.env
+
+# IDE
+.idea/
+.vscode/
+.zencoder/
+
+# Claude Code local settings / runtime
+.claude/*.lock
+.claude/settings.local.json
+
+# Docs / process files — собственно образ их не использует.
+# README.md НЕ исключаем: hatchling валидирует поле `readme` в
+# pyproject.toml и падает на editable install, если файла нет.
+specs/
+CHANGELOG.md
+BACKLOG.md
+BOARD.md
+DECISIONS.md
+CONCEPT.md
+CLAUDE.md
+
+# Docker meta — рекурсивно не нужно
+Dockerfile
+.dockerignore

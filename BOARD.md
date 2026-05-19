@@ -66,6 +66,20 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
 
+- **T110 Phase 0** — [closed 2026-05-19, PR #52] Phase 0.9
+  Containerization, Phase 0 — базовый Dockerfile `efactory:linux-
+  headless`. Multi-stage build: Ubuntu 24.04 LTS base + KiCad 10 (PPA
+  `kicad/kicad-10.0-releases`) + ngspice → python-deps (uv + venv 3.14
+  в `/opt/efactory/.venv`) → efactory-code (editable install) → final.
+  Size: 2.43 GB (≤ 6 GB потолок). `docker run pytest` — 587 passed,
+  8 skipped, coverage 87.29% (host: 593/2 — разница на AppImage-
+  skipif'ах, очистка в T120). Закрыты C1 (venv permissions) и C3
+  (user-agnostic mount paths: `/efactory/.claude/`, `/workspace`,
+  `/libs`, `HOME=/opt/efactory`). Pre-push hook (ruff/format/mypy/
+  lint-imports/pytest) — все зелёные. Spec —
+  `specs/T110-containerization/spec.md` Phase 0. Следующие фазы (T111
+  GUI passthrough, T112 FreeCAD, T113 FEM, T114 wrapper, T115 CI,
+  T120 cleanup, T121 externalize libs) — отдельные PR.
 - **T107 Phase 0** — [closed 2026-05-19, PR #46] Custom Soviet tube
   snippets: `Tubes_Soviet:GU50/6P45S/6N6P` через copy-rename базовых
   EL84/ECC81 форм. 3 demo фикстуры (`test_soviet_tubes_facade.py`)
