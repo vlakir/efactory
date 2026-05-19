@@ -26,6 +26,14 @@
 #   EFACTORY_PROJECTS_DIR — host directory с проектами (default
 #       $HOME/efactory-projects); монтируется при --demo или если
 #       существует.
+#   EFACTORY_STATE_DIR — host directory с persistent-состоянием KiCad
+#       (default $HOME/efactory-state). Содержит config/ (settings,
+#       library tables, project list), cache/ (lib-symbol cache,
+#       3D-model cache), local/ (XDG data — пользовательские footprints
+#       и т.п.). Создаётся автоматически при первом запуске.
+#   LANG / LC_ALL / LANGUAGE — пробрасываются в контейнер из host'а.
+#       Внутри образа сгенерированы `en_US.UTF-8` и `ru_RU.UTF-8`;
+#       KiCad translations (`.mo`) уже в /usr/share/kicad/internat/.
 
 set -euo pipefail
 
@@ -34,6 +42,12 @@ KICAD_BIN="${EFACTORY_KICAD_BIN:-kicad}"
 XAUTH_HOST="${XAUTHORITY:-$HOME/.Xauthority}"
 HOST_UID="$(id -u)"
 PROJECTS_DIR="${EFACTORY_PROJECTS_DIR:-$HOME/efactory-projects}"
+STATE_DIR="${EFACTORY_STATE_DIR:-$HOME/efactory-state}"
+
+# Persistent state: kicad config / cache / data выживают между запусками.
+# Создаём как user (uid 1000) — внутри контейнера USER 1000:1000,
+# поэтому права совпадают без chown'ов.
+mkdir -p "$STATE_DIR/config" "$STATE_DIR/cache" "$STATE_DIR/local"
 
 DEMO_MODE=0
 PASS_ARGS=()
@@ -68,13 +82,26 @@ if (( DEMO_MODE )); then
     PASS_ARGS=(/workspace/se-amp-demo/se_amp.kicad_pro "${PASS_ARGS[@]}")
 fi
 
+# Locale pass-through: только для **заданных** переменных. `-e LC_ALL`
+# без значения для unset-переменной превращает её в пустую строку внутри
+# контейнера и затирает ENV LC_ALL=C.UTF-8 из Dockerfile — это ломает
+# locale resolution. Поэтому добавляем флаги по-условно.
+LOCALE_ARGS=()
+[[ -n "${LANG:-}" ]] && LOCALE_ARGS+=(-e "LANG=$LANG")
+[[ -n "${LC_ALL:-}" ]] && LOCALE_ARGS+=(-e "LC_ALL=$LC_ALL")
+[[ -n "${LANGUAGE:-}" ]] && LOCALE_ARGS+=(-e "LANGUAGE=$LANGUAGE")
+
 xhost "+SI:localuser:#${HOST_UID}" >/dev/null
 trap 'xhost "-SI:localuser:#${HOST_UID}" >/dev/null || true' EXIT
 
 docker run --rm \
     -e DISPLAY \
+    "${LOCALE_ARGS[@]}" \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
     -v "$XAUTH_HOST:/efactory/.Xauthority:ro" \
+    -v "$STATE_DIR/config:/opt/efactory/.config:rw" \
+    -v "$STATE_DIR/cache:/opt/efactory/.cache:rw" \
+    -v "$STATE_DIR/local:/opt/efactory/.local:rw" \
     "${DRI_ARGS[@]}" \
     "${PROJECTS_ARGS[@]}" \
     "$IMAGE" \

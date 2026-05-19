@@ -33,6 +33,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 #   - `xauth` — обработка X-cookies через bind-mount `$XAUTHORITY`.
 #   - `dbus-x11` — D-Bus session для clipboard и Qt theming.
 #   - `x11-apps` + `x11-utils` — `xeyes`/`xdpyinfo` для smoke-теста.
+#   - `libcanberra-gtk3-module` — GTK system sounds (без него startup
+#     warning «Failed to load module canberra-gtk-module», cosmetic).
+# Locales (T111): `locales` + locale-gen для `ru_RU.UTF-8` и `en_US.UTF-8`.
+# KiCad sample translations (`/usr/share/kicad/internat/<lang>/kicad.mo`)
+# уже в `kicad` apt-пакете; недостаёт только сгенерированных locale —
+# без них `LANG=ru_RU.UTF-8` в runtime отвалится в `C.UTF-8`.
 # `--no-install-recommends` отсекает GUI-документацию и спутниковые тулзы
 # (spec §N1, N6).
 RUN apt-get update \
@@ -48,11 +54,18 @@ RUN apt-get update \
       kicad \
       ngspice \
       dbus-x11 \
+      libcanberra-gtk3-module \
       libgl1 \
+      locales \
       mesa-utils \
       x11-apps \
       x11-utils \
       xauth \
+ && sed -i \
+      -e 's/^# *\(en_US.UTF-8 UTF-8\)/\1/' \
+      -e 's/^# *\(ru_RU.UTF-8 UTF-8\)/\1/' \
+      /etc/locale.gen \
+ && locale-gen \
  && apt-get purge -y software-properties-common gnupg \
  && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
@@ -132,7 +145,9 @@ ENV EFACTORY_VERSION=linux-dev \
     EFACTORY_PROJECTS_ROOT=/workspace \
     EFACTORY_LIBS_ROOT=/libs \
     XAUTHORITY=/efactory/.Xauthority \
-    HOME=/opt/efactory
+    HOME=/opt/efactory \
+    LANG=C.UTF-8 \
+    NO_AT_BRIDGE=1
 
 WORKDIR /opt/efactory
 USER 1000:1000
