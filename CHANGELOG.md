@@ -31,6 +31,126 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ---
 
+## [0.6.0] — 2026-05-19
+
+Шестой milestone: **финальная зачистка Phase 1a deferred задач**.
+Vladimir дал autonomous batch mandate "закрывай всё, что осталось до
+Phase 1b" — за сессию закрыто 4 PR: T004b/T005 Phase 1, T105 Phase 1
+(partial), T094 ADR, + release cut. **BACKLOG чистый до Phase 1b.**
+
+После 0.6.0:
+* edit-model CLI (swap SPICE-модели для tube/diode/transformer
+  компонента);
+* bridge_sweep — parametric OP-runs по Cartesian product;
+* atomic multi-edit с rollback (SchematicSnapshot);
+* multi-unit dual-triode instancing (Valve:ECC81B/83B/88B);
+* ECC83 self-contained (без `(extends ...)` mechanism);
+* CodeRabbit формально trактуется как best-effort signal — primary
+  review = Гвидо self-review + опциональный `/ultrareview`.
+
+Готовность к **Phase 1b — LLM chat-client (T011-T016)**. Все primitives
+готовы:
+* programmatic schematic build (T100/T104/T105 facade с pretty symbols),
+* SPICE simulate (T008 ngspice),
+* edit-and-resim flow (T004b/T005),
+* model search/assign (T005, T101).
+
+### Added
+
+- **T004b/T005 Phase 1 — bridge edit-model + bridge_sweep +
+  SchematicSnapshot.** `application/edit_component_model.py` — swap
+  SPICE-модели через atomic multi-property text-replace (`Value` +
+  `Sim.Library` + `Sim.Name`). `application/bridge_sweep.py` —
+  parametric OP-sweep по Cartesian product (hexagonal: exporter +
+  simulator через DI, domain VO `SweepRun`). `application/
+  schematic_snapshot.py` — context manager для atomic multi-edit с
+  rollback. CLI: `bridge edit-model`, `bridge sweep`, `bridge edit`
+  обёрнут в snapshot. (T004b, T005 Phase 1)
+
+- **T105 Phase 1 (a)+(c) — multi-unit dual-triode + ECC83 self-contained.**
+  Registry расширен: `Valve:ECC81B/ECC83B/ECC88B` (unit 2 aliases с
+  таким же `lib_id`). `Valve:ECC83` теперь self-contained snippet
+  (без `(extends ...)` — Phase 0 attempt не работал). Writer fix:
+  `(unit N)` в `(instances)` блоке теперь dynamic вместо hardcoded `1`.
+  Demo: cascaded 2-stage preamp на 6Н2П с обеими halves ECC83 (X1+X2
+  same lib_id, different units), gain 2920×. (T105 Phase 1)
+
+### Changed
+
+- **T094 ADR — sтранние review-боты переформулированы как best-effort
+  signal.** CodeRabbit integration остаётся подключённой, но silent
+  rate-limit / no-credits не блокирует merge. Primary review path —
+  Гвидо self-review с 7-point checklist + опциональный `/ultrareview`
+  для архитектурно-критичных PR'ов. ADR в `DECISIONS.md` фиксирует
+  решение (вариант "в" из BACKLOG T094). Закрывает повторяющийся ныть
+  ретро `[0.2.0]/[0.4.0]/[0.5.0]`. (T094)
+
+### Retrospective
+
+**Что зашло:**
+
+- **Autonomous batch mode под Vladimir's "закрывай всё что осталось"
+  mandate** — за одну сессию (Vladimir отлучился на ~3 hours) закрыто
+  4 task PR + 1 release-PR. Не первый раз pattern работает: scope
+  очерчен (всё deferred в Phase 1a section + T094), gates автоматичны,
+  каждый PR self-contained.
+- **Honest Phase split с явным deferred** — T105 Phase 1 был split:
+  (a) ECC83 self-contained ✓, (c) multi-unit dual-triode ✓, (b) custom
+  Soviet snippets → парковка в T107 (Phase 3, drawing-heavy). Не
+  «когда-нибудь сделаем», а конкретно identified task с acceptance.
+- **Re-use of existing primitives** — bridge_sweep = шаблон
+  edit_component_value + design_to_sim. edit_component_model =
+  edit_component_value + multi-property pattern. Реализация быстрая,
+  potтому что foundation уже устоявшийся.
+- **Pre-push гейты ловили все regression** автоматически (включая
+  hexagonal violation в первой попытке bridge_sweep с adapter
+  imports — `lint-imports` отловил).
+
+**Что не зашло (или потребовало переделки):**
+
+- **Initial bridge_sweep попытка нарушала hexagonal contract** —
+  application импортировал adapters (KicadCliSchematicExporter,
+  NgspiceSimulator). `lint-imports` отловил в первом push, refactor'нул
+  на DI (exporter+simulator pass-through). **Урок:** новые use cases
+  должны принимать porty через DI, не создавать adapters сами.
+- **Writer hardcoded `(unit 1)` в `(instances ...)` блоке** — баг
+  T104 (я в T104 patched первую `(unit N)` line, но `(instances)`-
+  level осталась `1`). Обнаружено только в T105 P1 multi-unit test
+  (count assertion). **Урок:** при `replace_all` для multiple
+  occurrences проверять ВСЕ matches, не первую попавшуюся пару.
+- **Custom Soviet snippets (GU50/6П45С/6Н6П)** — drawing-heavy work,
+  пришлось honestly defer в T107 (Phase 3). Не блокирует Phase 1b
+  но висит. Не имеет smart-way fix — нужно рисовать vector полилинии
+  по datasheet pinout. Возможно с помощью LLM-vision при T032/T106
+  Phase 3 implementation.
+
+**Правки методики (внесены / актуализированы):**
+
+- **`/ultrareview` как primary external review** (T094 ADR) — заменяет
+  пассивный CodeRabbit polling. Vladimir-triggered, выборочно.
+- **Phase split pattern продолжает работать** — Phase 0 + Phase 1
+  deferred + Phase 2-3 backlog. Применено к T100/T103/T104/T105/T106.
+  Закрепляется как methodology для крупных задач.
+- **DI для application use cases** — hexagonal contract обязательно
+  через `lint-imports` (existing rule, applied более последовательно).
+
+**Технический долг и идеи для 0.7.0:**
+
+- **Phase 1b — LLM chat-client (T011-T016)** — следующая большая фаза.
+  Все primitives готовы, нужен полный ритуал spec/clarify/analyze.
+  Vladimir будет делать spec вручную (новая подсистема, новый stack:
+  Rich TUI + MCP client + tool-use loop).
+- **T106 (scheme layout beautifier)** — Phase 3, после T032 SVG
+  render. Phase 0 (label-collision detection) — quick win если в
+  свободные часы.
+- **T107 (custom Soviet snippets GU50/6П45С/6Н6П)** — drawing-heavy.
+  Возможно делегировать LLM-vision при T032 готовности.
+- **`uv build` smoke в pre-push** (накопленный долг с [0.4.0]).
+- **Mistake recovery automation** (gpr branch-start alias) — не сделано
+  с retro `[0.5.0]`. Стоит закрыть при следующем меthod-improvement PR.
+
+---
+
 ## [0.5.0] — 2026-05-19
 
 Пятый milestone: **Phase 1a follow-ups доведены до production-ready**
