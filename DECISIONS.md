@@ -25,6 +25,57 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-05-19 — Сторонние review-боты: CodeRabbit как best-effort, primary path = self-review + опциональный `/ultrareview`
+
+- **Контекст:** T094 закрытие — что делать с CodeRabbit integration.
+  Ретро `[0.2.0]` (2026-05-17) задокументировало проблему: rate-limit
+  хитнул 6+ PR из 9, status-check показывал SUCCESS без реального
+  ревью. На milestone `[0.4.0]` Vladimir Pro plan исчерпал credits;
+  ретро `[0.5.0]` — оба бота (CodeRabbit + Qodo) silently не давали
+  ревью на 7 PR.
+  Решение нужно зафиксировать прежде чем стартует Фаза 1b (где скорость
+  итераций повысится — LLM chat development) — нельзя продолжать
+  делать вид что external review работает.
+- **Решение:** **вариант (в)** из BACKLOG T094 — заменить CodeRabbit
+  на user-triggered `/ultrareview` для критичных PR'ов. CodeRabbit
+  integration остаётся подключённой, но трактуется как **best-effort
+  signal** (если что-то полезное сказал — учитываем; rate-limit/no-
+  credit silent — не блокирует merge). Primary review path: **Гвидо
+  self-review с 7-point checklist** (scope / архитектура / код / гейты
+  / документация / соглашения / безопасность), Vladimir-review по
+  желанию, `/ultrareview` для архитектурно-критичных или security-
+  sensitive PR'ов.
+- **Альтернативы:**
+  - **(а) Подключить paid plan CodeRabbit полноценно.** Отвергнуто:
+    cost-benefit неясен — на `[0.4.0]` Pro plan кончился через 7-8 PR,
+    значит usage profile быстро превышает Pro budget. Hobbyist project,
+    не commercial team — затраты не оправданы. Vladimir может
+    пересмотреть позже если pattern usage станет регулярным.
+  - **(б) Полностью отключить CodeRabbit.** Отвергнуто: integration
+    уже подключена, бот при наличии credits даёт неплохие insights
+    occasionally. «Best-effort» tier нас не штрафует — silent rate-
+    limit просто игнорируется.
+  - **Оставить status quo (всё как есть, без явного решения).**
+    Отвергнуто: ретро 0.2.0/0.4.0/0.5.0 повторяли одну и ту же
+    жалобу — нужно зафиксировать обращение к проблеме иначе она
+    останется ноющим долгом.
+- **Последствия:**
+  - **Self-review с 7-point checklist обязателен на каждом PR**
+    (уже de facto практика, теперь явно как primary review path).
+  - **`/ultrareview`** доступен Vladimir-у для важных PR'ов
+    (cross-cutting refactor, security-sensitive changes, фазовые
+    milestone'ы). Поскольку он user-triggered (билируется по time),
+    не каждый PR — выборочно.
+  - **CodeRabbit silent rate-limit/no-credit не блокирует merge** —
+    раньше иногда возникало психологическое сомнение «надо ли ждать
+    бот». Now explicitly: нет, merge'аем по self-review.
+  - **Qodo (qodo-code-review)** — отдельный бот, тоже paused на user.
+    Не отключаем — той же логикой best-effort.
+  - **Не закрытое направление:** если Phase 1b (LLM chat) generates
+    много PR'ов от LLM-driven workflow, может возникнуть necessity
+    для batch review automation — пересмотрим (новый ADR, возможно
+    paid plan-комбо).
+
 ### 2026-05-18 — Programmatic schematic generation: собственный фасад `efactory.schematic` поверх `sexpdata` (вариант D)
 
 - **Контекст:** для T011–T014 (LLM chat-client фазы 1b) и для
