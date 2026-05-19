@@ -198,6 +198,18 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   `--update-libs` идемпотентен. Spec — `specs/T110-containerization/
   spec.md` Phase 1.5.
 
+  **T111 follow-up (2026-05-19):** в текущем образе `efactory:linux`
+  apt-пакет `kicad` идёт без `kicad-symbols` / `kicad-footprints` /
+  `kicad-packages3d` — `/usr/share/kicad/symbols/` пустая, поэтому
+  при попытке открыть библиотеку через Symbol Library Browser KiCad
+  показывает «Библиотека не найдена в таблице библиотек символов».
+  T111-фикстура SE-amp использует inline `lib_symbols` (T100), её
+  рендеринг и Simulator работают; ошибка касается только UI-сценариев
+  с поиском в библиотеке. T121 закрывает это **по дизайну**: либо
+  устанавливает `kicad-symbols`+`kicad-footprints`+`kicad-packages3d`
+  в `efactory-libs` image, либо клонирует upstream GitLab-репы
+  KiCad-libraries (fallback path в spec'е).
+
 ### Phase 1b — Чат-клиент (+2–3 недели, исполняется внутри контейнера после Phase 0.9)
 
 <!-- T011 перенесён в Tech Debt 2026-05-19: решено использовать
