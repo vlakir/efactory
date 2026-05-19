@@ -66,6 +66,16 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
 
+- **T107 Phase 0** — [closed 2026-05-19, PR #46] Custom Soviet tube
+  snippets: `Tubes_Soviet:GU50/6P45S/6N6P` через copy-rename базовых
+  EL84/ECC81 форм. 3 demo фикстуры (`test_soviet_tubes_facade.py`)
+  — common-cathode amp для каждой лампы, ngspice gain 20×/14×/227×.
+  Phase 1 deferred — datasheet-accurate vector drawing (top-cap GU50,
+  beam tetrode 6П45С, octal 6Н6П) с возможной LLM-vision delegation.
+  Bug-fix mini-discovery: KiCad требует sub-unit names = parent name
+  (initial "N6P_X_Y" не работал, fixed "6N6P_X_Y").
+  593 passed (+3), coverage 87.99%.
+
 <!-- Записи T103, T101, T105 Phase 0, T004b, T005 Phase 0, T104
      перенесены в CHANGELOG.md → [0.5.0] release-PR (2026-05-19). -->
 
