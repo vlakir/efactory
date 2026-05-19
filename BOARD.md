@@ -66,6 +66,67 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
 
+- **T112** — [closed 2026-05-20, PR #55] Phase 0.9 Containerization,
+  Phase 2 — FreeCAD CLI + GUI + Sheet Metal addon в `efactory:linux`.
+  Absorbs T066 (FreeCAD bootstrap).
+  - **Variant C — AppImage 1.1.1** (`FREECAD_VERSION=1.1.1`, SHA256
+    верифицирован против upstream `*-SHA256.txt`). apt-стек отверг:
+    FreeCAD 1.0+ в apt отсутствует (`freecad-stable` PPA на 0.21.2,
+    `freecad-daily` — `1.1~pre1` preview-сборка), Sheet Metal apt-
+    пакета не существует. ADR — `DECISIONS.md` 2026-05-20.
+  - **Dockerfile**: Qt6 runtime deps в base stage (`libxcb-cursor0`,
+    `libxkbcommon-x11-0`, `libxcb-icccm4/image0/keysyms1/render-util0/
+    shape0/xkb1`, `libegl1`, `libopengl0`, `libnss3`, `libasound2t64`,
+    `libxcomposite1`, `libxdamage1`, `libxrandr2`, `libxtst6`); новый
+    `freecad-appimage` stage (curl + sha256 + `--appimage-extract` в
+    `/opt/freecad/`; `git clone --no-checkout` + `checkout
+    8076898be2d8...` Sheet Metal в `/opt/freecad/usr/Mod/SheetMetal/`,
+    `.git` удалён); final stage `COPY --from=freecad-appimage` +
+    симлинки `freecadcmd` → `/opt/freecad/usr/bin/freecadcmd` и
+    `freecad` → `/opt/freecad/AppRun` в `/usr/local/bin/`;
+    `COPY scripts/` (для `gen-bracket-demo.FCMacro` внутри образа).
+  - **`efactory-up`**: флаг `--demo-freecad` (несовместим с `--demo`,
+    проверка); `LAUNCH_BIN` переключается на `freecad` локально;
+    bootstrap kicad-libs пропускается в этом режиме (не нужны для
+    FreeCAD-only); генератор `bracket.FCStd` запускается через
+    `docker run --user $(id -u):$(id -g)` без X11/libs, результат
+    через `PROJECTS_DIR` mount попадает на host; usage range
+    обновлён `2,48p`.
+  - **`scripts/gen-bracket-demo.FCMacro`** — L-bracket через Part API
+    (`makeBox` + fuse), сохраняется в `/workspace/sheetmetal-bracket-
+    demo/bracket.FCStd`. Расширение `.FCMacro` обязательно:
+    `freecadcmd <file.py>` трактует `.py` как document.open (молча
+    игнорирует, выходит rc=0 без output). Только `.FCMacro`
+    исполняется как Python-макрос.
+  - **`scripts/smoke-gui.sh`**: добавлен `freecadcmd --version`
+    check (теперь 4 шага: xdpyinfo + kicad-cli + freecadcmd + xeyes).
+  - **`tests/integration/test_freecad_runtime_smoke.py`** —
+    subprocess smoke: `freecadcmd --version` содержит `FreeCAD
+    1.1.1`; Part API через `freecadcmd <macro>` строит `Part.makeBox`
+    с volume 1000; `/opt/freecad/usr/Mod/SheetMetal/InitGui.py`
+    существует. `skipif` при отсутствии `freecadcmd` в PATH (host-
+    окружение Vladimir-а без FreeCAD — тесты skipped, внутри
+    образа — 2 passed).
+  - **Acceptance**: `docker run efactory:linux freecadcmd --version`
+    → `FreeCAD 1.1.1`; полный pytest внутри образа passed (без
+    регрессий); `./efactory-up --demo-freecad` открывает FreeCAD
+    GUI с L-bracket моделью, **SheetMetal в Workbench-меню**
+    (Vladimir подтвердил вручную 2026-05-20).
+  - **Размер**: slim 2.45 GB (T111) → 6.65 GB (после T112). +4.2 GB
+    (3.1 GB FreeCAD extracted + Docker layer overhead). CONCEPT §13
+    «потолок 6 GB» формально превышен, но Vladimir подтвердил
+    приемлемость («без планки» 2026-05-20). T115 (CI) добавит pin
+    через teги; будущая оптимизация (удаление неиспользуемого
+    bundled `gmsh`, `ccx`, `dot` в AppImage) — отдельной задачей.
+  - **Out of scope (BACKLOG)**: T124 (freecad-mcp wrapper —
+    клиентская часть, не distribution), T125 (mypy fix в tests/ —
+    pre-existing regression на main, обнаружен при pre-push T112),
+    T115 (GHCR publish), T123 (Sim.Library warning), T122 (KiCad
+    libraries git-clone fallback).
+  - Spec — `specs/T110-containerization/spec.md` Phase 2 с полным
+    implementation note (pin'ы, Qt6 deps, размер, bundled tools
+    AppImage как бонус для T113 — `ccx`/`gmsh` уже доступны).
+
 - **T114 + T121** — [closed 2026-05-20, PR #54] Phase 0.9
   Containerization, Phases 4 + 1.5 объединены в один PR
   (variant C, Vladimir 2026-05-19): T114 (`efactory-up` wrapper)

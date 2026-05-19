@@ -127,12 +127,12 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   pcbnew / 3D viewer запускается из контейнера, открывается на
   хосте. Acceptance: открыть SE-amp фикстуру, сохранить,
   переоткрыть — стабильно на >50 cycles.
-- **T112** — [2026-05-19] **FreeCAD CLI + GUI в образе.**
-  FreeCAD 1.0+ из репозитория, freecad-mcp в Python-стеке,
-  Sheet Metal workbench как addon. Absorbs T066 (FreeCAD
-  bootstrap). Acceptance: freecadcmd работает headless,
-  FreeCAD GUI запускается через X11 из контейнера, addon
-  Sheet Metal доступен.
+<!-- T112 перенесена в BOARD.md → Doing (2026-05-20). Acceptance
+     уточнено: FreeCAD 1.0+ через AppImage (variant C), Sheet Metal
+     через git clone в Mod/, freecad-mcp вынесен в T124. См. ADR
+     2026-05-20 в DECISIONS.md и Phase 2 implementation note. -->
+<!-- T066 absorbed by T112: bootstrap FreeCAD больше не нужен —
+     поставка через AppImage внутри efactory:linux. -->
 - **T113** — [2026-05-19] **FEM-solver: пилот и интеграция.**
   Заменяет FEMM (см. ADR от 2026-05-19 «Magnetic field
   verification: Linux-native FEM-solver»). Пилот сравнивает
@@ -213,6 +213,35 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   (метод `_add_simulation_props` и аналоги). T100-test'ы должны
   остаться зелёными (netlist export не меняется, меняется только
   GUI-warning поведение).
+- **T125** — [2026-05-20] **Fix mypy на main — 64 ошибки в 8 файлах.**
+  Обнаружено в pre-push T112 (mypy выдаёт те же ошибки на чистой `main`
+  без T112-правок — значит регрессия пришла с предыдущим merge,
+  скорее всего T114+T121 #54). Файлы:
+  `tests/integration/adapters/graph_store/test_kuzu_smoke.py`,
+  `tests/integration/adapters/subprocess_apps/test_app_manager.py`,
+  `tests/unit/application/test_{create,delete,get,list}_project.py`,
+  `tests/unit/application/test_design_to_{netlist,sim}.py`.
+  Большинство — `incompatible type: FakeXRepository / expected
+  XRepository protocol` (тестовые fake-репы рассинхронизированы с
+  protocol после изменений в `ports/outbound/`). Acceptance:
+  `uv run mypy src tests` → 0 ошибок. Контекст процесса: глобальная
+  методика требует 0 ошибок перед каждым push; T112 не вводит новых
+  ошибок, но прошёл pre-push gate в degraded state (надо признать
+  и закрыть быстро отдельным PR `T125-fix-mypy`).
+- **T124** — [2026-05-20] **freecad-mcp wrapper + integration.**
+  Acceptance T112 изначально включал «freecad-mcp подключается,
+  базовые tool-calls работают»; вынесено в отдельную задачу
+  (Vladimir 2026-05-20 clarify-1). Содержание: Python wrapper
+  поверх `freecadcmd` в `src/adapters/outbound/freecad/`, MCP-
+  сервер с минимальным set'ом tool-calls (open document,
+  create sheet metal base wall, add bend, unfold, export STEP/
+  DXF), регистрация в общем MCP-реестре efactory. После выбора
+  решения T108 (Claude Code как frontend) — wrapper должен
+  отвечать на tool_use из агента. Acceptance: запуск MCP-сервера
+  внутри efactory:linux, smoke tool-call «open empty document
+  и create base wall» возвращает path к сохранённому `.FCStd`.
+  Не блокировано: T112 (FreeCAD CLI / GUI) уже даёт `freecadcmd`,
+  на котором wrapper может работать сразу.
 
 ### Phase 1b — Чат-клиент (+2–3 недели, исполняется внутри контейнера после Phase 0.9)
 

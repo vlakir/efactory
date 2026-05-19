@@ -6,7 +6,9 @@
 #   1. Образ efactory:linux существует локально (или собирается).
 #   2. Внутри контейнера видна X11-сессия хоста: `xdpyinfo` отрабатывает.
 #   3. Внутри контейнера `kicad-cli version` отвечает (KiCad GUI стек в PATH).
-#   4. Внутри контейнера `xeyes` стартует и завершается без падения
+#   4. Внутри контейнера `freecadcmd --version` отвечает (FreeCAD AppImage
+#      headless в PATH, T112 Phase 2 acceptance).
+#   5. Внутри контейнера `xeyes` стартует и завершается без падения
 #      (рендеринг через X11 → реальное GUI-окно, проверка end-to-end).
 #
 # Ручная серия (50× open/save/close SE-amp фикстуры) — отдельно,
@@ -71,13 +73,16 @@ run_in_container() {
 }
 
 # ── 3. Проверки ─────────────────────────────────────────────────────────────
-log "1/3 xdpyinfo (X11 connectivity)"
+log "1/4 xdpyinfo (X11 connectivity)"
 run_in_container 'xdpyinfo | head -3' || fail "xdpyinfo не отработал внутри контейнера"
 
-log "2/3 kicad-cli version"
+log "2/4 kicad-cli version"
 run_in_container 'kicad-cli version' || fail "kicad-cli не отвечает внутри контейнера"
 
-log "3/3 xeyes (end-to-end GUI render)"
+log "3/4 freecadcmd --version (T112)"
+run_in_container 'freecadcmd --version' || fail "freecadcmd не отвечает внутри контейнера"
+
+log "4/4 xeyes (end-to-end GUI render)"
 # xeyes — графическое окно; запускаем в фоне внутри контейнера и через
 # timeout убиваем. Цель: убедиться, что окно создаётся без X11 errors.
 # `XDG_RUNTIME_DIR` ставим в `/tmp` чтобы dbus-launch не ругался при первом
