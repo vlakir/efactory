@@ -74,17 +74,19 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
 <!-- T105 Phase 0 перенесена в BOARD.md → Done (2026-05-19). -->
 
-- **T105 Phase 1 (deferred)** — оставшиеся advanced задачи registry:
-  (а) derived symbols через `(extends ...)` — writer уже умеет
-  auto-load parent, но KiCad pin resolution для derived требует ещё
-  работы (pins NC при equal coords; нашли при попытке ECC83 в
-  T105 Phase 0); (б) кастомные snippets для уникальных советских
-  ламп без western аналога (GU50, 6П45С, 6Н6П); (в) multi-unit
-  dual-triode instancing (отдельные halves через unit-A/B
-  sub-references) — facade-расширение, требует unique constraint
-  на reference revisit. Acceptance Phase 1: ECC83 работает (pins
-  not NC); 3+ кастомных tube snippets; dual-triode amp с обоими
-  halves в одной схеме.
+<!-- T105 Phase 1 (a)+(c) перенесены в BOARD.md → Done (2026-05-19):
+     ECC83 self-contained (без extends), multi-unit dual-triode
+     instancing (Valve:ECC81B / ECC83B / ECC88B registry entries). -->
+
+- **T107** — [2026-05-19] **Custom Soviet tube snippets** (vector
+  drawing). Уникальные советские лампы без western аналога —
+  GU50 (octal HV pentode, top-cap anode), 6П45С (sweep beam tetrode),
+  6Н6П (medium-µ dual-triode для phase-splitter). Embed в
+  `lib_symbols/Tubes_Custom.*.sexp` — drawing-heavy work (vector
+  polylines + pins по datasheet pinout). Не блокирует Phase 1b
+  (LLM chat может работать с EL84/ECC81 mappings). Acceptance:
+  3 кастомных snippet, integration test SPICE-сборка-симуляция для
+  одного из (GU50 power amp recommended).
 
 <!-- T106 (scheme layout beautifier) перенесён в Фазу 3 после T032
      (Vladimir 2026-05-19) — связан с SVG render + LLM-vision. -->
