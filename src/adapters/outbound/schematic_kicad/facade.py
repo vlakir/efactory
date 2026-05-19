@@ -162,13 +162,53 @@ _VALVE_ECC81 = _SymbolDef(
     label_offsets=_TRIODE_LABEL_OFFSETS,
 )
 
-# ECC83 (12AX7) — pin-compatible с ECC81, derived (extends) в KiCad
-# library. **Отложено в T105 Phase 1**: writer `_collect_lib_symbols`
-# умеет авто-подгружать parent через `(extends ...)`, но KiCad pin
-# resolution для derived `extends`-symbol работает иначе чем ожидалось
-# (нашёл в попытке embed — pins NC при equal coords как у parent).
-# Для 6Н2П сейчас используйте `Valve:ECC81` напрямую (pinout идентичен,
-# отличается только µ — это в T006 SPICE модели).
+# ECC81B (T105 Phase 1) — unit 2 ECC81, "B-half" dual-triode.
+# Unit 2 pin numbers: A=1, G=2, K=3 (coords те же, что unit 1 — symmetric
+# triode shape). Registry key 'Valve:ECC81B', но ComponentSpec lib_id =
+# 'Valve:ECC81' (same KiCad library entry, multi-unit). Используется
+# параллельно с Valve:ECC81 для full dual-triode amplifier с обоими
+# halves в одной схеме.
+_VALVE_ECC81_B = _SymbolDef(
+    lib_id='Valve:ECC81',
+    pins=(
+        _PinLayout('1', (0.0, -10.16)),  # A unit 2
+        _PinLayout('2', (-7.62, 0.0)),  # G unit 2
+        _PinLayout('3', (-2.54, 10.16)),  # K unit 2
+    ),
+    spice_pin_names=('P', 'G', 'K'),
+    unit=2,
+    label_offsets=_TRIODE_LABEL_OFFSETS,
+)
+
+# ECC83 (T105 Phase 1) — 12AX7 dual-triode (self-contained, без
+# `(extends ...)` mechanism — попытка в T105 Phase 0 показала, что
+# KiCad pin resolution для derived ECC83→ECC81 не работает чисто).
+# Решение: copy ECC81 snippet с renaming → self-contained Valve:ECC83.
+# Pin layout идентичен ECC81 (одинаковая физическая база Noval 9-pin).
+# Маппинг для советских: 6Н2П (high-µ analog 12AX7).
+_VALVE_ECC83 = _SymbolDef(
+    lib_id='Valve:ECC83',
+    pins=(
+        _PinLayout('6', (0.0, -10.16)),
+        _PinLayout('7', (-7.62, 0.0)),
+        _PinLayout('8', (-2.54, 10.16)),
+    ),
+    spice_pin_names=('P', 'G', 'K'),
+    unit=1,
+    label_offsets=_TRIODE_LABEL_OFFSETS,
+)
+
+_VALVE_ECC83_B = _SymbolDef(
+    lib_id='Valve:ECC83',
+    pins=(
+        _PinLayout('1', (0.0, -10.16)),
+        _PinLayout('2', (-7.62, 0.0)),
+        _PinLayout('3', (-2.54, 10.16)),
+    ),
+    spice_pin_names=('P', 'G', 'K'),
+    unit=2,
+    label_offsets=_TRIODE_LABEL_OFFSETS,
+)
 
 # ECC88 (T105) — 6DJ8 dual-triode. Unit 1 pins: A=1, G=2, K=3.
 # Маппинг для советских: 6Н23П, 6Н1П (alt).
@@ -181,6 +221,20 @@ _VALVE_ECC88 = _SymbolDef(
     ),
     spice_pin_names=('P', 'G', 'K'),
     unit=1,
+    label_offsets=_TRIODE_LABEL_OFFSETS,
+)
+
+# ECC88B (T105 Phase 1) — unit 2 ECC88, "B-half". Pin numbers A=6, G=7,
+# K=8 (inverse pattern относительно unit 1).
+_VALVE_ECC88_B = _SymbolDef(
+    lib_id='Valve:ECC88',
+    pins=(
+        _PinLayout('6', (0.0, -10.16)),
+        _PinLayout('7', (-7.62, 0.0)),
+        _PinLayout('8', (-2.54, 10.16)),
+    ),
+    spice_pin_names=('P', 'G', 'K'),
+    unit=2,
     label_offsets=_TRIODE_LABEL_OFFSETS,
 )
 
@@ -220,15 +274,19 @@ _TRANSFORMER_1P_1S = _SymbolDef(
     label_offsets=_LabelOffsets(ref=(0.0, -8.89), value=(0.0, 8.89)),
 )
 
+# Registry: key — alias for user (может отличаться от lib_id для
+# multi-unit aliases типа `Valve:ECC81B`). lib_id из _SymbolDef
+# используется внутри ComponentSpec.
 _SYMBOL_REGISTRY: dict[str, _SymbolDef] = {
-    sym.lib_id: sym
-    for sym in (
-        _VALVE_EL84,
-        _VALVE_ECC81,
-        _VALVE_ECC88,
-        _VALVE_EC92,
-        _TRANSFORMER_1P_1S,
-    )
+    'Valve:EL84': _VALVE_EL84,
+    'Valve:ECC81': _VALVE_ECC81,
+    'Valve:ECC81B': _VALVE_ECC81_B,
+    'Valve:ECC83': _VALVE_ECC83,
+    'Valve:ECC83B': _VALVE_ECC83_B,
+    'Valve:ECC88': _VALVE_ECC88,
+    'Valve:ECC88B': _VALVE_ECC88_B,
+    'Valve:EC92': _VALVE_EC92,
+    'Device:Transformer_1P_1S': _TRANSFORMER_1P_1S,
 }
 
 # R/C/L Reference/Value — справа от horizontal-rendered body, разнесены по Y.

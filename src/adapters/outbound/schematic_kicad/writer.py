@@ -299,7 +299,7 @@ def _symbol_block(
             _t(depth + 2) + f'(project "{project_name}"',
             _t(depth + 3) + f'(path "/{sheet_uuid}"',
             _t(depth + 4) + f'(reference "{component.reference}")',
-            _t(depth + 4) + '(unit 1)',
+            _t(depth + 4) + f'(unit {component.unit})',
             _t(depth + 3) + ')',
             _t(depth + 2) + ')',
             _t(depth + 1) + ')',
