@@ -82,7 +82,45 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
 <!-- T105 Phase 0 перенесена в BOARD.md → Done (2026-05-19). -->
 
-- **T105 Phase 1 (deferred)** — оставшиеся advanced задачи registry:
+- **T106** — [2026-05-19] **Scheme layout beautifier.** Post-process
+  валидного `.kicad_sch` (после ERC) для «textbook look»: убрать
+  collisions подписей/компонентов/проводников, выровнять reference/value
+  текст, сделать layout читаемым. **Honest scope assessment:**
+  полностью «как в учебнике» — research-level (Altium / KiCad
+  auto-place не делает это идеально даже с годами работы). Делаем
+  Phase 0–3 итеративно.
+
+  **Phase 0 (тривиальное, ~1 сессия):** детект label/value/reference
+  text-on-component-body или text-on-wire overlap'ов через bbox
+  intersection. Если есть — nudge text на свободную сторону компонента
+  (4-direction polling). Acceptance: на 5 наших фикстурах (RC, rectifier,
+  CE, SE-amp, triode_amp_6n2p) — ноль текстовых overlap'ов.
+
+  **Phase 1 (среднее, ~2 сессии):** wire-through-body detection (wire
+  visually passes через symbol bbox без electrical pin contact) →
+  reroute через "channel corridors" (горизонтальные/вертикальные
+  free-from-bodies lanes между рядами компонентов). По T100 §Analyze
+  W2 — это ≤50 LOC при правильной геометрии. Acceptance: SE-amp wires
+  не идут визуально через тело лампы или OPT.
+
+  **Phase 2 (сложное, ~3+ сессии):** component placement optimization
+  — детект unaligned compoинents (off-grid pin positions, asymmetric
+  Y-spread), apply nudges и rotations для balanced layout (Schematic-
+  style symmetry: power вверху, GND внизу, signal flow слева-направо).
+  Acceptance: вручную написанная reference fixture (mentor-style SE-amp)
+  и наш auto-built — visually близки.
+
+  **Phase 3 (research, deferred indefinitely):** textbook polish —
+  right-angle wire intersections с filleted corners, even spacing,
+  grouping similar components (R-bank выровнен, C-bank выровнен),
+  semantic positioning (input-stage слева, output-stage справа).
+  Возможно через LLM-vision (T032) — feed render to LLM, ask for
+  "make this look like an audio textbook schematic", apply diff.
+
+  **Не блокирует Phase 1b** LLM chat-client — chat работает с
+  функционально верными схемами вне зависимости от визуала.
+  **Полезно для T032** SVG-рендера: визуально чистая схема — лучшая
+  input для LLM-vision parsing.
   (а) derived symbols через `(extends ...)` — writer уже умеет
   auto-load parent, но KiCad pin resolution для derived требует ещё
   работы (pins NC при equal coords; нашли при попытке ECC83 в
