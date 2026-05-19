@@ -64,16 +64,21 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 - **T111** — [2026-05-19, ветка `T111-kicad-gui-passthrough`] Phase
   0.9 Containerization, Phase 1 — KiCad GUI passthrough из контейнера
   на хост через X11 (Wayland fallback). Расширение final stage:
-  apt-runtime `x11-apps`, `libgl1`, `dbus-x11`, `xauth`, `mesa-utils`
-  (KiCad GUI пакетные зависимости уже стянуты Phase 0). Один образ
-  (без `-headless` split — разделение в T120/T121). Smoke-script
-  `scripts/smoke-gui.sh`: X11 connectivity (`xeyes` headless probe)
-  + `kicad-cli version`; ручная финальная проверка — 50× open/save/
-  close SE-amp фикстуры у Vladimir'а. README — секция «Запуск KiCad
-  GUI из контейнера» с безопасным `xhost +SI:localuser:#$(id -u)`.
-  Spec — `specs/T110-containerization/spec.md` Phase 1.
-  Acceptance: smoke зелёный + ручная серия циклов без падений,
-  шрифты и clipboard работают.
+  apt-runtime `x11-apps`, `x11-utils`, `libgl1`, `dbus-x11`, `xauth`,
+  `mesa-utils` (KiCad GUI пакетные зависимости уже стянуты Phase 0).
+  Один образ `efactory:linux` (без `-headless` split — разделение в
+  T120/T121). Wrapper-скрипты для ритуала ручной проверки:
+  `scripts/run-kicad.sh` (запуск GUI из контейнера с `xhost
+  +SI:localuser:#$(id -u)` и опциональным `--demo` mount'ом),
+  `scripts/gen-se-amp-demo.py` (материализует SE-amp 6П14П
+  acceptance-фикстуру в `$HOME/efactory-projects/se-amp-demo/` с
+  относительными `Sim.Library`-путями и минимальным `.kicad_pro` для
+  Simulator). Smoke-script `scripts/smoke-gui.sh`: X11 connectivity
+  (`xdpyinfo`) + `kicad-cli version` + `xeyes` end-to-end. Spec —
+  `specs/T110-containerization/spec.md` Phase 1.
+  Acceptance: smoke зелёный + 50× open/save/close SE-amp у
+  Vladimir'а без падений, шрифты и clipboard работают, Simulator
+  прогоняет `.tran` с AC-амплификацией 5–7× на /plate.
 
 ## Done
 

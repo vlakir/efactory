@@ -153,6 +153,22 @@ Smoke-проверка X11 passthrough (без интерактивного ок
 ./scripts/smoke-gui.sh
 ```
 
+Demo-проект для ручного прогона Simulator (SE-amp 6П14П, та же
+топология что в интеграционном acceptance-тесте):
+
+```bash
+# Сгенерировать demo-dir в $HOME/efactory-projects/se-amp-demo/
+uv run python scripts/gen-se-amp-demo.py
+
+# Открыть demo в KiCad из контейнера ($HOME/efactory-projects/
+# монтируется в /workspace/, demo откроется по пути
+# /workspace/se-amp-demo/se_amp.kicad_pro)
+./scripts/run-kicad.sh --demo
+```
+
+В GUI: Tools → Simulator → Run, чтобы прогнать `.tran 10u 80m 10m
+uic` и увидеть на plate-net AC-амплификацию 5–7× от 10mV input.
+
 Wayland-сессии (Ubuntu 24.04 GNOME по умолчанию) работают через
 XWayland-bridge без изменений в команде. Native Wayland-passthrough
 (`-v /run/user/$UID/wayland-0:/run/user/$UID/wayland-0`) пока не
