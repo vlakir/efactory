@@ -32,13 +32,16 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 ### Added
 
 - **Phase 0.9 — Containerization** (новая фаза в roadmap): T110
-  (базовый Dockerfile efactory с KiCad из official репов, ngspice,
-  Python 3.14, agent), T111 (KiCad GUI passthrough — X11/Wayland +
-  GPU acceleration), T112 (FreeCAD CLI + GUI в образе, absorbs T066),
-  T113 (FEM-solver: пилот Elmer vs GetDP + интеграция, absorbs T058),
-  T114 (`efactory-up` wrapper-скрипт), T115 (CI: сборка и публикация
-  образа в GHCR). Ставится между Phase 1a и Phase 1b: после Phase 0.9
-  все дальнейшие фазы исполняются внутри контейнера. (T110-T115)
+  (базовый Dockerfile efactory с KiCad из официального apt-репозитория,
+  ngspice, Python 3.14, agent), T111 (KiCad GUI passthrough —
+  X11/Wayland + GPU acceleration), T112 (FreeCAD CLI + GUI в образе,
+  absorbs T066), T113 (FEM-solver: пилот Elmer vs GetDP + интеграция,
+  absorbs T058), T114 (`efactory-up` wrapper-скрипт), T115 (CI:
+  сборка и публикация образа в GHCR), T120 (cleanup:
+  удалить AppImage-detection из `platform_layer` как dead code
+  после перехода на apt-distribution). Ставится между Phase 1a и
+  Phase 1b: после Phase 0.9 все дальнейшие фазы исполняются внутри
+  контейнера. (T110-T115, T120)
 
 - **Phase Cross-platform** (новая отложенная фаза): T116 (Windows
   через Docker Desktop + WSLg), T117 (macOS через Docker Desktop +
@@ -50,11 +53,11 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 ### Changed
 
 - **T110 ADR — Distribution efactory переходит на Linux Docker image
-  как primary.** Один образ с полным стеком (KiCad из official репов,
-  ngspice, FreeCAD, Linux-native FEM-solver, Python, Claude Code,
-  MCP-серверы), GUI через X11/Wayland passthrough. Никакого AppImage.
-  Кроссплатформенность отложена в Phase Cross-platform. ADR в
-  `DECISIONS.md` 2026-05-19 «Distribution: Linux Docker image».
+  как primary.** Один образ с полным стеком (KiCad из официального
+  apt-репозитория, ngspice, FreeCAD, Linux-native FEM-solver,
+  Python, Claude Code, MCP-серверы), GUI через X11/Wayland
+  passthrough. Кроссплатформенность отложена в Phase Cross-platform.
+  ADR в `DECISIONS.md` 2026-05-19 «Distribution: Linux Docker image».
   Принцип «Кроссплатформенность» в `README.md` ослаблен до «Linux
   первой фазой, кросс-платформа отдельной фазой». В этом milestone
   — только ADR и обновление roadmap, без Dockerfile. Реализация —

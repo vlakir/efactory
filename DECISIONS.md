@@ -35,35 +35,32 @@ ADR-Lite: компактный лог архитектурных решений 
   **T003 (bootstrap.ps1 для Windows)** + **T036 (--update /
   --doctor)** + **T058 (FEMM bootstrap)** + **T066 (FreeCAD
   bootstrap)** — суммарно ~500 строк bash+ps1 + ручное
-  координирование версий через `compatibility.toml`. На
-  dev-машине Владимира KiCad 10.0.2 AppImage уже даёт OOM на
-  reopen/save (T100 Phase 0 инцидент 2026-05-18) — версионная
-  hell начинается сразу. Параллельно встал вопрос **изоляции
-  runtime-агента** от dev-инстанса Claude Code (mem0, методика
-  dreamteam, личные настройки) — для чистоты эксперимента и
-  будущей передачи продукта пользователям.
+  координирование версий через `compatibility.toml`. Пять
+  независимых релизных циклов + Wine для FEMM = постоянный
+  versioning hell у пользователя. Параллельно встал вопрос
+  **изоляции runtime-агента** от dev-инстанса Claude Code
+  (mem0, методика dreamteam, личные настройки) — для чистоты
+  эксперимента и будущей передачи продукта пользователям.
 - **Решение:** **Distribution = Linux Docker image с полным
   стеком, включая GUI.** Один образ `efactory:linux` содержит:
-  KiCad из официального Ubuntu/PPA-репозитория (не AppImage),
-  ngspice, FreeCAD из репозитория, Linux-native FEM-solver
-  (см. отдельный ADR от 2026-05-19 о замене FEMM), Python 3.14
-  + uv + весь efactory код, Claude Code как frontend агента,
+  KiCad из официального KiCad-репозитория (apt), ngspice,
+  FreeCAD из репозитория, Linux-native FEM-solver (см.
+  отдельный ADR от 2026-05-19 о замене FEMM), Python 3.14 +
+  uv + весь efactory код, Claude Code как frontend агента,
   наши MCP-серверы. GUI приложений (eeschema, pcbnew, FreeCAD)
   выкидывается через X11/Wayland passthrough; GPU acceleration —
   через `/dev/dri` (Intel/AMD) или nvidia-runtime. Наружу через
   volume mounts: папка проектов пользователя, папка библиотек,
   `~/.claude/.credentials.json:ro` для Claude Code auth.
-  Запуск — единым shell-скриптом `efactory-up`. **Никакого
-  AppImage** — KiCad берётся из official репов в контейнере,
-  стабильнее на dev-машине Владимира. **Кроссплатформенность
-  отложена** в отдельную фазу «Cross-platform» (Docker Desktop /
-  WSLg / Colima support — Phase 8 или позже).
+  Запуск — единым shell-скриптом `efactory-up`.
+  **Кроссплатформенность отложена** в отдельную фазу
+  «Cross-platform» (Docker Desktop / WSLg / Colima support —
+  Phase 8 или позже).
 - **Альтернативы:**
   - **Native install через bootstrap-скрипты (status quo, T002/
     T003)** — отвергли: пять разных тулов с независимыми
-    релизными циклами + Wine для FEMM + AppImage-нестабильность
-    KiCad на конкретной машине = постоянный versioning hell.
-    Compatibility.toml лечит только знание, не сам факт
+    релизными циклами + Wine для FEMM = постоянный versioning
+    hell. Compatibility.toml лечит только знание, не сам факт
     рассогласования у пользователя.
   - **Headless Docker гибрид (Docker для CLI, native KiCad на
     хосте для GUI)** — рассматривался как промежуточный шаг.
