@@ -250,13 +250,45 @@ workflow.
 
 - Размер итогового slim-образа **≤ 3 GB** (после выноса
   ~3 GB KiCad libraries наружу).
-- Bootstrap: `efactory-up` при первом запуске проверяет
+- Bootstrap (выполняется в `efactory-up` при отсутствии хотя бы
+  одной из трёх libraries-директорий —
   `$HOME/efactory-libs/kicad-symbols/`,
   `$HOME/efactory-libs/kicad-footprints/`,
-  `$HOME/efactory-libs/kicad-3dmodels/`. Если пусто — копирует из
-  dedicated image `ghcr.io/vlakir/efactory-libs:linux-X.Y.0` (вытащить
-  через `docker create` + `docker cp`, потом `docker rm`) ИЛИ скачивает
-  через `git clone` из upstream KiCad libraries.
+  `$HOME/efactory-libs/kicad-3dmodels/`):
+
+  **Primary path — `docker cp` из `efactory-libs` image:**
+  1. `docker pull ghcr.io/vlakir/efactory-libs:linux-X.Y.0`
+     (или `linux-latest` если version не зафиксирована).
+  2. `CID=$(docker create ghcr.io/vlakir/efactory-libs:linux-X.Y.0)`.
+  3. `docker cp $CID:/lib-payload/kicad-symbols
+     $HOME/efactory-libs/kicad-symbols` (аналогично для
+     footprints и 3dmodels).
+  4. `docker rm $CID`.
+  5. Verify: каждая из трёх директорий не пустая (≥ 1 файл),
+     иначе считаем primary path failed.
+
+  **Fallback path — `git clone` из upstream KiCad-репозиториев**
+  (только если primary path упал в любой шаг 1–5):
+  1. `git clone --depth=1 https://gitlab.com/kicad/libraries/
+     kicad-symbols.git $HOME/efactory-libs/kicad-symbols/`.
+  2. Аналогично для `kicad-footprints` и `kicad-packages3D` (точные
+     URL фиксируются при реализации — соответствуют upstream
+     KiCad libraries на gitlab.com/kicad/libraries).
+  3. Логировать в stderr что использовался fallback (полезно для
+     отладки и определения, нужно ли пересобрать `efactory-libs`).
+
+  **Триггеры fallback:** network error при `docker pull`,
+  отсутствие image в registry (registry недоступен или tag не
+  опубликован), `docker cp` exit code ≠ 0, verify (шаг 5) показал
+  пустые директории.
+
+  **Не fallback (явная ошибка с сообщением):** docker daemon не
+  запущен, нет места на диске, `~/efactory-libs/` read-only.
+
+  **Тестовое покрытие T121 acceptance:** оба пути smoke-тестятся
+  отдельно (primary — через нормальный pull; fallback — через
+  имитацию failure, например `EFACTORY_TEST_DISABLE_DOCKER_CP=1`
+  env var, который сразу пропускает primary).
 - На последующих запусках — только mount существующих volumes.
 - KiCad внутри контейнера через `kicad_common.json` смотрит в
   `/usr/share/kicad/symbols/` (mount-target) для system-libraries +
@@ -312,12 +344,22 @@ Stage 5-alt (slim CI): efactory:linux-headless
 | `$HOME/efactory-libs/kicad-footprints/` (после T121) | `/usr/share/kicad/footprints/` | ro | KiCad system footprint library |
 | `$HOME/efactory-libs/kicad-3dmodels/` (после T121) | `/usr/share/kicad/3dmodels/` | ro | KiCad 3D models |
 | `$HOME/efactory-libs/freecad-mods/` (после T121) | `/usr/share/freecad/Mod/` | ro | FreeCAD workbenches / addons |
-| `$HOME/.claude/.credentials.json` | `/root/.claude/.credentials.json` | ro | Claude Code auth (refresh token) |
+| `$HOME/.claude/.credentials.json` | `/efactory/.claude/.credentials.json` | ro | Claude Code auth (refresh token). См. `CLAUDE_CONFIG_DIR` ниже — путь user-agnostic, не привязан к `/root` или `/home/<user>`. |
 | `/tmp/.X11-unix/` | `/tmp/.X11-unix/` | rw | X11 socket |
-| `$XAUTHORITY` (или `~/.Xauthority`) | `/root/.Xauthority` | ro | X auth cookie |
+| `$XAUTHORITY` (или `~/.Xauthority`) | `/efactory/.Xauthority` | ro | X auth cookie (user-agnostic path) |
 | `/run/user/$UID/wayland-0` (опц.) | `/run/user/$UID/wayland-0` | rw | Wayland socket (XWayland fallback или native) |
 | `~/efactory-mcp.d/` (опц., dev) | `/etc/efactory/mcp.d/` | ro | Override MCP-серверов без пересборки образа |
 | `./src/` (опц., `--dev`) | `/opt/efactory/src/` | rw | Bind-mount host code поверх editable install |
+
+**Замечание про `$HOME` в контейнере:** контейнер запускается под
+`--user $(id -u):$(id -g)` — соответственно `$HOME` runtime-юзера
+может быть произвольным (или вообще отсутствовать, если passwd-
+запись для этого uid не существует). Поэтому Claude credentials и
+Xauthority монтируются в **user-agnostic пути** (`/efactory/...`),
+а Claude Code и X11-клиенты получают точные пути через env vars
+(см. ниже). Эти директории создаются в Dockerfile final stage с
+правами `0755` и владельцем `root:root` — runtime-юзер только
+читает через `ro` mount.
 
 ### Container env vars
 
@@ -326,9 +368,12 @@ Stage 5-alt (slim CI): efactory:linux-headless
 | `DISPLAY` | host `$DISPLAY` | X11 target |
 | `WAYLAND_DISPLAY` | host (опц.) | Wayland socket |
 | `XDG_RUNTIME_DIR` | host (для Wayland) | Wayland socket location |
-| `EFACTORY_PROJECTS_ROOT` | `/workspace` | где efactory ищет проекты |
-| `EFACTORY_LIBS_ROOT` | `/libs` | где efactory ищет custom libraries |
-| `EFACTORY_DATABASE_URL` | `sqlite+aiosqlite:///workspace/.efactory/db.sqlite` | persistent index |
+| `XAUTHORITY` | `/efactory/.Xauthority` | Где X11-клиенты ищут auth cookie (user-agnostic, не зависит от `$HOME`) |
+| `CLAUDE_CONFIG_DIR` | `/efactory/.claude` | Где Claude Code ищет credentials и config (user-agnostic, не зависит от `$HOME`) |
+| `EFACTORY_PROJECTS_ROOT` | `/workspace` | Где efactory ищет проекты |
+| `EFACTORY_LIBS_ROOT` | `/libs` | Где efactory ищет custom libraries |
+| `EFACTORY_DATABASE_URL` | `sqlite+aiosqlite:///workspace/.efactory/db.sqlite` | Persistent index |
+| `EFACTORY_VERSION` | `linux-X.Y.0` или `linux-latest@<sha-short>` | Самоидентификация образа для runtime-introspection / логирования / `efactory --version` |
 
 ### GHCR tags
 
@@ -449,10 +494,12 @@ ngspice работает, FreeCAD CLI работает).
   библиотек (KiCad + FreeCAD addons). Минимальный base
   (`scratch` или `alpine`), просто содержит библиотеки в нужных
   путях.
-- В `efactory-up` — bootstrap: при первом запуске проверяет
-  `$HOME/efactory-libs/kicad-symbols/`. Если пусто →
-  `docker create efactory-libs:linux-latest` + `docker cp` в host
-  директорию + `docker rm`.
+- В `efactory-up` — bootstrap c **primary / fallback** путями
+  (см. §3 Functional Requirements / T121 bootstrap):
+  primary — `docker pull` + `docker create` + `docker cp` +
+  `docker rm` из `efactory-libs` image; fallback (если primary
+  failed) — `git clone --depth=1` из upstream KiCad-libraries
+  GitLab-репозиториев.
 - Runtime `docker run` mount'ит host-volumes на `/usr/share/kicad/`
   read-only.
 - KiCad `kicad_common.json` настроен на чтение из `/usr/share/kicad/`
@@ -736,13 +783,56 @@ runtime. Все `apt-get install -y --no-install-recommends`. uv venv
 у тебя corporate proxy, проброс через env `HTTPS_PROXY` /
 `HTTP_PROXY`».
 
-### Резюме Analyze
+### Post-review addendum (после CodeRabbit-ревью PR #51, 2026-05-19)
 
-Критических блокеров (🔴) — два: **C1** (editable install + user
-permissions) и **C2** (KiCad libraries bootstrap timing). Оба
-решаются перед Phase 0 — добавляем в T110 acceptance явные пункты:
-«venv доступен под `--user $(id -u):$(id -g)`» и «bootstrap
-volume blocks Claude Code startup».
+CodeRabbit на втором проходе нашёл **существенную несогласованность**,
+которую я в Initial Analyze пропустил:
+
+**C3 (Critical, ранее upgraded из nitpick → critical).**
+**`--user $(id -u):$(id -g)` + mount Claude credentials в `/root/`
+несовместимы.** В Initial Analyze я зафиксировал `--user` для прав
+на host-volumes (N4), но Claude credentials и Xauthority при этом
+mount'ил в `/root/.claude/` и `/root/.Xauthority`. Под non-root
+runtime user `$HOME` ≠ `/root`, Claude Code не нашёл бы auth по
+дефолту, X11 клиенты — Xauthority. **Фикс (применён в spec'е):**
+
+- Mount paths переводятся на **user-agnostic**: `/efactory/.claude/`,
+  `/efactory/.Xauthority`.
+- Точное местоположение Claude Code и X11 получают через **env
+  vars**: `CLAUDE_CONFIG_DIR=/efactory/.claude` и
+  `XAUTHORITY=/efactory/.Xauthority`.
+- Dockerfile final stage создаёт `/efactory/.claude/` с правами
+  `0755 root:root` (runtime user читает через `ro` mount).
+
+**Bootstrap T121 уточнён.** В Initial spec формулировка была «docker
+cp ИЛИ git clone» без явной иерархии. CodeRabbit попросил
+зафиксировать **primary + fallback** с триггерами и error-handling:
+primary — `docker pull` + `docker create` + `docker cp` из
+`efactory-libs` image; fallback (только при network/registry
+failure) — `git clone --depth=1` из upstream KiCad libraries.
+Условия fallback и поведение для не-fallback ошибок (нет места на
+диске, docker daemon не запущен) явно прописаны в §3 T121.
+
+**Env vars table расширен:** добавлены `CLAUDE_CONFIG_DIR`,
+`XAUTHORITY`, `EFACTORY_VERSION` (последний — для runtime
+introspection и `efactory --version`).
+
+**Урок для Initial Analyze:** при проектировании multi-volume +
+multi-user-context контейнера полезно явно прорабатывать **матрицу
+«какой путь видит какой пользователь»** — Initial Analyze
+рассматривал `--user` только в контексте host-volume permissions
+(N4), пропустил его эффект на `$HOME`-based-resolution внутри
+контейнера. На будущее — в spec-template добавить отдельный пункт
+для container-multi-user-context, если такая категория задач
+повторится.
+
+### Резюме Analyze (обновлённое)
+
+Критических блокеров (🔴) — **три**: C1 (editable install + venv
+permissions), C2 (libraries bootstrap timing), **C3** (user-agnostic
+mount paths + env vars для Claude Code и X11, выявлено CodeRabbit'ом).
+Все решаются перед Phase 0 — добавлены в T110 acceptance и в env
+vars table.
 
 Warning'ов (🟡) — 5, преимущественно про graphics passthrough и
 совместимость стека (Wayland, KiCad multi-path, Claude install,
@@ -755,9 +845,9 @@ patterns, GPU detection, uid handling, multi-stage best practices,
 network).
 
 **Spec готов к переходу T110 BACKLOG → BOARD → Doing.** Перед
-первым PR с Dockerfile (Phase 0 T110) — закрыть C1 и C2 в acceptance
-criteria, добавить про W3 (Claude Code install smoke) и W4
-(pre-commit hook guard) в smoke-tests Phase 0.
+первым PR с Dockerfile (Phase 0 T110) — закрыть C1, C2, C3 в
+acceptance criteria, добавить про W3 (Claude Code install smoke) и
+W4 (pre-commit hook guard) в smoke-tests Phase 0.
 
 ---
 
