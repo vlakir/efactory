@@ -31,6 +31,168 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ---
 
+## [0.5.0] — 2026-05-19
+
+Пятый milestone: **Phase 1a follow-ups доведены до production-ready**
+(минус parked T002/T003 bootstrap-скриптов). [0.4.0] закрыл фундамент
+Phase 1a MVP-ядра; [0.5.0] доводит follow-up-задачи, обнаруженные в
+процессе, плюс расширяет registry/library и добавляет primitive
+edit-resim workflow.
+
+После 0.5.0 efactory:
+
+- умеет рендерить ламповые усилители с **реальными ламповыми
+  symbols** (4 valves в registry + 6П14П common-cathode demo с
+  правильным rendering);
+- имеет SPICE-библиотеку диодов (3 стартовых + framework для
+  расширения);
+- закрыл W2 wire-routing risk в SE-amp (gain 48.5×);
+- даёт **bridge edit** CLI для модификации .kicad_sch + composable
+  Python use case для edit-and-resim flow (готов для LLM-агента
+  Phase 1b);
+- расширил SpiceModelLibrary list-команды composable фильтрами
+  (`--source X --subcategory Y`).
+
+Готовность к Phase 1b LLM chat-client (T011-T016) — следующий
+milestone.
+
+### Added
+
+- **T101 — Diode SPICE-библиотека** (расширение T007 generalization).
+  `domain.ComponentCategory.DIODE` + `DiodeKind` enum (rectifier/
+  signal/schottky/zener/led); `SpiceModelLibrary` сканирует
+  `data/models/diodes/<source>/`; стартовый набор `duncan/`:
+  1N4007 (rectifier 1000V/1A), 1N4148 (signal 100V/200mA, fast
+  switching trr 4ns), BAT85 (schottky 30V/200mA, low Vf). CLI
+  `efactory diode list/show`. `facade.add_diode` поддерживает
+  `spice_model=...` (X-prefix subckt-instance, auto `.include`) и
+  legacy `spice_params='...'` (D-prefix inline); hardcoded default
+  (T100 Phase 1) удалён, ValueError на отсутствие обоих.
+  Backward-compat — rectifier test работает без правок. (T101)
+
+- **T103 — SE-amp wire-router fix** (закрывает T100 W2 risk
+  realized в T102). Полностью переписан SE-amp layout с
+  использованием T104 `Valve:EL84` symbol. Plate-к-OPT.P1 wire идёт
+  ВЫШЕ B+ rail (Y=67.31 < Y=58.42 в mm), что исключает все
+  пересечения с G2/P2 rail-stub'ами. `.tran 10u 80m uic` для
+  надёжного bias settling. `test_facade_se_amp_tran_shows_amplification`
+  снят со skip, измеренный plate AC swing **48.5×** от input
+  (threshold ≥5×). Speaker swing 39 mV p-p после OPT 25:1 step-down.
+  ERC: 0 errors. (T103)
+
+- **T105 Phase 0 — extend Valve registry** на 4 valves (с EL84):
+  - `Valve:ECC81` (12AT7 dual-triode) — для 6Н1П, 6Н2П, 6Н3П
+  - `Valve:ECC88` (6DJ8 dual-triode) — для 6Н23П, 6Н1П alt
+  - `Valve:EC92` (single triode) — для 6Ж1П etc
+  - `Valve:EL84` (pentode, T104) — для 6П14П
+  
+  Dual-triodes используются только unit 1 (½), что соответствует
+  ½-modeled T006 SPICE моделям (3-pin: P/G/K). Writer
+  `_collect_lib_symbols` с topological sort + auto-load parent через
+  `(extends ...)` — infrastructure готова для derived symbols, но
+  KiCad pin resolution для derived требует доработки (T105 Phase 1
+  deferred). Demo: 6Н2П common-cathode amp через Valve:ECC81,
+  ngspice TRAN gain ≥ 10×. (T105 Phase 0)
+
+- **T004b + T005 Phase 0 — bridge edit + model search filters.**
+  `application/edit_component_value.py` — atomic text-based regex
+  replace value-property компонента в `.kicad_sch` (защита:
+  ComponentNotFoundError, MultipleMatchesError на duplicate refs).
+  `application/edit_and_resim.py` — composition edit + design_to_sim
+  для Python use case (LLM-agent ready). CLI
+  `bridge edit <project> --schematic PATH --set REF=VALUE`:
+  multi-edit через repeated `--set`, per-edit atomic, session-logged.
+  T005 Phase 0: `tube/diode/transformer/load list` принимают
+  `--source X --subcategory Y` для composable фильтрации (model
+  search functional). (T004b, T005 Phase 0)
+
+### Changed
+
+- **T104 follow-ups (closure):** Phase 0 PR (#35) уже мержён в
+  [0.4.0]; здесь дополнительные правки `chore(backlog)` PR #36 —
+  T002/T003 parked в новый раздел Tech Debt (Vladimir explicitly не
+  готов брать), T105 формально registered в Phase 1a.
+
+### Retrospective
+
+**Что зашло:**
+
+- **Autonomous batch mode.** Vladimir дал команду "добить Phase 1a"
+  на ночь — за сессию закрыто **5 task PR + 1 chore + 1 release-PR
+  open** (~7 commits в main). Pattern работает когда scope очерчен
+  (закрытые задачи в BACKLOG + явные acceptance criteria).
+- **Phased delivery** (Phase 0 / Phase 1 split) для крупных задач
+  (T105, T004b/T005) — закрываем essentials, остальное honestly
+  паркуется как "Phase 1 deferred" с явными criteria. Не "потом
+  доделаем как-нибудь", а конкретный todo с scope.
+- **Re-use existing infrastructure.** T004b/T005 = текстовый regex
+  edit + filter в существующих CLI commands. Не пришлось вводить
+  новый MCP-server, schematic parser или sweep-domain (всё это
+  отложено к Phase 1 deferred / Phase 1b).
+- **Pre-push гейты** ловили все regression сразу — backward compat
+  T101 (rectifier test без правок) и T103 (старые T100 фикстуры)
+  подтверждены автоматически без manual smoke.
+
+**Что не зашло (или потребовало пересмотра):**
+
+- **Закоммитала на main ошибочно** перед push T105 (создала ветку
+  ПОСЛЕ commit, а не до). Push fail'ил (нет такой ветки), remote
+  не пострадал — recovery: `git branch <name>` + `git reset --hard
+  origin/main`. **Урок методики:** перед каждым новым task —
+  *first* `git checkout -b T<NNN>-<slug>`, ТОЛЬКО потом редактирование.
+  Если есть автоматизация — добавить shell-аlias или git hook
+  блокирующий commit в main для non-chore изменений.
+- **ECC83 `(extends ECC81)` mechanism сложнее ожиданий.** Embed
+  ECC83 derived → pins NC, хотя ECC81 (parent) напрямую работает.
+  KiCad pin resolution для extends-symbol требует ещё чего-то
+  (Phase 1 investigation). Decision был honestly defer — T105 Phase
+  1 deferred в BACKLOG. **Урок:** при первой встрече с unfamiliar
+  KiCad mechanism — pre-spike перед coding (как с T100
+  `kicad-sch-api`), не coding-then-debug.
+- **Multi-unit valves stripped к unit 1** — приводит к
+  `lib_symbol_mismatch` cosmetic warning (наш embedded ≠ system
+  Valve.kicad_sym из-за вырезанного накала). 4 из 4 новых valves
+  выдают этот warning. Pragmatic accept; full fix = multi-unit
+  instancing с NC markers (T105 Phase 1).
+
+**Правки методики (внесены / актуализированы):**
+
+- **Phase split pattern** для крупных задач — Phase 0 (essentials) +
+  Phase 1 deferred (advanced) в BACKLOG. Закрепляется как
+  workflow для autonomous batch. Pre-existing precedent: T100
+  Phase 0–3, T104 Phase 0.
+- **Tech Debt секция в BACKLOG** — задачи parked без owner (T002/
+  T003 пока). Не путать с архитектурными follow-up'ами (T094) —
+  те имеют clear motivation, просто откладываются. Tech Debt = "
+  признаём что нужно, но не сейчас".
+- **`chore(backlog)` methodology PRs без T-ID** — продолжает
+  работать. Применено в backlog reorg PR #36.
+
+**Технический долг и идеи для 0.6.0:**
+
+- **T103/T104/T105 Phase 1** (все pushed back deferred):
+  - SE-amp facade wire-router auto-junction для chuжих pin-crossings
+    (≤50 LOC, T100 §Analyze W2 mitigation, accepts T103 partial fix).
+  - `(extends ...)` pin resolution для derived Valve symbols.
+  - Custom snippets для уникальных советских ламп без western
+    аналога (GU50, 6П45С, 6Н6П).
+  - Multi-unit dual-triode instancing (отдельные halves через
+    unit-A/B sub-references).
+- **T004b/T005 Phase 1 (deferred)**: bridge_sweep parametric +
+  delta-table, model_assign CLI (Sim.Library/Sim.Name swap),
+  snapshot/rollback multi-edit atomicity.
+- **T011-T016 (Phase 1b — LLM chat-client)**: следующая большая
+  фаза. Все primitives готовы: edit_and_resim, model_search,
+  programmatic schematic build. Требует spec/clarify/analyze.
+- **T094** (CodeRabbit credits) остаётся parked — кончились на
+  release-PR [0.4.0] (#34).
+- **`uv build` smoke в pre-push** (накопленный долг с [0.4.0]).
+- **Mistake recovery automation:** git pre-commit hook блокировать
+  non-chore commit в main; alias `gnb <name>` (=`git checkout -b
+  T<NNN>-<name>`) для quick branch start.
+
+---
+
 ## [0.4.0] — 2026-05-18
 
 Четвёртый milestone: **закрыто Phase 1a MVP-ядро дорожной карты

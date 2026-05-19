@@ -121,12 +121,22 @@ _R_K_AT        = (86.36, 101.6)       # pin_a@(86.36,105.41)→GND, pin_b@(86.36
 _GND_RK_AT     = (86.36, 109.22)
 _C_K_AT        = (96.52, 101.6)       # pin_a@(96.52,105.41)→GND, pin_b@(96.52,97.79)→cathode rail
 _GND_CK_AT     = (96.52, 109.22)
-_OPT_AT        = (115.57, 69.85)      # Conn_01x04: P1(110.49,67.31), P2(110.49,69.85), S1(110.49,72.39), S2(110.49,74.93)
-_R_LOAD_AT     = (124.46, 76.2)       # pin_b@(124.46,72.39)=OPT.S1.Y, pin_a@(124.46,80.01)
+_OPT_AT        = (115.57, 72.39)      # Transformer_1P_1S (T103 follow-up 2026-05-19, красивый symbol):
+                                       # P1(105.41,67.31) primary-top, P2(105.41,77.47) primary-bottom,
+                                       # S1(125.73,77.47) secondary-bottom, S2(125.73,67.31) secondary-top
+_R_LOAD_AT     = (133.35, 81.28)      # rotation=0 vertical: pin_b(133.35,77.47)=OPT.S1.Y, pin_a(133.35,85.09)→GND
 
 _BPLUS_RAIL_Y     = 58.42              # горизонталь B+: V_BB.pin_minus → X=115.57 (за OPT центром)
 _BPLUS_RAIL_END_X = 115.57             # endpoint = X_opt, откуда G2 stub L-route
 _PLATE_WIRE_Y     = 67.31              # plate routes к OPT.P1 — Y=67.31 (=53·1.27, on-grid)
+# T103 follow-up (2026-05-19): AC-probe для visualization в KiCad
+# Simulator. C_probe coupling cap + R_probe pulldown → /output_probe net
+# несёт только AC компонент plate-сигнала (без 250V DC offset). На
+# симуляции V(/plate) рисуется как DC ramp 0→250V с invisible ripples;
+# V(/output_probe) показывает чистый AC swing вокруг 0V — наглядно.
+_C_PROBE_AT       = (134.62, 49.53)    # vertical: pin_a@(134.62,53.34), pin_b@(134.62,45.72)
+_R_PROBE_AT       = (134.62, 64.77)    # vertical: pin_a@(134.62,68.58)→GND, pin_b@(134.62,60.96)→/output_probe
+_GND_RPROBE_AT    = (134.62, 72.39)
 
 
 def _app_manager() -> SubprocessAppManager:
@@ -150,46 +160,59 @@ def _build_se_amp(path: Path) -> Path:
     c_k = sch.add_capacitor(value='22u', at=_C_K_AT)                    # C2
     xt1 = sch.add_transformer(                                          # X2
         spice_model=_opt_se_5k_8(), at=_OPT_AT,
+        symbol='Device:Transformer_1P_1S',
     )
     r_load = sch.add_resistor(value='8', at=_R_LOAD_AT)                 # R3
+    # T103 follow-up: AC-probe для GUI visualization (C_probe + R_probe).
+    # Через label-based net naming подключаем plate net к C_probe.pin_b
+    # (вместо физического wire — pin лежит далеко от plate wire,
+    # label proxy чище).
+    # τ_probe = R·C = 1M·1n = 1 ms (короткий — за t_start=10ms = 10τ
+    # успевает settled на 99.995%). AC attenuation @ 1 kHz: Xc=159k,
+    # |H| = R/√(R²+Xc²) = 0.988 → 1.2% loss, OK для probe.
+    # Минимальная нагрузка на plate (1M >> Z_out_pentode ≈ 38k).
+    c_probe = sch.add_capacitor(value='1n', at=_C_PROBE_AT)             # C3
+    r_probe = sch.add_resistor(value='1Meg', at=_R_PROBE_AT)            # R4
     gnd_vbb = sch.add_ground(at=_GND_VBB_AT)
     gnd_vin = sch.add_ground(at=_GND_VIN_AT)
     gnd_rg = sch.add_ground(at=_GND_RG_AT)
     gnd_rk = sch.add_ground(at=_GND_RK_AT)
     gnd_ck = sch.add_ground(at=_GND_CK_AT)
+    gnd_rprobe = sch.add_ground(at=_GND_RPROBE_AT)
     flg = sch.add_pwr_flag(at=_FLG_AT, rotation=180)
 
     # === B+ rail (Y=58.42) ===
-    # V_BB.pin_minus → горизонталь rail → endpoint X=115 (за OPT)
+    # V_BB.pin_minus → горизонталь rail → endpoint X=115.57 (= OPT центр)
     sch.connect(
         v_bb.pin_minus,
         Position(x_mm=_BPLUS_RAIL_END_X, y_mm=_BPLUS_RAIL_Y),
     )
-    # OPT.P2 stub: rail (Y=58.42, X=110.49) → OPT.P2 (110.49, 70)
-    sch.connect(
-        Position(x_mm=110.49, y_mm=_BPLUS_RAIL_Y),
-        xt1.pin('P2'),
-    )
-    sch.junction(at=(110.49, _BPLUS_RAIL_Y))   # T on rail для P2 stub
-    # G2 stub L-route: rail endpoint (115, 58.42) → DOWN (115, 87.63) →
-    # LEFT к G2 pin (96.52, 87.63). Y=87.63 ниже OPT.S2 (Y=75.08) — не
-    # пересекает secondary, и под plate wire (Y=67.46).
+    # OPT.P2 stub (L-route): rail (115.57, 58.42) → DOWN (115.57, 77.47) →
+    # LEFT к OPT.P2 (105.41, 77.47). X=115.57 = OPT центр (no pin там),
+    # горизонталь Y=77.47 пересекает только OPT body (no electrical
+    # contact). Не использовать X=105.41 vertically — это X OPT.P1 и
+    # шорт plate↔B+.
     sch.connect(
         Position(x_mm=_BPLUS_RAIL_END_X, y_mm=_BPLUS_RAIL_Y),
-        Position(x_mm=_BPLUS_RAIL_END_X, y_mm=87.63),
+        Position(x_mm=_BPLUS_RAIL_END_X, y_mm=77.47),
     )
     sch.connect(
-        Position(x_mm=_BPLUS_RAIL_END_X, y_mm=87.63),
+        Position(x_mm=_BPLUS_RAIL_END_X, y_mm=77.47),
+        xt1.pin('P2'),
+    )
+    # G2 stub L-route: rail-mid X=96.52 (= G2 X) → DOWN → G2 pin.
+    sch.connect(
+        Position(x_mm=96.52, y_mm=_BPLUS_RAIL_Y),
         xv1.pin('G2'),
     )
+    sch.junction(at=(96.52, _BPLUS_RAIL_Y))   # T on rail для G2 stub
 
-    # === Plate wire (Y=67.46, ВЫШЕ rail) ===
-    # EL84.P (88.9, 77.47) → corner (88.9, 67.46) → OPT.P1 (110.49, 67.46).
-    # Y=67.46 < rail Y=58.42? Нет, 67.46 > 58.42. Plate wire ниже rail в
-    # mm-числе (т.е. визуально ниже сверху-вниз), но выше тубы. Critical
-    # check: вертикаль X=88.9 не пересекает G2 stub (X=115) и P2 stub
-    # (X=110.49). Горизонталь Y=67.46 не пересекает rail Y=58.42 и не
-    # включает OPT pins (которые на Y=70+).
+    # === Plate wire (Y=67.31, ВЫШЕ rail) ===
+    # EL84.P (88.9, 77.47) → corner (88.9, 67.31) → OPT.P1 (105.41, 67.31).
+    # Вертикаль X=88.9 не пересекает G2 stub (X=96.52) и P2 stub (X=115.57).
+    # Горизонталь Y=67.31 — anything между X=88.9-105.41? Tube body
+    # extends to ~X=96.5 — wire visually проходит через body но без
+    # pin contact (G2 pin at Y=87.63, plate at Y=77.47, neither Y=67.31).
     sch.connect(xv1.pin('P'), Position(x_mm=88.9, y_mm=_PLATE_WIRE_Y))
     sch.connect(
         Position(x_mm=88.9, y_mm=_PLATE_WIRE_Y),
@@ -211,10 +234,29 @@ def _build_se_amp(path: Path) -> Path:
     sch.junction(at=(_R_K_AT[0], 97.79))   # T: K + R_k.pin_b + wire start
 
     # === Secondary loop (R_load between S1 и S2) ===
-    # S1 (110.49, 72.39) → R_load.pin_b (124.46, 72.39). Horizontal Y=72.39.
+    # Transformer_1P_1S secondary справа OPT: S1(125.73, 77.47),
+    # S2(125.73, 67.31). R_load (133.35, 81.28): pin_b(133.35, 77.47),
+    # pin_a(133.35, 85.09). Прямые wire'ы без conflict'ов.
+    # S1 (125.73, 77.47) → R_load.pin_b (133.35, 77.47): horizontal Y=77.47.
     sch.connect(xt1.pin('S1'), r_load.pin_b)
-    # S2 (110.49, 74.93) → R_load.pin_a (124.46, 80.01). Manhattan L-route.
-    sch.connect(xt1.pin('S2'), r_load.pin_a)
+    # S2 (125.73, 67.31) → R_load.pin_a (133.35, 85.09): L-route, corner
+    # справа OPT (133.35, 67.31). Вертикаль X=133.35 от Y=67.31 до 85.09
+    # не пересекает S1 (X=125.73) и R_load body — OK.
+    sch.connect(
+        xt1.pin('S2'),
+        Position(x_mm=133.35, y_mm=67.31),
+    )
+    sch.connect(
+        Position(x_mm=133.35, y_mm=67.31),
+        r_load.pin_a,
+    )
+
+    # === AC-probe (T103 follow-up): C_probe AC-couple plate → /output_probe ===
+    # Wire: C_probe.pin_a (134.62, 53.34) → R_probe.pin_b (134.62, 60.96).
+    sch.connect(c_probe.pin_a, r_probe.pin_b)
+    sch.connect(r_probe.pin_a, gnd_rprobe.pin)
+    # Label '/plate' на C_probe.pin_b — net merge с EL84.P /plate net.
+    sch.label('plate', at=c_probe.pin_b)
 
     # === GND-стержни ===
     sch.connect(v_bb.pin_plus, gnd_vbb.pin)
@@ -227,6 +269,7 @@ def _build_se_amp(path: Path) -> Path:
     # === SPICE-trace labels ===
     sch.label('input', at=v_in.pin_minus)
     sch.label('plate', at=xv1.pin('P'))
+    sch.label('output_probe', at=c_probe.pin_a)       # AC-only после C_probe
     sch.label('sec_a', at=xt1.pin('S1'))
     sch.label('sec_b', at=xt1.pin('S2'))
 
@@ -235,7 +278,10 @@ def _build_se_amp(path: Path) -> Path:
     # SE-amp (OPT primary как DC short между plate и B+, лампа auto-bias
     # через R_k — non-trivial nonlinear solve). τ_Ck = 270·22µF ≈ 5.9 ms;
     # t_stop = 80 ms = ~14τ — больше для надёжного settling с uic-start.
-    sch.spice_directive('.tran 10u 80m uic', at=(50.8, 115.57))
+    # t_start = 10 ms — ngspice выводит данные только после 10 ms
+    # (= 10τ_probe), переходный процесс /output_probe не попадает в
+    # waveform-output, KiCad Simulator рисует только steady-state AC.
+    sch.spice_directive('.tran 10u 80m 10m uic', at=(50.8, 115.57))
 
     return sch.save(path)
 

@@ -102,7 +102,7 @@ _CONN_01X04_PINS = (
 
 
 @dataclass(frozen=True)
-class _ValveSymbolDef:
+class _SymbolDef:
     """
     Описание ламповой `lib_id` из стандартной KiCad-библиотеки `Valve.*`.
 
@@ -128,7 +128,7 @@ class _ValveSymbolDef:
 # control grid G1 pin 2, cathode K_G3 pin 3, screen G2 pin 9). Unit 2 —
 # накал F1/F2 (pins 4/5), не используется в headless-SPICE.
 # Library-coords Y-up → schematic Y-down: знак Y инвертирован.
-_VALVE_EL84 = _ValveSymbolDef(
+_VALVE_EL84 = _SymbolDef(
     lib_id='Valve:EL84',
     pins=(
         _PinLayout('2', (-7.62, 1.27)),  # G1 (control grid), library (-7.62, -1.27)
@@ -150,7 +150,7 @@ _TRIODE_LABEL_OFFSETS = _LabelOffsets(ref=(5.08, -8.89), value=(5.08, 7.62))
 # ECC81 (T105) — 12AT7 dual-triode. Unit 1 pins: A=6, G=7, K=8.
 # Маппинг для советских: 6Н1П (low-µ alternative), 6Н3П.
 # Library coords Y-up → schematic Y-down (знак Y инвертирован).
-_VALVE_ECC81 = _ValveSymbolDef(
+_VALVE_ECC81 = _SymbolDef(
     lib_id='Valve:ECC81',
     pins=(
         _PinLayout('6', (0.0, -10.16)),  # A (anode)
@@ -172,7 +172,7 @@ _VALVE_ECC81 = _ValveSymbolDef(
 
 # ECC88 (T105) — 6DJ8 dual-triode. Unit 1 pins: A=1, G=2, K=3.
 # Маппинг для советских: 6Н23П, 6Н1П (alt).
-_VALVE_ECC88 = _ValveSymbolDef(
+_VALVE_ECC88 = _SymbolDef(
     lib_id='Valve:ECC88',
     pins=(
         _PinLayout('1', (0.0, -10.16)),
@@ -186,7 +186,7 @@ _VALVE_ECC88 = _ValveSymbolDef(
 
 # EC92 (T105) — single-section triode (тоже встречается в KiCad lib).
 # Unit 1 pins: A=1, G=6, K=7.
-_VALVE_EC92 = _ValveSymbolDef(
+_VALVE_EC92 = _SymbolDef(
     lib_id='Valve:EC92',
     pins=(
         _PinLayout('1', (0.0, -10.16)),
@@ -198,9 +198,37 @@ _VALVE_EC92 = _ValveSymbolDef(
     label_offsets=_TRIODE_LABEL_OFFSETS,
 )
 
-_VALVE_REGISTRY: dict[str, _ValveSymbolDef] = {
-    valve.lib_id: valve
-    for valve in (_VALVE_EL84, _VALVE_ECC81, _VALVE_ECC88, _VALVE_EC92)
+# Transformer_1P_1S (T105/T103 follow-up, 2026-05-19) — generic 4-pin
+# transformer: 1 primary (AA/AB) + 1 secondary (SA/SB). Pin coords
+# (library Y-up → schematic Y-down):
+#   1 (AA): library (-10.16, +5.08) → schematic (-10.16, -5.08), primary top
+#   2 (AB): library (-10.16, -5.08) → schematic (-10.16, +5.08), primary bottom
+#   3 (SA): library (+10.16, -5.08) → schematic (+10.16, +5.08), secondary bottom
+#   4 (SB): library (+10.16, +5.08) → schematic (+10.16, -5.08), secondary top
+# Маппинг для OPT_SE_5K_8 (`.SUBCKT P1 P2 S1 S2`): P1→1, P2→2, S1→3, S2→4.
+_TRANSFORMER_1P_1S = _SymbolDef(
+    lib_id='Device:Transformer_1P_1S',
+    pins=(
+        _PinLayout('1', (-10.16, -5.08)),  # AA primary top
+        _PinLayout('2', (-10.16, 5.08)),  # AB primary bottom
+        _PinLayout('3', (10.16, 5.08)),  # SA secondary bottom
+        _PinLayout('4', (10.16, -5.08)),  # SB secondary top
+    ),
+    spice_pin_names=('P1', 'P2', 'S1', 'S2'),
+    unit=1,
+    # Reference / Value по бокам — canonical для Transformer_1P_1S.
+    label_offsets=_LabelOffsets(ref=(0.0, -8.89), value=(0.0, 8.89)),
+)
+
+_SYMBOL_REGISTRY: dict[str, _SymbolDef] = {
+    sym.lib_id: sym
+    for sym in (
+        _VALVE_EL84,
+        _VALVE_ECC81,
+        _VALVE_ECC88,
+        _VALVE_EC92,
+        _TRANSFORMER_1P_1S,
+    )
 }
 
 # R/C/L Reference/Value — справа от horizontal-rendered body, разнесены по Y.
@@ -921,12 +949,12 @@ class Schematic:
         '1','2','3','4' (для tube: ('P','G2','G','K'); для OPT_SE_5K_8:
         ('P1','P2','S1','S2')).
 
-        `symbol` (T104) — ключ из `_VALVE_REGISTRY` (`'Valve:EL84'` и др.).
+        `symbol` (T104) — ключ из `_SYMBOL_REGISTRY` (`'Valve:EL84'` и др.).
         Когда передан, символ берётся из стандартной библиотеки KiCad
         (`Valve.kicad_sym`); фасад автоматически использует физические
         pin-номера символа и mapping `Sim.Pins` через registry. В этом
         режиме `pin_names` должны как multiset совпадать с
-        `_ValveSymbolDef.spice_pin_names` (иначе `ValueError`).
+        `_SymbolDef.spice_pin_names` (иначе `ValueError`).
 
         Используется внутри `add_tube` / `add_transformer`; в API
         пользователя — для специфичных моделей без VO в T006/T007.
@@ -943,11 +971,11 @@ class Schematic:
                 position=position,
                 rotation=rotation,
             )
-        valve = _VALVE_REGISTRY.get(symbol)
+        valve = _SYMBOL_REGISTRY.get(symbol)
         if valve is None:
             msg = (
                 f'add_subckt: unknown symbol {symbol!r}; '
-                f'known: {sorted(_VALVE_REGISTRY)}'
+                f'known: {sorted(_SYMBOL_REGISTRY)}'
             )
             raise ValueError(msg)
         return self._add_valve_subckt(
@@ -1020,7 +1048,7 @@ class Schematic:
         pin_names: tuple[str, ...],
         position: Position,
         rotation: float,
-        valve: _ValveSymbolDef,
+        valve: _SymbolDef,
     ) -> Subcircuit:
         # Multiset-проверка: SPICE-имена subckt должны совпадать с
         # ожидаемыми именами для этого Valve-символа (порядок не важен).
@@ -1097,7 +1125,7 @@ class Schematic:
         spice_model.id`. Pin access: `.pin('P')`, `.pin('G2')`, ...
 
         `symbol` (T104, optional) — ключ Valve-символа (`'Valve:EL84'` и
-        др. из `_VALVE_REGISTRY`). Без него — generic Conn_01x04 stand-in
+        др. из `_SYMBOL_REGISTRY`). Без него — generic Conn_01x04 stand-in
         (legacy T100 path). С ним — реальное изображение лампы в KiCad GUI,
         SPICE-numerics идентичны.
         """
@@ -1118,13 +1146,22 @@ class Schematic:
         at: tuple[float, float] | Position,
         reference: str | None = None,
         rotation: float = 0.0,
+        symbol: str | None = None,
     ) -> Subcircuit:
         """
         Transformer subckt (T007 `SpiceModel`, category=TRANSFORMER).
 
-        Тот же механизм, что и `add_tube` — оба завязаны на `add_subckt`
-        + 4-pin Conn_01x04. Pin access по subckt-именам (`'P1'`, `'P2'`,
-        `'S1'`, `'S2'` для SE OPT).
+        Тот же механизм, что и `add_tube` — оба завязаны на `add_subckt`.
+
+        `symbol` (optional, 2026-05-19 follow-up) — ключ symbol-registry
+        для красивого rendering. Например, `'Device:Transformer_1P_1S'` —
+        canonical generic 4-pin OPT с visual coil + core lines. Без
+        `symbol` — generic Conn_01x04 stand-in (legacy T100 path).
+
+        Pin access по subckt-именам (`'P1'`, `'P2'`, `'S1'`, `'S2'` для
+        SE OPT). Pin positions берутся из registry — primary слева,
+        secondary справа для Transformer_1P_1S (vs все на левой стороне
+        у Conn_01x04). Layout требует пересмотра при switch'е.
         """
         return self.add_subckt(
             reference=reference,
@@ -1133,6 +1170,7 @@ class Schematic:
             pin_names=spice_model.subckt_pins,
             at=at,
             rotation=rotation,
+            symbol=symbol,
         )
 
     def connect(self, start: Position, end: Position) -> None:

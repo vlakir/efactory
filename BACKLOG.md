@@ -94,6 +94,10 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   not NC); 3+ кастомных tube snippets; dual-triode amp с обоими
   halves в одной схеме.
 
+<!-- T106 (scheme layout beautifier) перенесён в Фазу 3 после T032
+     (Vladimir 2026-05-19) — связан с SVG render + LLM-vision. -->
+
+
 ### Фаза 1b — Чат-клиент (+2–3 недели)
 
 - **T011** — [2026-05-15] `kicad-sim-chat`: терминальный UI на Rich
@@ -189,6 +193,49 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   визуальная проверка LLM (vision-режим, где доступно).
   Acceptance: схема → SVG → опционально показывается LLM для
   валидации топологии.
+- **T106** — [2026-05-19] **Scheme layout beautifier.** Post-process
+  валидного `.kicad_sch` (после ERC) для «textbook look»: убрать
+  collisions подписей/компонентов/проводников, выровнять reference/
+  value текст, сделать layout читаемым.
+
+  **Edge:** Altium / KiCad auto-place были разработаны до multimodal
+  LLM эры — их алгоритмы чисто deterministic-rule-based. У нас есть
+  **iterative LLM-vision refinement** (через T032 SVG render → vision
+  model → diff), которого pre-LLM tools физически не имели. Это
+  потенциально даёт нам качество выше commercial EDA для нишевых
+  схем (audio amps в нашем случае).
+
+  **Phase 0 (rule-based, ~1 сессия):** детект label/value/reference
+  text-on-component-body или text-on-wire overlap'ов через bbox
+  intersection. Если есть — nudge text на свободную сторону компонента
+  (4-direction polling). Acceptance: на наших фикстурах (RC, rectifier,
+  CE, SE-amp, triode_amp) — ноль текстовых overlap'ов.
+
+  **Phase 1 (rule-based, ~2 сессии):** wire-through-body detection
+  (wire visually passes через symbol bbox без electrical pin contact)
+  → reroute через «channel corridors» (горизонтальные/вертикальные
+  free-from-bodies lanes между рядами компонентов). По T100 §Analyze
+  W2 — это ≤50 LOC при правильной геометрии. Acceptance: SE-amp
+  wires не идут визуально через тело лампы или OPT.
+
+  **Phase 2 (rule-based, ~3 сессии):** component placement
+  optimization — детект unaligned components (off-grid pin positions,
+  asymmetric Y-spread), apply nudges и rotations для balanced layout
+  (schematic-style symmetry: power вверху, GND внизу, signal flow
+  слева-направо). Acceptance: auto-built ≈ mentor-style reference
+  fixture.
+
+  **Phase 3 (LLM-vision driven, наш main edge):** feed SVG-render
+  схемы в multimodal LLM с промптом «оптимизируй визуал как audio
+  textbook». LLM возвращает список patches (nudge label / rotate
+  component / reroute wire), фасад применяет diff к `.kicad_sch`,
+  итеративно до convergence. Acceptance: blind test — pre-LLM
+  pipeline output vs T106-Phase3 output, выбираем «красивее»; T106
+  выигрывает на ≥80% test cases.
+
+  Зависит от **T032** (SVG render) — выход T032 = вход T106 Phase 3.
+  Не блокирует Phase 1b LLM chat-client (chat работает с
+  функционально верными схемами независимо от визуала).
 - **T033** — [2026-05-15] Команда `/cost` — трекинг расходов на API
   по сессии и проекту.
   Acceptance: `/cost` показывает токены и стоимость по бэкендам.
