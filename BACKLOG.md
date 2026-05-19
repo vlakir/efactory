@@ -148,16 +148,8 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   расчётная индуктивность через solver совпадает с
   аналитической в пределах ±10%; решение зафиксировано в
   ADR.
-- **T114** — [2026-05-19] **`efactory-up` wrapper-скрипт.**
-  Shell-скрипт для запуска efactory: pull последнего образа
-  (опционально, через флаг), `xhost +local:docker` для X11
-  permissions, `docker run` с правильными volume mounts
-  (проекты, библиотеки, `~/.claude/.credentials.json:ro`),
-  env-переменными (`DISPLAY`, `XAUTHORITY`), `--device /dev/dri`
-  для GPU, `--user $(id -u):$(id -g)` для правильных прав на
-  volume-файлах. Acceptance: одной командой `./efactory-up`
-  пользователь получает работающую сессию агента + KiCad GUI
-  по запросу.
+<!-- T114 перенесена в BOARD.md → Doing (2026-05-20) — объединена
+     с T121 в один PR (variant C). См. BOARD.md → T114 + T121. -->
 - **T115** — [2026-05-19] **CI: сборка и публикация образа.**
   GitHub Actions / GHCR workflow: на каждый merge в `main`
   пересобираем образ, прогоняем smoke-test внутри (kicad-cli
@@ -182,33 +174,22 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   как partially-replaced. Acceptance: 0 строк кода специфичных
   для AppImage; все тесты зелёные при KiCad из apt; PR ловится
   pre-push gate как обычно.
-- **T121** — [2026-05-19] **Externalize KiCad/FreeCAD libraries
-  as host volumes.** Phase 1.5 в Phase 0.9. Введена после Clarify
-  spec'а T110 (Vladimir 2026-05-19): «библиотеки в любом случае
-  лучше вывесить наружу, так же как пользовательские проекты».
-  Cut ~3 GB system libraries из основного образа, вынести в
-  отдельный `ghcr.io/vlakir/efactory-libs:linux-X.Y.Z` image
-  + bootstrap-логика в `efactory-up`: при первом запуске копирует
-  libraries из `efactory-libs` image в host `$HOME/efactory-libs/`,
-  на последующих запусках mount существующих host-volumes. Команда
-  `efactory-up --update-libs` пересоздаёт libraries. Пользователь
-  может полностью override через `-v ~/my-libs:/usr/share/kicad/`.
-  Acceptance: slim-образ ≤ 3 GB (с 5–6 GB до 3 GB); KiCad GUI
-  открывает существующий проект и library symbols резолвятся;
-  `--update-libs` идемпотентен. Spec — `specs/T110-containerization/
-  spec.md` Phase 1.5.
+<!-- T121 перенесена в BOARD.md → Doing (2026-05-20) — объединена
+     с T114 в один PR (variant C). См. BOARD.md → T114 + T121. -->
 
-  **T111 follow-up (2026-05-19):** в текущем образе `efactory:linux`
-  apt-пакет `kicad` идёт без `kicad-symbols` / `kicad-footprints` /
-  `kicad-packages3d` — `/usr/share/kicad/symbols/` пустая, поэтому
-  при попытке открыть библиотеку через Symbol Library Browser KiCad
-  показывает «Библиотека не найдена в таблице библиотек символов».
-  T111-фикстура SE-amp использует inline `lib_symbols` (T100), её
-  рендеринг и Simulator работают; ошибка касается только UI-сценариев
-  с поиском в библиотеке. T121 закрывает это **по дизайну**: либо
-  устанавливает `kicad-symbols`+`kicad-footprints`+`kicad-packages3d`
-  в `efactory-libs` image, либо клонирует upstream GitLab-репы
-  KiCad-libraries (fallback path в spec'е).
+- **T122** — [2026-05-20] **Fallback path: git clone KiCad-libraries
+  из upstream GitLab** (вместо `docker pull efactory-libs`). Spec
+  T110 §3 описывает primary / fallback пути для libraries bootstrap;
+  T121 реализовал только primary (`docker create` + `docker cp`).
+  Fallback нужен только в degraded scenario (нет сети к GHCR или
+  registry недоступен) — раньше T115/CI смысла не имеет (до GHCR
+  publish primary тоже local-only). Acceptance: `efactory-up
+  --update-libs --no-registry` (или auto-fallback при failed
+  `docker pull`) клонирует `https://gitlab.com/kicad/libraries/
+  kicad-symbols`, `kicad-footprints`, `kicad-templates` (3dmodels
+  — отдельно, тяжёлые) в `$HOME/efactory-libs/`, идемпотентно при
+  повторе. Зафиксировано как out-of-scope T121 (Vladimir 2026-05-19,
+  variant C).
 
 ### Phase 1b — Чат-клиент (+2–3 недели, исполняется внутри контейнера после Phase 0.9)
 

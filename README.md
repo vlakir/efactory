@@ -115,36 +115,37 @@ docker pull ghcr.io/vlakir/efactory:linux-latest
 ./efactory-up
 ```
 
-`efactory-up` — тонкий wrapper-скрипт (T114): монтирует папку
-проектов пользователя, библиотеки, Claude Code credentials,
-прокидывает `$DISPLAY` и `/dev/dri` для GPU acceleration.
+`efactory-up` — wrapper-скрипт в корне репо (T114): pre-flight,
+xhost setup, libraries bootstrap (T121), mount проектов и
+persistent state, locale pass-through, опциональный GPU passthrough.
 Платформа: **Linux only в текущей фазе**; Mac/Windows — Phase
 Cross-platform.
 
-### Запуск KiCad GUI из контейнера (current state, T111)
+### Запуск KiCad GUI из контейнера (current state, T114+T121)
 
-До появления `efactory-up` (T114) GUI запускается вручную:
+Один раз — собрать оба образа:
 
 ```bash
-# Собрать образ один раз (~2.5 GB, T110)
-docker build -t efactory:linux .
+docker build -t efactory:linux .                          # ~2.5 GB
+docker build -f Dockerfile.libs -t efactory-libs:linux-dev .  # ~450 MB
+# Опционально — 3D-модели для PCB-preview (~4 GB):
+# docker build -f Dockerfile.libs --build-arg INCLUDE_3DMODELS=1 \
+#     -t efactory-libs:linux-dev-3d .
+```
 
-# Разрешить контейнерному uid 1000 доступ к X server.
-# `+SI:localuser:#<uid>` — узкое правило, ограничено одним uid;
-# безопаснее, чем `+local:docker` (любой локальный docker-клиент).
-xhost +SI:localuser:#$(id -u)
+Дальше — `efactory-up` сам делает остальное:
 
-# Запустить KiCad GUI
-docker run --rm \
-    -e DISPLAY \
-    -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
-    -v "${XAUTHORITY:-$HOME/.Xauthority}:/efactory/.Xauthority:ro" \
-    --device /dev/dri:/dev/dri \
-    efactory:linux \
-    kicad
-
-# Откатить правило xhost после работы
-xhost -SI:localuser:#$(id -u)
+```bash
+./efactory-up                       # стартует KiCad GUI; первый
+                                    # запуск bootstrap'ит libraries
+                                    # из efactory-libs image в
+                                    # $HOME/efactory-libs/
+./efactory-up --update-libs         # пересоздать libraries
+./efactory-up --update-libs --with-3dmodels   # подтянуть 3D-модели
+./efactory-up --headless            # запустить pytest в контейнере
+./efactory-up --demo                # открыть SE-amp 6П14П demo
+./efactory-up --version             # показать EFACTORY_VERSION
+./efactory-up -- --pcb              # форвардинг KiCad-аргументов
 ```
 
 Smoke-проверка X11 passthrough (без интерактивного окна KiCad):
@@ -158,19 +159,26 @@ Demo-проект для ручного прогона Simulator (SE-amp 6П14П
 
 ```bash
 # Сгенерировать demo-dir в $HOME/efactory-projects/se-amp-demo/
+# (efactory-up --demo делает это автоматически, если фикстуры нет)
 uv run python scripts/gen-se-amp-demo.py
-
-# Открыть demo в KiCad из контейнера ($HOME/efactory-projects/
-# монтируется в /workspace/, demo откроется по пути
-# /workspace/se-amp-demo/se_amp.kicad_pro)
-./scripts/run-kicad.sh --demo
+./efactory-up --demo
 ```
 
 В GUI: Tools → Simulator → Run, чтобы прогнать `.tran 10u 80m 10m
 uic` и увидеть на plate-net AC-амплификацию 5–7× от 10mV input.
 
+**Что mount'ит efactory-up:**
+
+| Host | Container | Назначение |
+|---|---|---|
+| `$HOME/efactory-projects/` | `/workspace/` | Проекты пользователя |
+| `$HOME/efactory-libs/{symbols,footprints,template,3dmodels}/` | `/usr/share/kicad/{symbols,footprints,template,3dmodels}/` | KiCad system libraries (T121, ro) |
+| `$HOME/efactory-state/{config,cache,local}/` | `/opt/efactory/.{config,cache,local}/` | Persistent KiCad state (setup wizard, settings) |
+| `/tmp/.X11-unix/` | `/tmp/.X11-unix/` | X11 socket |
+| `$XAUTHORITY` | `/efactory/.Xauthority` | X11 auth cookie (ro) |
+
 Wayland-сессии (Ubuntu 24.04 GNOME по умолчанию) работают через
-XWayland-bridge без изменений в команде. Native Wayland-passthrough
+XWayland-bridge без изменений. Native Wayland-passthrough
 (`-v /run/user/$UID/wayland-0:/run/user/$UID/wayland-0`) пока не
 добавлен — пилим, когда появится Wayland-only сценарий.
 

@@ -61,6 +61,44 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T114 + T121** — [2026-05-20, ветка `T114-T121-efactory-up-and-libs`]
+  Phase 0.9 Containerization, Phases 4 + 1.5 объединены в один PR
+  (variant C, Vladimir 2026-05-19): сначала T114 (`efactory-up`
+  wrapper) задаёт runtime entrypoint, потом T121 (externalize
+  libraries) надстраивает library bootstrap внутри него.
+  - **T114** (`efactory-up`): полноценный wrapper в корне репозитория.
+    Pre-flight (docker daemon, $DISPLAY, $XAUTHORITY), узкое xhost
+    `+SI:localuser:#$(id -u)` с EXIT trap, persistent state mount'ы,
+    projects mount, libs mount, locale pass-through. Флаги: `--pull`
+    (обновить efactory:linux), `--version`, `--headless` (CI/pytest
+    режим, без GUI mount'ов), `--update-libs` (пересоздать
+    $HOME/efactory-libs/), `--with-3dmodels` (опциональный 3D-bootstrap),
+    `--demo` (открыть SE-amp фикстуру).
+  - **T121** (libraries externalization): `Dockerfile.libs` собирает
+    два tag'а — `efactory-libs:linux-dev` (slim ~400 MB: symbols +
+    footprints + templates) и `efactory-libs:linux-dev-3d` (~4 GB:
+    + packages3d) через ARG INCLUDE_3DMODELS. Bootstrap-логика в
+    `efactory-up`: при первом запуске `docker pull` +
+    `docker create` + `docker cp` библиотек в `$HOME/efactory-libs/
+    {symbols,footprints,templates,3dmodels}`. Runtime mount этих
+    папок на `/usr/share/kicad/{symbols,footprints,template,3dmodels}`
+    ro (3dmodels — опционально). Сброс user-level sym-lib-table /
+    fp-lib-table при первом bootstrap для re-init из system default.
+  - Удаление `scripts/run-kicad.sh` (subsumed by `efactory-up`);
+    обновление `scripts/gen-se-amp-demo.py` output message и README.
+  - **GHCR publish + git-clone fallback — out of scope T121:**
+    GHCR — T115 (CI); fallback — отдельная задача-follow-up в
+    BACKLOG (нужен только в degraded scenario без сети к GHCR).
+  - Spec — `specs/T110-containerization/spec.md` Phases 4 + 1.5,
+    дополнено implementation note про combine variant C.
+  - Acceptance: `./efactory-up` без аргументов с чистого host'а
+    (никаких `efactory-libs/`, `efactory-state/`) поднимает KiCad
+    GUI с Symbol Library Browser, видящим Device/power/Valve/etc.,
+    за ≤ 90 секунд (включая первый bootstrap). `--update-libs`
+    идемпотентен. `--headless` запускает pytest как раньше.
+    Spec acceptance для slim-образа (≤ 3 GB) уже выполнен T111
+    (2.45 GB), новые правки его не нарушают.
+
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем

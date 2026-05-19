@@ -1,0 +1,81 @@
+# syntax=docker/dockerfile:1.7
+#
+# efactory-libs:linux-{ver}[-3d] — image-носитель KiCad libraries (T121).
+# Используется efactory-up для bootstrap'а `$HOME/efactory-libs/`:
+# при первом запуске efactory-up делает `docker create` + `docker cp`,
+# извлекая директории `/symbols /footprints /template /3dmodels` на host.
+#
+# Два варианта (через ARG INCLUDE_3DMODELS):
+#   - INCLUDE_3DMODELS=0 (default) → slim, ~400 MB: symbols + footprints
+#     + templates. Достаточно для schematic + Simulator + PCB layout
+#     **без** 3D-preview. Покрывает текущий efactory workflow.
+#   - INCLUDE_3DMODELS=1 → full, ~4 GB: + packages3d. Нужно только
+#     для 3D-preview PCB; качается отдельной командой
+#     `efactory-up --bootstrap-libs --with-3dmodels`.
+#
+# Build (slim, default):
+#     docker build -f Dockerfile.libs -t efactory-libs:linux-dev .
+#
+# Build (with 3D):
+#     docker build -f Dockerfile.libs --build-arg INCLUDE_3DMODELS=1 \
+#         -t efactory-libs:linux-dev-3d .
+#
+# В T115 (CI) оба tag'а будут публиковаться в `ghcr.io/vlakir/efactory-
+# libs:{linux-X.Y.0,linux-X.Y.0-3d,linux-latest,linux-latest-3d}`.
+
+
+# ============================================================================
+# Stage 1: src — Ubuntu 24.04 + PPA kicad-10.0-releases + apt libraries.
+# ============================================================================
+FROM ubuntu:24.04 AS src
+
+ARG INCLUDE_3DMODELS=0
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      gnupg \
+      software-properties-common \
+ && add-apt-repository -y ppa:kicad/kicad-10.0-releases \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+      kicad-symbols \
+      kicad-footprints \
+      kicad-templates \
+ && if [ "$INCLUDE_3DMODELS" = "1" ]; then \
+        apt-get install -y --no-install-recommends kicad-packages3d; \
+    fi \
+ && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+
+# 3dmodels-плейсхолдер: если slim — создаём пустую директорию, чтобы
+# COPY ниже не упал. Final stage всегда содержит /3dmodels (пустую при
+# slim, наполненную при -3d).
+RUN if [ "$INCLUDE_3DMODELS" != "1" ]; then mkdir -p /usr/share/kicad/3dmodels; fi
+
+
+# ============================================================================
+# Stage 2: final — scratch + только library-директории.
+# ============================================================================
+# Используем `scratch` (нулевая база), потому что image-носитель просто
+# содержит файлы — efactory-up extract'ит их через `docker cp`,
+# никакого runtime в этом образе не выполняется.
+FROM scratch AS final
+
+COPY --from=src /usr/share/kicad/symbols    /symbols
+COPY --from=src /usr/share/kicad/footprints /footprints
+COPY --from=src /usr/share/kicad/template   /template
+COPY --from=src /usr/share/kicad/3dmodels   /3dmodels
+
+# `LABEL` для runtime-introspection: efactory-up может прочитать,
+# содержит ли образ 3D-модели (зашит как ARG → ENV → LABEL).
+ARG INCLUDE_3DMODELS=0
+LABEL efactory.libs.include_3dmodels="$INCLUDE_3DMODELS"
+LABEL efactory.libs.kicad_version="10.0"
+
+# `CMD` нужен formально — `docker create` отказывается без command,
+# даже если контейнер никогда не запускается (efactory-up использует
+# `docker create` + `docker cp` + `docker rm`, run не делает).
+# Любая строка подходит, бинарь не существует в scratch — это OK,
+# проверяется только при `docker start`, которого здесь нет.
+CMD ["/symbols/__never_run__"]

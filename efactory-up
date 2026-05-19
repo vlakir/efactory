@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+# efactory-up — unified entrypoint для запуска efactory-сессии (T114).
+#
+# Что делает:
+#   1. Pre-flight (docker daemon, X11 при GUI-режиме, paths).
+#   2. Bootstrap KiCad libraries (T121): при отсутствии $HOME/efactory-
+#      libs/symbols/ — `docker pull` + `docker cp` из efactory-libs
+#      image в host directory. Идемпотентно (no-op если уже есть).
+#   3. xhost +SI:localuser:#$(id -u) (откатывается через trap EXIT).
+#   4. `docker run --rm` efactory:linux с mount'ами state / projects /
+#      libs / X11 / Xauthority и pass-through DISPLAY/LANG/LC_ALL.
+#
+# Usage:
+#     ./efactory-up [OPTIONS] [-- KICAD_ARGS...]
+#
+# Options:
+#     --pull            docker pull efactory:linux перед запуском.
+#                       (Пока no-op для linux-dev — реальное название
+#                       тэга появится после T115/CI с GHCR.)
+#     --version         Показать EFACTORY_VERSION образа и выйти.
+#     --headless        Запустить без GUI / X11 / libs (для CI / pytest).
+#                       KICAD_ARGS становятся командой контейнера
+#                       (default: `uv run pytest`).
+#     --update-libs     Пересоздать $HOME/efactory-libs/ из текущего
+#                       efactory-libs image (затирает старое содержимое).
+#                       Не запускает GUI — отдельная команда.
+#     --with-3dmodels   Использовать efactory-libs:linux-dev-3d (~4 GB)
+#                       вместо slim (~400 MB). Применимо при первом
+#                       bootstrap'е или --update-libs.
+#     --demo            Открыть SE-amp 6П14П demo. Если фикстура не
+#                       сгенерирована, запускает `gen-se-amp-demo.py`.
+#     -h, --help        Показать help и выйти.
+#
+# Env:
+#     EFACTORY_IMAGE        Main image (default efactory:linux).
+#     EFACTORY_LIBS_IMAGE   Override libs image tag (default
+#                           efactory-libs:linux-dev[-3d]).
+#     EFACTORY_STATE_DIR    Persistent state dir (default
+#                           $HOME/efactory-state).
+#     EFACTORY_PROJECTS_DIR Projects dir (default $HOME/efactory-projects).
+#     EFACTORY_LIBS_DIR     Libraries dir (default $HOME/efactory-libs).
+#     EFACTORY_KICAD_BIN    Какой бинарь стартовать в GUI режиме
+#                           (default kicad).
+
+set -euo pipefail
+
+# ── Defaults ───────────────────────────────────────────────────────────────
+IMAGE="${EFACTORY_IMAGE:-efactory:linux}"
+STATE_DIR="${EFACTORY_STATE_DIR:-$HOME/efactory-state}"
+PROJECTS_DIR="${EFACTORY_PROJECTS_DIR:-$HOME/efactory-projects}"
+LIBS_DIR="${EFACTORY_LIBS_DIR:-$HOME/efactory-libs}"
+KICAD_BIN="${EFACTORY_KICAD_BIN:-kicad}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Flags
+DO_PULL=0
+SHOW_VERSION=0
+HEADLESS=0
+UPDATE_LIBS=0
+WITH_3DMODELS=0
+DEMO_MODE=0
+PASS_ARGS=()
+
+log() { printf '[efactory-up] %s\n' "$*" >&2; }
+fail() { log "FAIL: $*"; exit 1; }
+
+usage() {
+    sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+}
+
+# ── Arg parsing ────────────────────────────────────────────────────────────
+while (( $# )); do
+    case "$1" in
+        --pull)          DO_PULL=1; shift ;;
+        --version)       SHOW_VERSION=1; shift ;;
+        --headless)      HEADLESS=1; shift ;;
+        --update-libs)   UPDATE_LIBS=1; shift ;;
+        --with-3dmodels) WITH_3DMODELS=1; shift ;;
+        --demo)          DEMO_MODE=1; shift ;;
+        -h|--help)       usage ;;
+        --)              shift; PASS_ARGS+=("$@"); break ;;
+        *)               PASS_ARGS+=("$1"); shift ;;
+    esac
+done
+
+if (( WITH_3DMODELS )); then
+    LIBS_IMAGE_DEFAULT="efactory-libs:linux-dev-3d"
+else
+    LIBS_IMAGE_DEFAULT="efactory-libs:linux-dev"
+fi
+LIBS_IMAGE="${EFACTORY_LIBS_IMAGE:-$LIBS_IMAGE_DEFAULT}"
+
+# ── Pre-flight ─────────────────────────────────────────────────────────────
+command -v docker >/dev/null || fail "docker не найден в PATH"
+docker info >/dev/null 2>&1 || fail "docker daemon не отвечает"
+docker image inspect "$IMAGE" >/dev/null 2>&1 \
+    || fail "Образ $IMAGE не найден; собери: docker build -t $IMAGE ."
+
+# ── --pull / --version (раннее завершение) ─────────────────────────────────
+if (( DO_PULL )); then
+    log "docker pull $IMAGE (no-op для local linux-dev — реальный pull появится с T115/CI)"
+    docker pull "$IMAGE" 2>&1 | tail -3 || log "pull failed (probably local-only tag)"
+fi
+
+if (( SHOW_VERSION )); then
+    docker run --rm "$IMAGE" bash -lc 'echo "efactory $EFACTORY_VERSION"'
+    exit 0
+fi
+
+# ── Libs bootstrap (T121) ──────────────────────────────────────────────────
+bootstrap_libs() {
+    local target="$1"
+    log "bootstrap libraries из $LIBS_IMAGE → $target"
+
+    if ! docker image inspect "$LIBS_IMAGE" >/dev/null 2>&1; then
+        local build_args=""
+        if (( WITH_3DMODELS )); then
+            build_args="--build-arg INCLUDE_3DMODELS=1 "
+        fi
+        fail "Libs image $LIBS_IMAGE не найден; собери: docker build -f Dockerfile.libs ${build_args}-t $LIBS_IMAGE ."
+    fi
+
+    mkdir -p "$target"
+    local container
+    container="$(docker create "$LIBS_IMAGE")"
+    trap "docker rm '$container' >/dev/null 2>&1 || true" RETURN
+
+    for sub in symbols footprints template 3dmodels; do
+        rm -rf "$target/$sub" "$target/$sub.tmp"
+        # docker cp всегда копирует в parent — даёт `$target/$sub`.
+        if docker cp "$container:/$sub" "$target/$sub" 2>/dev/null; then
+            log "  + $sub ($(du -sh "$target/$sub" 2>/dev/null | cut -f1))"
+        else
+            log "  - $sub отсутствует в образе (OK для slim, ожидаемо)"
+        fi
+    done
+    trap - RETURN
+    docker rm "$container" >/dev/null
+
+    # При первом bootstrap затираем user-level sym-lib-table / fp-lib-table:
+    # они могли быть созданы пустыми, когда libraries в образе отсутствовали
+    # (T111 known limitation). После bootstrap KiCad перезагрузит дефолтные
+    # таблицы из /usr/share/kicad/{symbols,footprints}/sym-lib-table /
+    # fp-lib-table. Безопасно: пользователь ещё ничего не добавлял —
+    # таблицы пустые и stub-овые.
+    local kicad_cfg="$STATE_DIR/config/kicad/10.0"
+    if [[ -d "$kicad_cfg" ]]; then
+        rm -f "$kicad_cfg/sym-lib-table" "$kicad_cfg/fp-lib-table"
+        log "  → user sym/fp-lib-table сброшены (re-init из system default)"
+    fi
+}
+
+if (( UPDATE_LIBS )); then
+    bootstrap_libs "$LIBS_DIR"
+    log "libs обновлены. Запустить GUI: ./efactory-up"
+    exit 0
+fi
+
+# Auto-bootstrap при первом запуске (нет symbols/ — значит libs не extracted).
+if [[ ! -d "$LIBS_DIR/symbols" ]]; then
+    bootstrap_libs "$LIBS_DIR"
+fi
+
+# ── --demo: материализовать SE-amp demo при отсутствии ─────────────────────
+DEMO_DIR_HOST="$PROJECTS_DIR/se-amp-demo"
+if (( DEMO_MODE )); then
+    if [[ ! -f "$DEMO_DIR_HOST/se_amp.kicad_pro" ]]; then
+        log "demo не найден — генерирую через scripts/gen-se-amp-demo.py"
+        ( cd "$REPO_ROOT" && uv run python scripts/gen-se-amp-demo.py ) \
+            || fail "генератор demo упал; запусти руками: uv run python scripts/gen-se-amp-demo.py"
+    fi
+    PASS_ARGS=(/workspace/se-amp-demo/se_amp.kicad_pro "${PASS_ARGS[@]}")
+fi
+
+# ── Headless режим (CI / pytest) — без GUI, без libs ───────────────────────
+if (( HEADLESS )); then
+    cmd=("uv" "run" "pytest")
+    if (( ${#PASS_ARGS[@]} > 0 )); then
+        cmd=("${PASS_ARGS[@]}")
+    fi
+    exec docker run --rm "$IMAGE" "${cmd[@]}"
+fi
+
+# ── GUI: pre-flight для X11 ────────────────────────────────────────────────
+XAUTH_HOST="${XAUTHORITY:-$HOME/.Xauthority}"
+[[ -n "${DISPLAY:-}" ]] || fail "DISPLAY пустой — нет X11 сессии (используй --headless для CI)"
+[[ -r "$XAUTH_HOST" ]] || fail "XAUTHORITY=$XAUTH_HOST не читается"
+command -v xhost >/dev/null || fail "xhost не найден в PATH (поставь x11-xserver-utils)"
+
+# State и projects mounts: создаём если нет.
+mkdir -p "$STATE_DIR/config" "$STATE_DIR/cache" "$STATE_DIR/local" "$PROJECTS_DIR"
+
+# Опциональный GPU passthrough.
+DRI_ARGS=()
+[[ -e /dev/dri ]] && DRI_ARGS=(--device /dev/dri:/dev/dri)
+
+# Locale pass-through: только заданные переменные (см. discussion в T111).
+LOCALE_ARGS=()
+[[ -n "${LANG:-}" ]] && LOCALE_ARGS+=(-e "LANG=$LANG")
+[[ -n "${LC_ALL:-}" ]] && LOCALE_ARGS+=(-e "LC_ALL=$LC_ALL")
+[[ -n "${LANGUAGE:-}" ]] && LOCALE_ARGS+=(-e "LANGUAGE=$LANGUAGE")
+
+# Libraries mounts: каждая subdir отдельно (template — singular в KiCad).
+# 3dmodels mount'ится только если непустой.
+LIBS_ARGS=()
+for sub in symbols footprints template; do
+    [[ -d "$LIBS_DIR/$sub" ]] && LIBS_ARGS+=(-v "$LIBS_DIR/$sub:/usr/share/kicad/$sub:ro")
+done
+if [[ -d "$LIBS_DIR/3dmodels" ]] && [[ -n "$(ls -A "$LIBS_DIR/3dmodels" 2>/dev/null)" ]]; then
+    LIBS_ARGS+=(-v "$LIBS_DIR/3dmodels:/usr/share/kicad/3dmodels:ro")
+fi
+
+# xhost +SI узким правилом; trap откатывает на EXIT.
+HOST_UID="$(id -u)"
+xhost "+SI:localuser:#${HOST_UID}" >/dev/null
+trap 'xhost "-SI:localuser:#${HOST_UID}" >/dev/null || true' EXIT
+
+# `docker run --rm`: state / projects / libs / X11 / Xauthority + локали.
+exec docker run --rm \
+    -e DISPLAY \
+    "${LOCALE_ARGS[@]}" \
+    -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+    -v "$XAUTH_HOST:/efactory/.Xauthority:ro" \
+    -v "$STATE_DIR/config:/opt/efactory/.config:rw" \
+    -v "$STATE_DIR/cache:/opt/efactory/.cache:rw" \
+    -v "$STATE_DIR/local:/opt/efactory/.local:rw" \
+    -v "$PROJECTS_DIR:/workspace:rw" \
+    "${LIBS_ARGS[@]}" \
+    "${DRI_ARGS[@]}" \
+    "$IMAGE" \
+    "$KICAD_BIN" "${PASS_ARGS[@]}"
