@@ -34,14 +34,16 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 - **Phase 0.9 — Containerization** (новая фаза в roadmap): T110
   (базовый Dockerfile efactory с KiCad из официального apt-репозитория,
   ngspice, Python 3.14, agent), T111 (KiCad GUI passthrough —
-  X11/Wayland + GPU acceleration), T112 (FreeCAD CLI + GUI в образе,
-  absorbs T066), T113 (FEM-solver: пилот Elmer vs GetDP + интеграция,
-  absorbs T058), T114 (`efactory-up` wrapper-скрипт), T115 (CI:
-  сборка и публикация образа в GHCR), T120 (cleanup:
-  удалить AppImage-detection из `platform_layer` как dead code
-  после перехода на apt-distribution). Ставится между Phase 1a и
-  Phase 1b: после Phase 0.9 все дальнейшие фазы исполняются внутри
-  контейнера. (T110-T115, T120)
+  X11/Wayland + GPU acceleration), T121 (externalize KiCad/FreeCAD
+  libraries as host volumes, отдельный `efactory-libs` image),
+  T112 (FreeCAD CLI + GUI в образе, absorbs T066), T113 (FEM-solver:
+  пилот Elmer vs GetDP + интеграция, absorbs T058), T114
+  (`efactory-up` wrapper-скрипт), T115 (CI: сборка и публикация
+  образа в GHCR), T120 (cleanup: удалить AppImage-detection из
+  `platform_layer` как dead code после перехода на apt-distribution).
+  Ставится между Phase 1a и Phase 1b: после Phase 0.9 все дальнейшие
+  фазы исполняются внутри контейнера. Spec —
+  `specs/T110-containerization/spec.md`. (T110-T115, T120-T121)
 
 - **Phase Cross-platform** (новая отложенная фаза): T116 (Windows
   через Docker Desktop + WSLg), T117 (macOS через Docker Desktop +
