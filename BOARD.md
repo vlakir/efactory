@@ -61,6 +61,18 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T110** — [taken 2026-05-19] Phase 0.9 Containerization, Phase 0 —
+  базовый Dockerfile efactory (Linux, headless slim). Ubuntu 24.04 LTS
+  base + KiCad 10 + ngspice + Python 3.14 (uv-managed) + editable
+  install efactory кода. Acceptance: `docker build` без ошибок,
+  `docker run efactory:linux-headless uv run pytest` зелёный (тот же
+  тест-набор, что на хосте), cold build ≤ 20 мин, размер ≤ 6 GB.
+  Закрывает C1 (venv permissions: venv в `/opt/efactory/.venv/`
+  chown uid 1000) и C3 (user-agnostic mount placeholders
+  `/efactory/.claude/`, `/efactory/.Xauthority`). Spec —
+  `specs/T110-containerization/spec.md` Phase 0. Ветка
+  `T110-dockerfile-phase-0`.
+
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем

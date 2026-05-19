@@ -118,15 +118,9 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      исполняются внутри контейнера. Linux-only; Mac/Windows —
      Phase Cross-platform (см. конец файла). -->
 
-- **T110** — [2026-05-19] **Базовый Dockerfile efactory (Linux).**
-  Ubuntu LTS base + KiCad 10 из официального KiCad apt-репозитория
-  + ngspice + Python 3.14 + uv + весь efactory код + наши
-  MCP-серверы. Заменяет T002. Spec —
-  `specs/T110-containerization/spec.md` (предстоит написать).
-  Acceptance: `docker build` без ошибок; `docker run efactory
-  uv run pytest` проходит весь тестовый набор; size 4–6 GB
-  (без GUI-стека, GUI добавится в T111/T112); запускается на
-  Ubuntu 24.04 / Fedora 41 / Arch (любой Linux с Docker Engine).
+<!-- T110 (Phase 0 базовый Dockerfile) перенесён в BOARD.md → Doing
+     2026-05-19. Spec — `specs/T110-containerization/spec.md`
+     (Analyzed, Phase 0). -->
 - **T111** — [2026-05-19] **KiCad GUI passthrough.** X11/Wayland
   socket mount, Xauthority, `/dev/dri` для Intel/AMD GPU
   acceleration (или nvidia-runtime для NVIDIA). KiCad eeschema /
