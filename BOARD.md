@@ -66,6 +66,15 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
 
+- **T125** — [closed 2026-05-20, PR #57] **Fix mypy на main — 64
+  ошибки в tests/.** Решение (Vladimir clarify 2026-05-20): не чинить
+  по одному, а исключить tests/ из mypy через
+  `[[tool.mypy.overrides]] module = "tests.*"; ignore_errors = true`.
+  Canonical pre-push gate `uv run mypy src` без изменений; вспомогательный
+  `uv run mypy src tests` теперь 0 errors (был exit=2 при path-exclude).
+  Pytest runtime валидирует test behavior — runtime-типизация тестов
+  не оправдана.
+
 - **T113** — [closed 2026-05-20, PR #56] **FEM-solver: пилот и
   интеграция.** Phase 3 контейнеризации (absorbs T058 FEMM
   bootstrap). Заменяет FEMM (Wine → Linux-native).
