@@ -201,6 +201,43 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   (метод `_add_simulation_props` и аналоги). T100-test'ы должны
   остаться зелёными (netlist export не меняется, меняется только
   GUI-warning поведение).
+- **T128** — [2026-05-20, заведено по ADR 2026-05-20] **Nonlinear B-H
+  curve в GetDP magnetostatic .pro для закрытия 242% physics gap.**
+  T113 Phase 1 pilot показал: linear μ_r=8000 в FEM vs PyOM operating-
+  point μ_eff → 242% расхождение на OPT 6П14П SE (analytical 6.96 H
+  vs FEM 23.78 H). Решение: добавить nonlinear B-H curve в
+  `pro_template.py` (GetDP конструкция `nu[] = NLF[Material]{H}`),
+  лукапить B-H точки из PyOM `get_core_materials()[i]['bhCycle']`
+  или `magneticFluxDensitySaturation`. Содержание: расширить
+  `GetDpFemSolver` чтобы выбирать nonlinear-template если material
+  имеет B-H data; добавить тест на OPT 6П14П, что FEM nonlinear
+  совпадает с analytical в пределах ±10%. Optional flyback SMPS
+  choke fixture для cross-check. Acceptance: integration test
+  `test_analytical_plus_fem_pilot_regression` в
+  `tests/integration/application/test_mag_verify_field.py`
+  перестаёт быть "regression к ожидаемому 242% gap" — становится
+  "agreement within ±10%". Spec.md и ADR обновляются после
+  закрытия (помечается «closed by T128»).
+- **T127** — [2026-05-20, заведено по ADR 2026-05-20] **Cross-
+  validation FEM-solver'ов: Elmer ↔ GetDP на дополнительных
+  fixtures (50 Hz power transformer, опционально другие).** T113
+  Phase 1 показал 0.00% cross-check Elmer↔GetDP на OPT 6П14П SE
+  (одна geometry, linear физика) — но это один data point. Для
+  уверенности в выборе GetDP first-class в Phase 2 integration —
+  опциональная cross-validation на других topology classes (50 Hz
+  power transformer: больший core, более линейный режим работы;
+  опционально SMPS choke если будет сделана T128 nonlinear).
+  Использует pilot infrastructure (`scripts/pilot/elmer/`,
+  `stage_elmer` в `run_pilot.py` — preserved в T113-fem branch
+  именно под эту задачу). Содержание: новая power transformer
+  fixture (E-core или иной shape; PyOM analytical Lp как
+  reference), прогон pilot orchestrator, сравнение GetDP ↔ Elmer
+  Lp. Если расхождение > 0.5% — flag для review (mesh artefact?
+  numerical scheme diff?). Acceptance: либо «cross-check passed —
+  Elmer окончательно подтверждён как cross-validation backend»,
+  либо «найдена разница на geometry X — ADR update».
+  Не блокирует Phase 2 (она уже shipped); чисто follow-up для
+  confidence в long-run.
 - **T125** — [2026-05-20] **Fix mypy на main — 64 ошибки в 8 файлах.**
   Обнаружено в pre-push T112 (mypy выдаёт те же ошибки на чистой `main`
   без T112-правок — значит регрессия пришла с предыдущим merge,

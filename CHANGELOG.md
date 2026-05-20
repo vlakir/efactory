@@ -52,6 +52,30 @@ T-ID между релизами — `CHANGELOG.md` единственное per
   с corporate restrictions). Берётся в работу после стабилизации
   Linux-only workflow. (T116-T119)
 
+- **T113 Magnetic toolkit — Phase 1 pilot + Phase 2 integration.**
+  Полный magnetic toolkit для efactory: analytical (PyOpenMagnetics
+  1.3.10) + FEM (GetDP+Gmsh) с verify-cross-check use case'ом.
+  **Phase 1 pilot** (стадии A→F, отдельные commit'ы): Dockerfile
+  для FEM-solver сравнения, OPT 6П14П SE fixture, Gmsh mesh +
+  GetDP magnetostatic 2D, Elmer FEM cross-check (0.00% diff с GetDP),
+  PyOM advisor heavy stress-test через subprocess isolation, заполненная
+  Pilot table в spec + ADR `2026-05-20 — Magnetic field verification:
+  GetDP+Gmsh выбран` (заменяет 2026-05-19 ADR; обоснование: 2.5×
+  меньший Docker footprint vs Elmer, один subprocess в pipeline,
+  штатно в noble universe). **Phase 2 integration**: `MagneticComponent`/
+  `MagneticVerificationResult` domain VO; outbound ports
+  `magnetic_analytics` + `magnetic_field_solver` (Protocols);
+  `PyOpenMagneticsAnalytics` adapter (analytical Lp через
+  `calculate_inductance_from_number_turns_and_gapping`);
+  `GetDpFemSolver` adapter (`MagneticComponent → .geo → mesh → .pro →
+  Lp` pipeline); `mag_verify_field` use case (analytical + опциональный
+  FEM cross-check, flag'ует discrepancy > 10% threshold); main
+  `Dockerfile` обновлён с `getdp` + `gmsh` apt-deps. Lessons learned
+  в auto-memory: `feedback_elmer_savescalars_quirks`,
+  `feedback_pyom_advisor_quirks`. Известный physics gap (analytical
+  6.96 H vs FEM linear μ_r=8000 23.78 H) — voiced как BACKLOG T128
+  (nonlinear B-H curve в .pro template). (T113)
+
 ### Changed
 
 - **T110 ADR — Distribution efactory переходит на Linux Docker image
