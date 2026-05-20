@@ -51,6 +51,12 @@ class Core(BaseModel):
 
     shape_name: str = Field(..., min_length=1)
     material_name: str = Field(..., min_length=1)
+    # PyOM bobbin catalog name (e.g. "Bobbin E42/15"). PyOM
+    # calculate_inductance_from_number_turns_and_gapping валидирует
+    # наличие bobbin в coil; адаптер выполняет lookup через PyOM
+    # get_bobbins(). None — для use cases без PyOM-обвязки (например,
+    # raw FEM с готовой mesh).
+    bobbin_name: str | None = None
     gap_length_m: Annotated[float, Field(ge=0)] = 0.0
     gap_type: GapType = GapType.SUBTRACTIVE
 

@@ -223,4 +223,5 @@ modules = [
     "adapters.outbound.kicad_cli",
     "adapters.outbound.ngspice",
     "adapters.outbound.schematic_kicad",
+    "adapters.outbound.magnetic_analytics_pyopenmagnetics",
 ]
