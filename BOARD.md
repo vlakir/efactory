@@ -75,6 +75,17 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
   Pytest runtime валидирует test behavior — runtime-типизация тестов
   не оправдана.
 
+- **T115** — [closed 2026-05-20, PR #58] **CI: build + push efactory:linux
+  в GHCR.** GitHub Actions workflow `.github/workflows/build-push-ghcr.yml`:
+  на push в main / version tag / workflow_dispatch — cleanup runner disk
+  (25 GB toolchains preinstalled на ubuntu-latest), buildx с GHCR registry
+  cache (`linux-buildcache` tag), smoke test внутри image (CLI versions +
+  `pytest tests/unit`), tag + push c `linux-<sha>` всегда, `linux-latest`
+  на main+tags, `linux-<version>` на тагах. Полный ERC/OP/FreeCAD-headless
+  smoke — follow-up если pytest не словит regression. Acceptance:
+  после первого успешного run `docker pull ghcr.io/vlakir/efactory:
+  linux-latest` будет работать с любой машины (репо публичный).
+
 - **T113** — [closed 2026-05-20, PR #56] **FEM-solver: пилот и
   интеграция.** Phase 3 контейнеризации (absorbs T058 FEMM
   bootstrap). Заменяет FEMM (Wine → Linux-native).

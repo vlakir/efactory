@@ -138,15 +138,6 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      FEM-solver внутри efactory:linux. -->
 <!-- T114 перенесена в BOARD.md → Doing (2026-05-20) — объединена
      с T121 в один PR (variant C). См. BOARD.md → T114 + T121. -->
-- **T115** — [2026-05-19] **CI: сборка и публикация образа.**
-  GitHub Actions / GHCR workflow: на каждый merge в `main`
-  пересобираем образ, прогоняем smoke-test внутри (kicad-cli
-  ERC + ngspice OP + FreeCAD headless rendering + solver
-  unit-test), публикуем в GHCR с tag = git SHA + `linux-latest`.
-  Релизы (0.X.0) дополнительно теггируются `linux-0.X.0`.
-  Acceptance: первый merge после T110-T114 → GHCR содержит
-  pull-able образ, `docker pull ghcr.io/vlakir/efactory:linux-
-  latest` работает на чистой машине.
 - **T120** — [2026-05-19] **Cleanup: удалить AppImage-detection
   из `platform_layer`.** После Phase 0.9 KiCad/FreeCAD внутри
   контейнера всегда через apt (в PATH); AppImage-fallback в
