@@ -224,4 +224,5 @@ modules = [
     "adapters.outbound.ngspice",
     "adapters.outbound.schematic_kicad",
     "adapters.outbound.magnetic_analytics_pyopenmagnetics",
+    "adapters.outbound.fem_solver_getdp",
 ]
