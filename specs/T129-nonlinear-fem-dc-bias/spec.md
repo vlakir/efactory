@@ -89,11 +89,11 @@ transformers с DC magnetization).
   point из `MagneticComponent.operating_point.primary_dc_bias_a`
   для DC бэкграунд-возбуждения.
 - **ДОЛЖНА**: вычислять **incremental inductance** вокруг
-  operating point через **central finite difference** на трёх
-  nonlinear solve'ах:
+  operating point через **central finite difference** на двух
+  nonlinear solve'ах (revision: было три, middle solve для
+  diagnostic был удалён в ultrareview — peak_flux_density_t
+  отложен на follow-up T-ID, см. revision 2 §4):
   - solve nonlinear для `I = I_dc − ΔI/2` → Φ₋
-  - solve nonlinear для `I = I_dc` → Φ₀ (используется также
-    для `peak_flux_density_t` diagnostic)
   - solve nonlinear для `I = I_dc + ΔI/2` → Φ₊
   - `L_inc = (Φ₊ − Φ₋) / ΔI`
   ΔI выбирается `max(0.01·|I_dc|, 0.0001 A)` — 1% относительной
@@ -136,21 +136,30 @@ transformers с DC magnetization).
 
 ## 4. Success Criteria
 
-**Revision 2 (2026-05-20 после Phase B end-to-end runs):**
+**Revision 3 (2026-05-20 после ultrareview bug_001 fix):**
 
-- **Primary (relaxed)**: на pilot fixture с `material_model=
-  "nonlinear-frohlich"` + DC-bias load line FEM L_inc должен
-  показывать **значимое improvement** относительно linear baseline.
-  Конкретно: `relative_difference к PyOM ZHANG ≤ 0.75`
-  (gap 242% → 70% — 3.5× win) **с одновременным** `fem_inductance_h
-  < linear_baseline_lp · 0.55` (доказательство, что nonlinear
-  саппроксимация действительно engaged, а не stuck на linear).
-  ±10% acceptance не достигнут из-за **architectural blocker**
-  (split-coil topology nullify net N·I → iron не saturates как в
-  PyOM ZHANG single-coil reluctance model + 2D-planar open-domain
-  approximation overestimates L by factor ~2). См. raw assessment
-  в Phase B failure log. Полное закрытие 242% gap — task **T133**
-  (Elmer pivot, BACKLOG).
+- **Primary (infrastructure-only)**: на pilot fixture с `material_model=
+  "nonlinear-frohlich"` + DC-bias load line — **end-to-end pipeline
+  работает** (Picard сходится, L_inc вычисляется finitely, diagnostic
+  поля заполняются), но **никакого numerical improvement** относительно
+  linear baseline нет (L_nl / L_lin = 0.9968 на pilot ≈ identity).
+  Frohlich curve не engaging при операционном I_dc — iron в split-coil
+  topology + 2D-planar open-domain не saturates достаточно для curve
+  engagement.
+
+  **Что произошло между Phase B commit и Phase C revision 3:** Phase B
+  изначально reported L_inc = 11.85 H (rel_diff к PyOM 70%, что
+  выглядело как «partial closure 242% → 70%»). Ultrareview bug_001
+  обнаружил, что `flux_linkage_per_depth` Quantity интегрировалась
+  только по Primary region, упуская `-J` contribution от Secondary
+  (split coil return-leg). По антисимметрии это давало точно half от
+  истинного flux linkage — 11.85 = 23.78 / 2 — а не partial saturation.
+  После добавления Secondary integral term L_inc вернулся к ≈ L_lin.
+
+  ±10% acceptance не достижим в текущей topology — полное закрытие
+  242% gap отложено на **T133** (Elmer pivot, BACKLOG). Phase A/B
+  плумбинг сохранён как infrastructure для T133 reuse (Frohlich
+  curve format совместим с Elmer `H-B Curve` keyword).
 
 - **Secondary (back-compat)**: linear mode без DC bias даёт T113
   Phase 1 pilot baseline (23.78 H ±5%) — без regression.
@@ -171,12 +180,13 @@ transformers с DC magnetization).
 - **Image**: efactory:linux size не растёт значительно (только
   Python код + GetDP nonlinear template extension — apt deps те же).
 
-**Original revision 1 acceptance** (±10% к PyOM ZHANG) откладывается
-на T133 — переход на Elmer FEM (native `H-B Curve` nonlinear solver
-с Newton iteration + правильное single-coil topology). Reason —
-GetDP topology rework в рамках T129 scope превышал бы запланированный
-объём и требовал extensive FEM expertise (shell transformation /
-circuit coupling / 3D mesh).
+**Revision 1 acceptance** (±10% к PyOM ZHANG) и **revision 2 acceptance**
+(«partial closure» — была основана на bug_001 artifact, не реальном
+nonlinear engagement) обе откладываются на **T133** — переход на Elmer
+FEM (native `H-B Curve` nonlinear solver с Newton iteration + правильное
+single-coil topology). Reason — GetDP topology rework в рамках T129
+scope превышал бы запланированный объём и требовал extensive FEM
+expertise (shell transformation / circuit coupling / 3D mesh).
 
 ## 5. Key Entities
 

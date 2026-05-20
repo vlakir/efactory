@@ -200,10 +200,25 @@ class GetDpFemSolver:
         area_window: float,
         core_depth: float,
     ) -> FemSolveOutcome:
-        """3 nonlinear solve'а вокруг operating point; L_inc = (Φ₊−Φ₋)/ΔI."""
-        mu_initial, b_sat = self._extract_frohlich_params(
-            component.core.material_name,
-        )
+        """
+        2 nonlinear solve'а вокруг operating point; L_inc = (Φ₊−Φ₋)/ΔI.
+
+        Central finite difference O(ΔI²) использует только outer probes
+        (`I_dc ± ΔI/2`). Middle solve `I_dc` спека предусматривала для
+        peak_flux_density_t diagnostic, но Phase B оставила peak=None
+        (follow-up T-ID); поэтому middle solve удалён — bit-identical
+        L_inc, ~33% runtime saved (ultrareview bug_003).
+        """
+        try:
+            mu_initial, b_sat = self._extract_frohlich_params(
+                component.core.material_name,
+            )
+        except (LookupError, TypeError) as exc:
+            msg = (
+                f'Frohlich material params extraction failed для '
+                f'{component.core.material_name!r}: {exc}'
+            )
+            raise MagneticFieldSolverFailedError(msg) from exc
         curve = FrohlichBHCurve.from_pyom_material(
             mu_initial=mu_initial,
             b_sat=b_sat,
@@ -215,7 +230,6 @@ class GetDpFemSolver:
         delta_i = max(DELTA_I_REL * abs(i_dc), DELTA_I_FLOOR_A)
         currents = (
             i_dc - 0.5 * delta_i,
-            i_dc,
             i_dc + 0.5 * delta_i,
         )
 
@@ -230,9 +244,9 @@ class GetDpFemSolver:
                 area_window=area_window,
                 core_depth=core_depth,
             )
-            for tag, i_value in zip(('minus', 'zero', 'plus'), currents, strict=True)
+            for tag, i_value in zip(('minus', 'plus'), currents, strict=True)
         )
-        flux_minus, _flux_zero, flux_plus = fluxes
+        flux_minus, flux_plus = fluxes
         l_inc = (flux_plus - flux_minus) / delta_i
         return FemSolveOutcome(
             inductance_h=l_inc,

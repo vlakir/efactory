@@ -67,19 +67,22 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      релизе или значимой точке. После переноса — очищаем. -->
 
 - **T129** — [closed 2026-05-20, PR #61] **Nonlinear Frohlich-Kennelly
-  material model + DC-bias load line в FEM-адаптере — partial closure.**
-  Phase A (FrohlichBHCurve generator + nonlinear `.pro` template) +
-  Phase B (central-diff L_inc + `FemSolveOutcome` DTO + use case
-  integration) + Phase C (ADR + relaxed acceptance + BACKLOG forward).
-  T113 Phase 1 pilot 242% gap **частично закрыт до 70%** (3.5× win) —
-  Primary acceptance ±10% не достигнут из-за architectural blocker
-  (split-coil topology nullify net N·I + 2D-planar open-domain
-  overestimates L). End-to-end pipeline в `efactory:linux-t129`
-  container работает: nonlinear path сходится, L_inc вычисляется,
-  diagnostic поля пробрасываются. Phase A/B infrastructure ready для
-  T131 (SPICE saturable transformer, reuses Frohlich) и T133 (Elmer
-  pivot для full FEM cross-check). ADR + honest failure analysis в
-  `DECISIONS.md` 2026-05-20.
+  material model + DC-bias load line — infrastructure-only closure
+  (revision 3 после ultrareview).** Phase A (FrohlichBHCurve generator
+  + nonlinear `.pro` template) + Phase B (central-diff L_inc 2-solve
+  variant + `FemSolveOutcome` DTO + use case integration) + Phase C
+  (ADR + relaxed acceptance + BACKLOG forward). T113 Phase 1 pilot
+  242% gap **сохраняется** — изначально заявленная «partial closure
+  до 70%» оказалась artefact (flux_linkage_per_depth Quantity упускала
+  Secondary integral term → возврат half от истинного Ψ, ratio L/L_lin
+  ровно 0.499 — math, не physics). После ultrareview bug_001 fix
+  ratio L_nl/L_lin = 0.997 (identity within 1%): Frohlich curve не
+  engaging в split-coil + 2D-planar setup. Phase A/B остаются как
+  **pure infrastructure** для T131 (SPICE saturable transformer,
+  reuses Frohlich generator) + T133 (Elmer pivot, native `H-B Curve`,
+  полное закрытие 242% gap). End-to-end pipeline сходится без crash
+  в `efactory:linux-t129` container; honest failure analysis в
+  `DECISIONS.md` 2026-05-20 + ADR revision 3.
 
 - **T125** — [closed 2026-05-20, PR #57] **Fix mypy на main — 64
   ошибки в tests/.** Решение (Vladimir clarify 2026-05-20): не чинить

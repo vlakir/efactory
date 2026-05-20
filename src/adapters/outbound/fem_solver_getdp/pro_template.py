@@ -298,20 +298,24 @@ Resolution {{
 PostProcessing {{
   {{ Name Mag2D; NameOfFormulation Magnetostatics_2D;
     Quantity {{
-      {{ Name energy_per_depth;
-        Value {{
-          Integral {{ [ 0.5 * nu[{{d a}}] * {{d a}} * {{d a}} ];
-                     In Domain; Jacobian Vol; Integration I1; }}
-        }}
-      }}
-      // Flux linkage primary winding (per unit depth):
-      //   Ψ_per_depth = (N_primary / area_window) · ∫_Primary A_z dA
-      // CompZ[{{a}}] = A_z в 2D-planar с BF_PerpendicularEdge formulation.
+      // Flux linkage primary winding (per unit depth) — split coil topology:
+      //   Ψ_per_depth = (N_primary / area_window) · depth · [∫_P A_z − ∫_S A_z]
+      // Secondary интегрируется с **negated sign** потому что js[Secondary] =
+      // -J_density (return leg of the same primary winding, T113 pilot Stage
+      // B+C). Без Secondary term Ψ занижается в 2× из-за антисимметрии A_z
+      // в +J/−J геометрии — см. ultrareview bug_001 (PR #61).
       // Adapter умножит на core_depth для Wb.
+      //
+      // energy_per_depth Quantity (chord co-energy 0.5·ν·B² ≠ true ∫H dB для
+      // nonlinear) был в первой revision этого template, но удалён как dead
+      // code — nonlinear adapter path парсит только flux_linkage.txt
+      // (ultrareview bug_006).
       {{ Name flux_linkage_per_depth;
         Value {{
-          Integral {{ [ (N_primary / area_window) * CompZ[{{a}}] ];
-                     In Primary; Jacobian Vol; Integration I1; }}
+          Integral {{ [  (N_primary / area_window) * CompZ[{{a}}] ];
+                     In Primary;   Jacobian Vol; Integration I1; }}
+          Integral {{ [ -(N_primary / area_window) * CompZ[{{a}}] ];
+                     In Secondary; Jacobian Vol; Integration I1; }}
         }}
       }}
     }}
@@ -321,9 +325,7 @@ PostProcessing {{
 PostOperation {{
   {{ Name Mag2D; NameOfPostProcessing Mag2D;
     Operation {{
-      Print[ energy_per_depth[Domain], OnGlobal, Format Table,
-             File "energy_per_depth.txt" ];
-      Print[ flux_linkage_per_depth[Primary], OnGlobal, Format Table,
+      Print[ flux_linkage_per_depth[Domain], OnGlobal, Format Table,
              File "flux_linkage.txt" ];
     }}
   }}

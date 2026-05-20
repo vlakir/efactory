@@ -36,49 +36,53 @@ ADR-Lite: компактный лог архитектурных решений 
   `efactory:linux-t129` container (44 unit/integration tests passed,
   Picard сходится, L_inc вычисляется finitely).
 
-  Однако на pilot fixture (OPT 6П14П SE, DC bias 0.05 A) acceptance
-  ±10% **не достигнут**: FEM L_inc = 11.85 H vs PyOM ZHANG 6.96 H
-  (relative_difference = 0.704). Phase B end-to-end runs показали,
-  что причина — **architectural blocker**, не tuning:
+  **Revision 3 (после ultrareview PR #61 bug_001 fix):** ±10% acceptance
+  **не достигнут**, и «partial closure 242% → 70%», заявленная в
+  первоначальном Phase C commit, оказалась **artefact формулы**:
 
-  1. **Split-coil topology** (`+Jz Primary, -Jz Secondary` с одинаковой
-     amplitude N_pri·I/A_w) была валидирована в T113 Phase 1 pilot
-     Stage B+C как correct закрытие 2D-planar open-domain numerical
-     issue (без split одно-окно prescription завышает Lp ~2.8×).
-     **Но в nonlinear режиме split coil даёт net ampere-turns = 0** —
-     iron не saturates как в PyOM ZHANG single-coil reluctance model
-     с full N·I excitation. Partial saturation возникает только в
-     fringing zones near primary, factor ~2 reduction (L_inc ≈ √(L_lin
-     · L_tangent)).
+  1. **flux_linkage_per_depth Quantity в первоначальной revision
+     интегрировалась только по Primary region** (`In Primary` clause),
+     но split coil имеет `+Jz Primary, -Jz Secondary` (same primary
+     winding, return-leg). По антисимметрии `∫_S A_z ≈ -∫_P A_z`,
+     true flux linkage = `2 · ∫_P A_z` — формула возвращала half.
+     Чистый clean ratio L_nl_old / L_lin = 0.499 (точно 1/2 ± rounding)
+     был math-related, не physical (ultrareview bug_001).
+  2. **После fix (Secondary integral term добавлен с negated sign):**
+     L_nl = 23.71 H vs L_lin = 23.78 H — ratio **0.997** (identity
+     within 1%). Frohlich curve не engaging на pilot fixture в split-
+     coil + 2D-planar setup.
 
-  2. **Single-coil topology fix** (removed mirror, AIR_BOX_PADDING
-     3× → 10× → 50×) дал L = 19.65–19.68 H — overestimation factor
-     ~2 даже в linear режиме относительно analytical reluctance
-     ~10 H. 2D-planar open-domain без shell transformation (Kelvin)
-     не достигает proper flux closure для magnetostatic с дискретным
-     coil.
+  Топологические эксперименты (single-coil + AIR×{10,50}) до bug_001
+  fix показывали L_lin ≈ 19.7 H — overestimation factor ~2 относительно
+  analytical reluctance ~10 H. 2D-planar open-domain без shell
+  transformation (Kelvin) не достигает proper flux closure для
+  magnetostatic с дискретным coil. Plus Picard в single-coil не
+  итерирует Frohlich (B остаётся < knee из-за overestimation).
 
-  3. **Picard в single-coil не итерирует Frohlich** (L_nl ≈ L_lin
-     с разницей <1%) — нелинейность не engaged потому что B не достигает
-     knee region в overestimated-L geometry.
+  **Реальный T129 outcome — pure infrastructure без numerical win:**
+  Phase A `FrohlichBHCurve` generator + Phase B central-diff plumbing
+  (теперь 2 solve'а после bug_003 fix, не 3) + `FemSolveOutcome` DTO
+  + use case integration — **готовая plumbing для T133 reuse**, но
+  никакого improvement к T113 baseline gap 242% нет.
 
-  Реальное закрытие 242% gap требует одного из: shell transformation
-  в GetDP (1-2 недели FEM expertise, scope inside ADR 2026-05-20), or
-  переход на Elmer (native `H-B Curve` keyword + Newton iteration,
-  ADR override, 1-2 недели + image +300 MB), or 3D mesh (значительный
+  Закрытие 242% gap требует одного из: shell transformation в GetDP
+  (1-2 недели FEM expertise, scope inside ADR 2026-05-20), or переход
+  на Elmer (native `H-B Curve` keyword + Newton iteration, ADR
+  override, 1-2 недели + image +300 MB), or 3D mesh (значительный
   scope). Vladimir выбрал Elmer path (3b) — отдельным T133 когда
   появится реальный client case.
 
 - **Решение:**
-  1. **T129 закрыта как partial improvement**: 242% → 70% gap (3.5×
-     win к T113 baseline). Phase A/B infrastructure (`FrohlichBHCurve`,
-     nonlinear .pro template, central-diff adapter path, port
-     `FemSolveOutcome` DTO, domain VO diagnostic fields) **сохранена
-     ready-to-use** для future FEM cross-check (T133 reuses Frohlich
-     curve format).
-  2. **Spec §4 acceptance relaxed** (revision 2): Primary —
-     `relative_difference ≤ 0.75` + L_inc < 0.55·L_linear (proof что
-     nonlinear engaged). Original ±10% acceptance moved to T133.
+  1. **T129 закрыта как infrastructure-only** (revision 3): T113 baseline
+     gap 242% сохраняется без изменений. Phase A/B infrastructure
+     (`FrohlichBHCurve`, nonlinear .pro template, central-diff adapter
+     path, port `FemSolveOutcome` DTO, domain VO diagnostic fields)
+     **сохранена ready-to-use** для T133 reuse (Frohlich curve формат
+     совместим с Elmer `H-B Curve` keyword).
+  2. **Spec §4 acceptance переписана** (revision 3): Primary —
+     infrastructure smoke (pipeline сходится, fem_method, diagnostic
+     поля), без numerical bar на L_inc. Original ±10% acceptance
+     moved to T133.
   3. **Path forward** для real tube amp workflow (OPT/power xfrmr
      design):
      - **Analytical primary path** — PyOM ZHANG + 4 другие reluctance

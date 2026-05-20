@@ -112,7 +112,11 @@ def test_linear_back_compat_render_byte_identical_to_baseline() -> None:
 
 
 def test_nonlinear_template_emits_flux_linkage_postprocessing() -> None:
-    """T129 Phase B: новый Quantity flux_linkage_per_depth + Print → flux_linkage.txt."""
+    """T129 Phase B (ultrareview revision): Quantity flux_linkage_per_depth
+    с двумя Integral terms (Primary +sign, Secondary −sign) + Print[Domain]
+    → flux_linkage.txt. Secondary term — фикс bug_001 (split coil антисимметрия).
+    energy_per_depth убран из nonlinear template как dead code (bug_006).
+    """
     curve = FrohlichBHCurve.from_pyom_material(mu_initial=8000.0, b_sat=1.2)
     out = render_magnetostatic_pro_nonlinear(
         bh_list_literal=curve.as_getdp_list_literal(),
@@ -122,17 +126,24 @@ def test_nonlinear_template_emits_flux_linkage_postprocessing() -> None:
     )
     # Quantity объявлен
     assert 'Name flux_linkage_per_depth;' in out
-    # формула integrate (N/A_w) · CompZ[a] над Primary
+    # обе integral term: Primary (+sign), Secondary (negated)
     assert '(N_primary / area_window) * CompZ[{a}]' in out
     assert 'In Primary;' in out
-    # Print в PostOperation
-    assert 'Print[ flux_linkage_per_depth[Primary]' in out
+    assert '-(N_primary / area_window) * CompZ[{a}]' in out
+    assert 'In Secondary;' in out
+    # Print в PostOperation теперь над Domain (Primary + Secondary вместе)
+    assert 'Print[ flux_linkage_per_depth[Domain]' in out
     assert '"flux_linkage.txt"' in out
+    # energy_per_depth Quantity удалён из nonlinear template (dead code)
+    assert 'Name energy_per_depth;' not in out
 
 
-def test_nonlinear_template_raises_on_missing_placeholder_substitution() -> None:
-    """Защита от typo'в в template (формат-плейсхолдеры должны быть закрыты)."""
-    # вызов с минимальным валидным набором не должен бросать KeyError
+def test_nonlinear_template_renders_without_keyerror_on_valid_args() -> None:
+    """Regression guard: все format-placeholder в PRO_TEMPLATE_NONLINEAR
+    закрыты — вызов с минимальным валидным набором kwargs не бросает
+    KeyError от str.format (ultrareview bug_009 — переименовано из
+    misleading-positive `*_raises_on_missing_placeholder_substitution`).
+    """
     curve = FrohlichBHCurve.from_pyom_material(mu_initial=8000.0, b_sat=1.2)
     try:
         render_magnetostatic_pro_nonlinear(
