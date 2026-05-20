@@ -1,5 +1,5 @@
 """
-MagneticFieldSolver — outbound port для FEM-расчёта поля (T113 Phase 2).
+MagneticFieldSolver — outbound port для FEM-расчёта поля (T113 Phase 2 + T129).
 
 Точный численный расчёт магнитного поля + индуктивности через FEM:
 учёт 3D-геометрии, leakage, fringing. Backend — GetDP+Gmsh (выбран в
@@ -8,14 +8,19 @@ ADR `2026-05-20 — Magnetic field verification: GetDP+Gmsh выбран` в
 
 В отличие от `MagneticAnalytics` — медленнее (~1 sec на простой
 2D-magnetostatic), но точнее на complex geometries.
+
+T129: расширен на nonlinear material (Frohlich-Kennelly) +
+DC-bias central-difference incremental inductance. Возвращаемый DTO
+`FemSolveOutcome` несёт метод формулировки и diagnostic поля.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from domain.magnetic import MagneticComponent
+    from domain.magnetic import FemMethod, MagneticComponent
 
 
 class MagneticFieldSolverUnavailableError(Exception):
@@ -35,15 +40,32 @@ class UnsupportedGeometryError(MagneticFieldSolverFailedError):
     """
 
 
+@dataclass(frozen=True)
+class FemSolveOutcome:
+    """
+    Результат FEM-расчёта индуктивности.
+
+    `inductance_h` — индуктивность (Henries). Для `method='linear'` —
+    self-inductance L_p из energy method (W = 0.5·L·I²). Для
+    `method='nonlinear-frohlich'` — incremental L_inc вокруг
+    `OperatingPoint.primary_dc_bias_a` через central finite difference
+    на трёх nonlinear solve'ах.
+
+    `peak_flux_density_t` — max |B| по mesh после nonlinear solve [T];
+    None в linear режиме или если diagnostic не реализован.
+    """
+
+    inductance_h: float
+    method: FemMethod
+    peak_flux_density_t: float | None = None
+
+
 class MagneticFieldSolver(Protocol):
     """FEM-расчёт магнитной индуктивности через outbound port."""
 
-    async def solve_inductance(
-        self,
-        component: MagneticComponent,
-    ) -> float:
+    async def solve(self, component: MagneticComponent) -> FemSolveOutcome:
         """
-        Вычислить primary self-inductance методом FEM в Henries.
+        Вычислить primary inductance методом FEM (Henries) + diagnostics.
 
         Бросает `MagneticFieldSolverUnavailableError`, если solver
         не доступен в окружении; `MagneticFieldSolverFailedError` —

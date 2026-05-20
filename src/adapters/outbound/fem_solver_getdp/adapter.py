@@ -46,6 +46,7 @@ from adapters.outbound.fem_solver_getdp.pro_template import (
     render_magnetostatic_pro_nonlinear,
 )
 from ports.outbound.magnetic_field_solver import (
+    FemSolveOutcome,
     MagneticFieldSolverFailedError,
     MagneticFieldSolverUnavailableError,
     UnsupportedGeometryError,
@@ -53,6 +54,10 @@ from ports.outbound.magnetic_field_solver import (
 
 if TYPE_CHECKING:
     from domain.magnetic import MagneticComponent
+
+
+DELTA_I_FLOOR_A = 0.1  # абсолютный пол ΔI (A) per T129 Q1 Resolved
+DELTA_I_REL = 0.05  # 5% от |I_dc|
 
 DEFAULT_MUR_IRON = 8000.0  # Nanoperm-class μ_initial — linear approximation
 DEFAULT_I_REF = 1.0  # reference current 1 A для self-inductance
@@ -117,11 +122,11 @@ class GetDpFemSolver:
     def material_model(self) -> MaterialModel:
         return self._material_model
 
-    async def solve_inductance(self, component: MagneticComponent) -> float:
+    async def solve(self, component: MagneticComponent) -> FemSolveOutcome:
         """Async wrapper над blocking subprocess pipeline."""
         return await asyncio.to_thread(self._solve_blocking, component)
 
-    def _solve_blocking(self, component: MagneticComponent) -> float:
+    def _solve_blocking(self, component: MagneticComponent) -> FemSolveOutcome:
         core_full = self._compute_core_data(component)
         dims = self._extract_e_core_dims(component, core_full)
 
@@ -132,40 +137,66 @@ class GetDpFemSolver:
             work_dir = Path(tmp)
             geo_path = work_dir / 'geometry.geo'
             msh_path = work_dir / 'geometry.msh'
-            pro_path = work_dir / 'magnetostatic.pro'
-            energy_path = work_dir / 'energy_per_depth.txt'
-
             geo_path.write_text(emit_e_core_geo(dims))
-            # area_window = window_w × window_h (m²); J_density считается в .pro
-            pro_path.write_text(
-                self._render_pro(
-                    component=component,
-                    n_primary=component.primary_winding.number_turns,
-                    area_window=dims.window_w * dims.window_h,
-                ),
+            self._run_gmsh(geo_path, msh_path, work_dir)
+
+            n_primary = component.primary_winding.number_turns
+            area_window = dims.window_w * dims.window_h
+
+            if self._material_model == 'linear':
+                return self._solve_linear(
+                    work_dir=work_dir,
+                    msh_path=msh_path,
+                    n_primary=n_primary,
+                    area_window=area_window,
+                    core_depth=dims.core_depth,
+                )
+            return self._solve_nonlinear_central_diff(
+                component=component,
+                work_dir=work_dir,
+                msh_path=msh_path,
+                n_primary=n_primary,
+                area_window=area_window,
+                core_depth=dims.core_depth,
             )
 
-            self._run_gmsh(geo_path, msh_path, work_dir)
-            self._run_getdp(pro_path, msh_path, work_dir)
-
-            energy_per_depth = self._parse_energy(energy_path)
-            total_energy = energy_per_depth * dims.core_depth
-            return 2.0 * total_energy / (DEFAULT_I_REF**2)
-
-    def _render_pro(
+    def _solve_linear(
         self,
-        component: MagneticComponent,
+        *,
+        work_dir: Path,
+        msh_path: Path,
         n_primary: int,
         area_window: float,
-    ) -> str:
-        """Выбор linear vs nonlinear-Frohlich .pro по `material_model`."""
-        if self._material_model == 'linear':
-            return render_magnetostatic_pro(
+        core_depth: float,
+    ) -> FemSolveOutcome:
+        """T113 baseline: energy method, L_p = 2·W/I²."""
+        pro_path = work_dir / 'magnetostatic.pro'
+        energy_path = work_dir / 'energy_per_depth.txt'
+        pro_path.write_text(
+            render_magnetostatic_pro(
                 mur_iron=self._mur_iron,
                 n_primary=n_primary,
                 i_ref=DEFAULT_I_REF,
                 area_window=area_window,
-            )
+            ),
+        )
+        self._run_getdp(pro_path, msh_path, work_dir)
+        energy_per_depth = self._parse_value(energy_path)
+        total_energy = energy_per_depth * core_depth
+        l_p = 2.0 * total_energy / (DEFAULT_I_REF**2)
+        return FemSolveOutcome(inductance_h=l_p, method='linear')
+
+    def _solve_nonlinear_central_diff(
+        self,
+        *,
+        component: MagneticComponent,
+        work_dir: Path,
+        msh_path: Path,
+        n_primary: int,
+        area_window: float,
+        core_depth: float,
+    ) -> FemSolveOutcome:
+        """3 nonlinear solve'а вокруг operating point; L_inc = (Φ₊−Φ₋)/ΔI."""
         mu_initial, b_sat = self._extract_frohlich_params(
             component.core.material_name,
         )
@@ -174,12 +205,65 @@ class GetDpFemSolver:
             b_sat=b_sat,
             num_points=self._num_bh_points,
         )
-        return render_magnetostatic_pro_nonlinear(
-            bh_list_literal=curve.as_getdp_list_literal(),
-            n_primary=n_primary,
-            i_ref=DEFAULT_I_REF,
-            area_window=area_window,
+        bh_literal = curve.as_getdp_list_literal()
+
+        i_dc = component.operating_point.primary_dc_bias_a
+        delta_i = max(DELTA_I_REL * abs(i_dc), DELTA_I_FLOOR_A)
+        currents = (
+            i_dc - 0.5 * delta_i,
+            i_dc,
+            i_dc + 0.5 * delta_i,
         )
+
+        fluxes = tuple(
+            self._run_nonlinear_probe(
+                work_dir=work_dir,
+                msh_path=msh_path,
+                tag=tag,
+                bh_literal=bh_literal,
+                n_primary=n_primary,
+                i_value=i_value,
+                area_window=area_window,
+                core_depth=core_depth,
+            )
+            for tag, i_value in zip(('minus', 'zero', 'plus'), currents, strict=True)
+        )
+        flux_minus, _flux_zero, flux_plus = fluxes
+        l_inc = (flux_plus - flux_minus) / delta_i
+        return FemSolveOutcome(
+            inductance_h=l_inc,
+            method='nonlinear-frohlich',
+            peak_flux_density_t=None,  # diagnostic — follow-up T-ID
+        )
+
+    def _run_nonlinear_probe(
+        self,
+        *,
+        work_dir: Path,
+        msh_path: Path,
+        tag: str,
+        bh_literal: str,
+        n_primary: int,
+        i_value: float,
+        area_window: float,
+        core_depth: float,
+    ) -> float:
+        """Один nonlinear solve в subdir, возвращает Ψ (полный, не per-depth)."""
+        sub_dir = work_dir / f'solve_{tag}'
+        sub_dir.mkdir()
+        pro_path = sub_dir / 'magnetostatic.pro'
+        flux_path = sub_dir / 'flux_linkage.txt'
+        pro_path.write_text(
+            render_magnetostatic_pro_nonlinear(
+                bh_list_literal=bh_literal,
+                n_primary=n_primary,
+                i_ref=i_value,
+                area_window=area_window,
+            ),
+        )
+        self._run_getdp(pro_path, msh_path, sub_dir)
+        flux_per_depth = self._parse_value(flux_path)
+        return flux_per_depth * core_depth
 
     def _extract_frohlich_params(self, material_name: str) -> tuple[float, float]:
         """
@@ -305,14 +389,12 @@ class GetDpFemSolver:
             raise MagneticFieldSolverFailedError(msg)
 
     @staticmethod
-    def _parse_energy(energy_path: Path) -> float:
-        if not energy_path.exists():
-            msg = f'getdp не создал {energy_path.name} — PostOperation failed?'
+    def _parse_value(out_path: Path) -> float:
+        """Last float in last non-empty line of GetDP `Print[ ..., Format Table ]`."""
+        if not out_path.exists():
+            msg = f'getdp не создал {out_path.name} — PostOperation failed?'
             raise MagneticFieldSolverFailedError(msg)
-        # Format Table OnGlobal scalar — последняя non-empty строка с числами,
-        # последний валидный float — energy per depth (J/m). Pilot Stage B+C
-        # парсинг логика.
-        text = energy_path.read_text()
+        text = out_path.read_text()
         for line in reversed(text.splitlines()):
             tokens = line.split()
             if not tokens:
@@ -322,7 +404,7 @@ class GetDpFemSolver:
                     return float(tok)
                 except ValueError:
                     continue
-        msg = f'energy_per_depth.txt не содержит float values: {text!r}'
+        msg = f'{out_path.name} не содержит float values: {text!r}'
         raise MagneticFieldSolverFailedError(msg)
 
 

@@ -296,6 +296,16 @@ PostProcessing {{
                      In Domain; Jacobian Vol; Integration I1; }}
         }}
       }}
+      // Flux linkage primary winding (per unit depth):
+      //   Ψ_per_depth = (N_primary / area_window) · ∫_Primary A_z dA
+      // CompZ[{{a}}] = A_z в 2D-planar с BF_PerpendicularEdge formulation.
+      // Adapter умножит на core_depth для Wb.
+      {{ Name flux_linkage_per_depth;
+        Value {{
+          Integral {{ [ (N_primary / area_window) * CompZ[{{a}}] ];
+                     In Primary; Jacobian Vol; Integration I1; }}
+        }}
+      }}
     }}
   }}
 }}
@@ -305,6 +315,8 @@ PostOperation {{
     Operation {{
       Print[ energy_per_depth[Domain], OnGlobal, Format Table,
              File "energy_per_depth.txt" ];
+      Print[ flux_linkage_per_depth[Primary], OnGlobal, Format Table,
+             File "flux_linkage.txt" ];
     }}
   }}
 }}

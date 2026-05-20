@@ -12,9 +12,11 @@ Domain-уровень — без знания о PyOM MAS-schema или GetDP .p
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+FemMethod = Literal['linear', 'nonlinear-frohlich']
 
 _FROZEN = ConfigDict(frozen=True, extra='forbid')
 
@@ -116,6 +118,13 @@ class MagneticVerificationResult(BaseModel):
     `relative_difference` — |FEM - analytical| / analytical; None если FEM не было.
     `discrepancy_flagged` — True, если relative_difference > threshold
     (default 10%, см. `DEFAULT_DISCREPANCY_THRESHOLD`).
+    `fem_method` — выбранная FEM формулировка ("linear" или
+    "nonlinear-frohlich"); None если FEM не запускался. Diagnostic поле
+    из T129 — для downstream consumer'ов и логов.
+    `peak_flux_density_t` — max |B| в Iron region [T]; None если FEM
+    не запускался или диагностика не реализована (T129 Phase B —
+    оставлено как None, реализация через GetDP point sampling
+    в follow-up).
     """
 
     model_config = _FROZEN
@@ -126,3 +135,5 @@ class MagneticVerificationResult(BaseModel):
     relative_difference: Annotated[float, Field(ge=0)] | None = None
     discrepancy_flagged: bool = False
     discrepancy_threshold: Annotated[float, Field(gt=0)] = DEFAULT_DISCREPANCY_THRESHOLD
+    fem_method: FemMethod | None = None
+    peak_flux_density_t: Annotated[float, Field(ge=0)] | None = None

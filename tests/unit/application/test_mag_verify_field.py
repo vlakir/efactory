@@ -18,6 +18,7 @@ from domain.magnetic import (
     OperatingPoint,
     Winding,
 )
+from ports.outbound.magnetic_field_solver import FemSolveOutcome
 
 
 class _FakeAnalytics:
@@ -29,11 +30,22 @@ class _FakeAnalytics:
 
 
 class _FakeFieldSolver:
-    def __init__(self, lp: float) -> None:
+    def __init__(
+        self,
+        lp: float,
+        method: str = 'linear',
+        peak_b: float | None = None,
+    ) -> None:
         self._lp = lp
+        self._method = method
+        self._peak_b = peak_b
 
-    async def solve_inductance(self, component: object) -> float:  # noqa: ARG002
-        return self._lp
+    async def solve(self, component: object) -> FemSolveOutcome:  # noqa: ARG002
+        return FemSolveOutcome(
+            inductance_h=self._lp,
+            method=self._method,  # type: ignore[arg-type]
+            peak_flux_density_t=self._peak_b,
+        )
 
 
 def _component() -> MagneticComponent:
@@ -133,3 +145,44 @@ async def test_zero_analytical_inductance_relative_diff_zero() -> None:
     )
     assert r.relative_difference == pytest.approx(0.0)
     assert r.discrepancy_flagged is False
+
+
+@pytest.mark.asyncio
+async def test_analytical_only_path_omits_fem_diagnostics() -> None:
+    """Без FEM verify — fem_method и peak_flux_density_t остаются None."""
+    r = await mag_verify_field(
+        component=_component(),
+        analytics=_FakeAnalytics(lp=6.96),
+    )
+    assert r.fem_method is None
+    assert r.peak_flux_density_t is None
+
+
+@pytest.mark.asyncio
+async def test_fem_outcome_method_and_peak_propagate() -> None:
+    """T129: fem_method + peak_flux_density_t из outcome пробрасываются в VR."""
+    r = await mag_verify_field(
+        component=_component(),
+        analytics=_FakeAnalytics(lp=6.96),
+        field_solver=_FakeFieldSolver(
+            lp=7.05,
+            method='nonlinear-frohlich',
+            peak_b=1.18,
+        ),
+        verify_with_fem=True,
+    )
+    assert r.fem_method == 'nonlinear-frohlich'
+    assert r.peak_flux_density_t == pytest.approx(1.18)
+
+
+@pytest.mark.asyncio
+async def test_fem_linear_method_default_propagates() -> None:
+    """Linear FEM path: method='linear', peak=None — back-compat."""
+    r = await mag_verify_field(
+        component=_component(),
+        analytics=_FakeAnalytics(lp=6.96),
+        field_solver=_FakeFieldSolver(lp=23.78),
+        verify_with_fem=True,
+    )
+    assert r.fem_method == 'linear'
+    assert r.peak_flux_density_t is None

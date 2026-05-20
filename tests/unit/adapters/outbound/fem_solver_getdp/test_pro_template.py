@@ -110,6 +110,25 @@ def test_linear_back_compat_render_byte_identical_to_baseline() -> None:
     assert 'Print[ energy_per_depth[Domain], OnGlobal, Format Table,' in out
 
 
+def test_nonlinear_template_emits_flux_linkage_postprocessing() -> None:
+    """T129 Phase B: новый Quantity flux_linkage_per_depth + Print → flux_linkage.txt."""
+    curve = FrohlichBHCurve.from_pyom_material(mu_initial=8000.0, b_sat=1.2)
+    out = render_magnetostatic_pro_nonlinear(
+        bh_list_literal=curve.as_getdp_list_literal(),
+        n_primary=2500,
+        i_ref=1.0,
+        area_window=2.75e-4,
+    )
+    # Quantity объявлен
+    assert 'Name flux_linkage_per_depth;' in out
+    # формула integrate (N/A_w) · CompZ[a] над Primary
+    assert '(N_primary / area_window) * CompZ[{a}]' in out
+    assert 'In Primary;' in out
+    # Print в PostOperation
+    assert 'Print[ flux_linkage_per_depth[Primary]' in out
+    assert '"flux_linkage.txt"' in out
+
+
 def test_nonlinear_template_raises_on_missing_placeholder_substitution() -> None:
     """Защита от typo'в в template (формат-плейсхолдеры должны быть закрыты)."""
     # вызов с минимальным валидным набором не должен бросать KeyError

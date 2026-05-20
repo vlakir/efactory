@@ -73,7 +73,8 @@ async def mag_verify_field(
         msg = 'verify_with_fem=True требует field_solver, но передан None'
         raise ValueError(msg)
 
-    fem_lp = await field_solver.solve_inductance(component)
+    outcome = await field_solver.solve(component)
+    fem_lp = outcome.inductance_h
     rel_diff = abs(fem_lp - analytical_lp) / analytical_lp if analytical_lp > 0 else 0.0
     return MagneticVerificationResult(
         component_name=component.name,
@@ -82,6 +83,8 @@ async def mag_verify_field(
         relative_difference=rel_diff,
         discrepancy_flagged=rel_diff > discrepancy_threshold,
         discrepancy_threshold=discrepancy_threshold,
+        fem_method=outcome.method,
+        peak_flux_density_t=outcome.peak_flux_density_t,
     )
 
 

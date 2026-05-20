@@ -1,22 +1,20 @@
 """
-Integration: mag_verify_field с реальными PyOM + GetDP adapters (T113).
+Integration: mag_verify_field с реальными PyOM + GetDP adapters (T113 + T129).
 
-Phase 2 acceptance criterion из spec:
-> OPT 6П14П analytical L (PyOpenMagnetics) совпадает с FEM-solver L
-> в пределах ±10%.
+Acceptance закрытия T129 Primary:
+> На pilot fixture с material_model='nonlinear-frohlich' и DC-bias load
+> line FEM Lp совпадает с PyOM analytical ZHANG в пределах ±10%
+> (на DC bias = 0.05 A — operating-point μ_eff из spec §3).
 
-⚠️ Это criteria НЕ выполняется на pilot fixture (linear μ_r=8000 vs
-PyOM operating-point μ_eff, 242% diff — задокументировано в T113 spec
-+ ADR 2026-05-20). Use case корректно flag'ует discrepancy
-(discrepancy_flagged=True), что для LLM-агента — adequate сигнал
-"need revisit"; numeric agreement требует nonlinear B-H curve
-(BACKLOG T128).
+Secondary (back-compat T113 Phase 1 pilot baseline):
+> Linear mode без DC bias даёт тот же ~23.78 H ±5% что T113.
 
-Этот integration test проверяет:
-1. analytical-only path работает через реальный PyOM adapter;
-2. verify_with_fem path выполняется end-to-end (если gmsh+getdp в PATH);
-3. discrepancy_flagged корректно True на known-gap fixture (pilot
-   regression — мы должны увидеть exactly те же ~242% diff).
+Покрываемые сценарии:
+1. analytical-only path работает через реальный PyOM adapter (fast).
+2. linear FEM + verify_with_fem на pilot (без DC bias) → known 242% gap
+   к analytical → discrepancy_flagged=True (Secondary back-compat).
+3. nonlinear FEM + DC bias на pilot → relative_difference ≤ 0.10
+   (Primary T129 acceptance).
 """
 
 from __future__ import annotations
@@ -63,11 +61,22 @@ def analytics(pyom):  # noqa: ANN001, ANN201
 
 
 @pytest.fixture(scope='module')
-def field_solver(pyom):  # noqa: ANN001, ANN201
-    return GetDpFemSolver(pyom)
+def field_solver_linear(pyom):  # noqa: ANN001, ANN201
+    return GetDpFemSolver(pyom, material_model='linear')
 
 
-def _opt_6p14p_se() -> MagneticComponent:
+@pytest.fixture(scope='module')
+def field_solver_nonlinear(pyom):  # noqa: ANN001, ANN201
+    return GetDpFemSolver(pyom, material_model='nonlinear-frohlich')
+
+
+# DC bias из pilot config (scripts/pilot/build_fixture.py PRIMARY_DC_BIAS_A):
+# 50 mA plate current класса A для 6П14П SE → H_dc ≈ 1289 A/m в core
+# (deep saturation, см. T129 spec §1).
+PILOT_DC_BIAS_A = 0.05
+
+
+def _opt_6p14p_se(dc_bias_a: float = 0.0) -> MagneticComponent:
     return MagneticComponent(
         name='OPT 6П14П SE',
         core=Core(
@@ -92,6 +101,7 @@ def _opt_6p14p_se() -> MagneticComponent:
         operating_point=OperatingPoint(
             frequency_hz=1000.0,
             primary_peak_voltage_v=250.0,
+            primary_dc_bias_a=dc_bias_a,
         ),
     )
 
@@ -108,26 +118,53 @@ async def test_analytical_only_on_pilot_fixture(analytics) -> None:  # noqa: ANN
     )
     assert r.fem_inductance_h is None
     assert r.discrepancy_flagged is False
+    assert r.fem_method is None
+    assert r.peak_flux_density_t is None
 
 
 @_NEED_GMSH_AND_GETDP
 @pytest.mark.asyncio
-async def test_analytical_plus_fem_pilot_regression(
+async def test_linear_fem_on_pilot_keeps_baseline(
     analytics,  # noqa: ANN001
-    field_solver,  # noqa: ANN001
+    field_solver_linear,  # noqa: ANN001
 ) -> None:
-    """End-to-end: analytical+FEM на pilot fixture, известный 242% gap."""
+    """Secondary (back-compat): linear path даёт T113 baseline 23.78 H ±5%."""
     r = await mag_verify_field(
         component=_opt_6p14p_se(),
         analytics=analytics,
-        field_solver=field_solver,
+        field_solver=field_solver_linear,
         verify_with_fem=True,
     )
     assert r.analytical_inductance_h == pytest.approx(
         PILOT_ANALYTICAL_LP_H, rel=1e-3,
     )
     assert r.fem_inductance_h == pytest.approx(PILOT_FEM_LP_H, rel=0.05)
-    # Known physics gap — use case correctly flags it (T128 follow-up
-    # с nonlinear B-H закроет numeric mismatch).
+    # Known physics gap — linear μ_r vs operating-point μ_eff (T113 ADR).
     assert r.discrepancy_flagged is True
     assert r.relative_difference == pytest.approx(PILOT_REL_DIFF, rel=0.1)
+    assert r.fem_method == 'linear'
+    assert r.peak_flux_density_t is None
+
+
+@_NEED_GMSH_AND_GETDP
+@pytest.mark.asyncio
+async def test_analytical_plus_fem_pilot_regression(
+    analytics,  # noqa: ANN001
+    field_solver_nonlinear,  # noqa: ANN001
+) -> None:
+    """Primary T129 acceptance: nonlinear + DC bias → ±10% к PyOM ZHANG."""
+    r = await mag_verify_field(
+        component=_opt_6p14p_se(dc_bias_a=PILOT_DC_BIAS_A),
+        analytics=analytics,
+        field_solver=field_solver_nonlinear,
+        verify_with_fem=True,
+    )
+    assert r.analytical_inductance_h == pytest.approx(
+        PILOT_ANALYTICAL_LP_H, rel=1e-3,
+    )
+    assert r.fem_method == 'nonlinear-frohlich'
+    assert r.fem_inductance_h is not None
+    assert r.relative_difference is not None
+    # Primary acceptance — закрытие T113 Phase 1 pilot 242% gap.
+    assert r.relative_difference <= 0.10
+    assert r.discrepancy_flagged is False
