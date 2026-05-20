@@ -40,6 +40,9 @@ from pathlib import Path
 from typing import Any
 
 FIXTURE_DIR = Path('/pilot/fixtures/opt-6p14p-se')
+GETDP_PRO_SRC = Path('/pilot/scripts/pilot/getdp/magnetostatic.pro')
+PRIMARY_TURNS = 2500       # consistency с build_fixture.py
+I_REF_GETDP = 1.0          # ток через primary в GetDP physics
 
 
 def _load_pyom() -> Any:
@@ -121,16 +124,113 @@ def stage_advisor_heavy(pyom: Any) -> dict[str, Any]:  # noqa: ARG001  - pending
     return {'status': 'pending', 'note': 'to be implemented in next commit'}
 
 
-# Stage 3-5 placeholders
-def stage_mesh() -> dict[str, Any]:
-    return {'status': 'pending'}
+def _run_timed(cmd: list[str], cwd: Path | None = None) -> dict[str, Any]:
+    """Run cmd via /usr/bin/time -v; return stdout/stderr/return + peak RSS."""
+    full = ['/usr/bin/time', '-v', *cmd]
+    res = subprocess.run(  # noqa: S603
+        full, cwd=cwd, capture_output=True, text=True, check=False,
+    )
+    parsed = _parse_time_v(res.stderr)
+    return {
+        'cmd': cmd,
+        'returncode': res.returncode,
+        'stdout': res.stdout,
+        'stderr': res.stderr,
+        'peak_rss_mb': parsed['peak_rss_mb'],
+        'wall_clock': parsed['wall_clock'],
+    }
 
 
-def stage_elmer() -> dict[str, Any]:
-    return {'status': 'pending'}
+# Stage 3: Gmsh mesh
+def stage_mesh(work_dir: Path) -> dict[str, Any]:
+    """Convert geometry.geo to geometry.msh (Gmsh msh2.2 format for FEM solvers)."""
+    geo_src = FIXTURE_DIR / 'geometry.geo'
+    geo_local = work_dir / 'geometry.geo'
+    msh_local = work_dir / 'geometry.msh'
+    geo_local.write_text(geo_src.read_text())
+
+    t0 = time.monotonic()
+    r = _run_timed(
+        [
+            'gmsh', '-2',
+            '-format', 'msh22',
+            str(geo_local),
+            '-o', str(msh_local),
+        ],
+        cwd=work_dir,
+    )
+    elapsed = time.monotonic() - t0
+    ok = r['returncode'] == 0 and msh_local.exists() and msh_local.stat().st_size > 0
+    return {
+        'ok': ok,
+        'elapsed_s': elapsed,
+        'peak_rss_mb': r['peak_rss_mb'],
+        'msh_path': str(msh_local),
+        'msh_size_kb': msh_local.stat().st_size / 1024.0 if msh_local.exists() else 0,
+        'returncode': r['returncode'],
+        'stderr_tail': r['stderr'].splitlines()[-5:],
+    }
 
 
-def stage_getdp() -> dict[str, Any]:
+# Stage 4: GetDP FEM
+def stage_getdp(work_dir: Path, depth_m: float) -> dict[str, Any]:
+    """Run GetDP magnetostatic 2D and compute L_primary = 2W/I²."""
+    msh_local = work_dir / 'geometry.msh'
+    pro_local = work_dir / 'magnetostatic.pro'
+    pro_local.write_text(GETDP_PRO_SRC.read_text())
+
+    t0 = time.monotonic()
+    r = _run_timed(
+        [
+            'getdp', str(pro_local),
+            '-msh', str(msh_local),
+            '-solve', 'Mag2D',
+        ],
+        cwd=work_dir,
+    )
+    elapsed = time.monotonic() - t0
+
+    energy_file = work_dir / 'energy_per_depth.txt'
+    energy_per_depth = None
+    lp_henry = None
+    if energy_file.exists():
+        # GetDP "Format Table" emits "<elem_tag> <value>" per line; for
+        # OnGlobal scalar — single line "<elem_tag> <value>".
+        # Take first valid float in last non-empty line.
+        for line in reversed(energy_file.read_text().splitlines()):
+            tokens = line.split()
+            if not tokens:
+                continue
+            for tok in reversed(tokens):
+                try:
+                    energy_per_depth = float(tok)
+                    break
+                except ValueError:
+                    continue
+            if energy_per_depth is not None:
+                break
+
+    if energy_per_depth is not None:
+        # 3D energy = energy_per_depth × core depth
+        # L = 2W / I_ref²
+        total_energy = energy_per_depth * depth_m
+        lp_henry = 2.0 * total_energy / (I_REF_GETDP ** 2)
+
+    ok = r['returncode'] == 0 and lp_henry is not None
+    return {
+        'ok': ok,
+        'elapsed_s': elapsed,
+        'peak_rss_mb': r['peak_rss_mb'],
+        'returncode': r['returncode'],
+        'energy_per_depth_J_per_m': energy_per_depth,
+        'lp_henry': lp_henry,
+        'stderr_tail': r['stderr'].splitlines()[-5:],
+        'stdout_tail': r['stdout'].splitlines()[-5:],
+    }
+
+
+def stage_elmer(work_dir: Path, depth_m: float) -> dict[str, Any]:  # noqa: ARG001
+    """TODO Stage D: Elmer FEM magnetostatic 2D."""
     return {'status': 'pending'}
 
 
@@ -170,11 +270,44 @@ def main() -> int:
         results_file.write_text(json.dumps(results, indent=2))
         return 1
 
-    print('\n--- Stage 2-5: pending (next commit on T113-fem) ---')
-    results['advisor_heavy'] = stage_advisor_heavy(pyom) if not args.skip_advisor else {'status': 'skipped'}
-    results['mesh'] = stage_mesh()
-    results['elmer'] = stage_elmer()
-    results['getdp'] = stage_getdp()
+    # depth from fixture (used for L = 2W × depth) — extract once
+    mas = json.loads((FIXTURE_DIR / 'geometry.json').read_text())
+    depth_m = float(mas['magnetic']['core']['processedDescription']['depth'])
+    print(f'\ncore depth (for L = 2 × W_per_depth × depth): {depth_m * 1000:.2f} mm')
+
+    print('\n--- Stage 3: Gmsh mesh ---')
+    rm = stage_mesh(args.work_dir)
+    results['mesh'] = rm
+    print(f"  elapsed: {rm['elapsed_s']:.3f}s   peak RSS: {rm['peak_rss_mb']:.1f} MB")
+    print(f"  msh: {rm['msh_size_kb']:.1f} KB   ok={rm['ok']}   rc={rm['returncode']}")
+    if not rm['ok']:
+        for line in rm['stderr_tail']:
+            print(f'    | {line}')
+        (args.work_dir / 'results.json').write_text(json.dumps(results, indent=2))
+        return 2
+
+    print('\n--- Stage 4: GetDP FEM ---')
+    rg = stage_getdp(args.work_dir, depth_m)
+    results['getdp'] = rg
+    print(f"  elapsed: {rg['elapsed_s']:.3f}s   peak RSS: {rg['peak_rss_mb']:.1f} MB")
+    print(f"  rc={rg['returncode']}   energy_per_depth={rg['energy_per_depth_J_per_m']!r}")
+    if rg['lp_henry'] is not None:
+        print(f"  Lp (GetDP) = {rg['lp_henry']:.6g} H")
+        analytical_ref = r1['lp_h_per_model']['ZHANG']
+        rel = abs(rg['lp_henry'] - analytical_ref) / analytical_ref
+        print(f"  vs analytical ZHANG ({analytical_ref:.6g} H): {rel * 100:.2f}% diff")
+    else:
+        print('  Lp not computed — see stdout/stderr tails:')
+        for line in rg['stdout_tail']:
+            print(f'    out| {line}')
+        for line in rg['stderr_tail']:
+            print(f'    err| {line}')
+
+    print('\n--- Stage 2, 5: pending (next commits on T113-fem) ---')
+    results['advisor_heavy'] = (
+        stage_advisor_heavy(pyom) if not args.skip_advisor else {'status': 'skipped'}
+    )
+    results['elmer'] = stage_elmer(args.work_dir, depth_m)
 
     results_file = args.work_dir / 'results.json'
     results_file.write_text(json.dumps(results, indent=2))

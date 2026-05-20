@@ -41,8 +41,9 @@ AIR_BOX_PADDING = 3.0  # × max(core_w, core_h)
 
 LC_CORE = 0.0015      # 1.5 mm in iron
 LC_WINDING = 0.0015   # 1.5 mm in copper
-LC_GAP = 0.0003       # 0.3 mm near gap (3× gap thickness — captures 2-3 elements
-                      # across 0.1 mm gap; LC ratio with core is 5×, meshable)
+LC_GAP = 0.00005      # 0.05 mm near gap (½× толщины 0.1 мм — 2-3 элемента
+                      # across gap для разрешения концентрации поля).
+                      # GAP_INSET = 10 μm защищает от collinear-edge mesh fail.
 LC_AIR_FAR = 0.01     # 10 mm at outer boundary
 
 # Gap inset (m): shrink every column-gap rectangle by this much on each
