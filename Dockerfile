@@ -63,6 +63,8 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       kicad \
       ngspice \
+      getdp \
+      gmsh \
       dbus-x11 \
       libcanberra-gtk3-module \
       libgl1 \

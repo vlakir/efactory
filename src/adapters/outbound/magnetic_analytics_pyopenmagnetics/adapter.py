@@ -33,6 +33,11 @@ if TYPE_CHECKING:
     from domain.magnetic import MagneticComponent, Winding
 
 DEFAULT_RELUCTANCE_MODEL = 'ZHANG'
+# PyOM требует поле wire в каждой winding (schema validation в C++);
+# для inductance расчётов wire diameter не используется (только для
+# winding losses) — generic round 0.5mm grade 1 как sane default
+# когда Winding.wire_name is None.
+DEFAULT_WIRE_NAME = 'Round 0.5 - Grade 1'
 _WAVEFORM_SAMPLES = 32  # 1 period @ frequency_hz; consistency с pilot build_fixture
 
 
@@ -76,15 +81,13 @@ def _sine_waveform(
 
 
 def _build_winding_dict(w: Winding) -> dict[str, Any]:
-    out: dict[str, Any] = {
+    return {
         'name': w.name,
         'numberTurns': w.number_turns,
         'numberParallels': 1,
         'isolationSide': w.isolation_side.value,
+        'wire': w.wire_name if w.wire_name is not None else DEFAULT_WIRE_NAME,
     }
-    if w.wire_name is not None:
-        out['wire'] = w.wire_name
-    return out
 
 
 class PyOpenMagneticsAnalytics:
