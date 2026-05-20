@@ -129,21 +129,13 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      2026-05-20 в DECISIONS.md и Phase 2 implementation note. -->
 <!-- T066 absorbed by T112: bootstrap FreeCAD больше не нужен —
      поставка через AppImage внутри efactory:linux. -->
-- **T113** — [2026-05-19] **FEM-solver: пилот и интеграция.**
-  Заменяет FEMM (см. ADR от 2026-05-19 «Magnetic field
-  verification: Linux-native FEM-solver»). Пилот сравнивает
-  **Elmer FEM (primary)** vs **GetDP + Gmsh (fallback)** на
-  фикстурах: OPT 6П14П single-ended, силовой трансформатор
-  50 Гц, flyback SMPS дроссель. Критерии выбора: качество
-  результатов vs аналитики (PyOpenMagnetics), API-удобство
-  для LLM-orchestration, время счёта, размер в образе.
-  Absorbs T058 (FEMM bootstrap). После выбора — интеграция
-  через `adapters/outbound/fem_solver/` (solver-agnostic
-  port `MagneticFieldSolver`), MAS JSON → solver input
-  (~50–100 строк). Acceptance: для тестового OPT 6П14П
-  расчётная индуктивность через solver совпадает с
-  аналитической в пределах ±10%; решение зафиксировано в
-  ADR.
+<!-- T113 перенесена в BOARD.md → Doing (2026-05-20). Pilot scope
+     сужен до одной фикстуры (OPT 6П14П SE, Vladimir clarify-3); 50Hz
+     и flyback вынесены в BACKLOG как cross-validation follow-up'ы.
+     Pilot+integration в одном PR с phase-коммитами (clarify-1). Spec —
+     specs/T113-fem-solver/spec.md. -->
+<!-- T058 absorbed by T113: FEMM bootstrap не нужен — Linux-native
+     FEM-solver внутри efactory:linux. -->
 <!-- T114 перенесена в BOARD.md → Doing (2026-05-20) — объединена
      с T121 в один PR (variant C). См. BOARD.md → T114 + T121. -->
 - **T115** — [2026-05-19] **CI: сборка и публикация образа.**

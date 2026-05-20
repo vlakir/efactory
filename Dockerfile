@@ -3,7 +3,7 @@
 # efactory:linux — Phase 0.9 Containerization.
 #
 # Phase 0 (T110): базовый Dockerfile с CLI-стеком (KiCad 10, ngspice,
-# uv-managed Python 3.14, editable efactory). Acceptance: `docker build`
+# uv-managed Python 3.13, editable efactory). Acceptance: `docker build`
 # зелёный, `docker run … uv run pytest` прогоняет тест-набор efactory.
 #
 # Phase 1 (T111): X11/Wayland GUI passthrough. Final stage расширен
@@ -98,7 +98,7 @@ RUN apt-get update \
 
 
 # ============================================================================
-# Stage 2: python-deps — uv-managed Python 3.14 venv + frozen зависимости.
+# Stage 2: python-deps — uv-managed Python 3.13 venv + frozen зависимости.
 # ============================================================================
 FROM base AS python-deps
 

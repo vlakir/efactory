@@ -25,6 +25,137 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-05-20 — Magnetic analytical toolkit: PyOpenMagnetics (а не femmt / самописная формула)
+
+- **Контекст:** T113 требует analytical reference для magnetic
+  design (трансформаторы, дроссели, SMPS-компоненты) — как для
+  acceptance ±10% pilot/integration теста, так и для использования
+  runtime-агентом в реальных проектах (Vladimir 2026-05-20: «школьная
+  формула — упрощение только для демо, в реальных проектах нужны
+  сложные магнитные расчёты»). Кандидаты после downgrade Python 3.14
+  → 3.13 (см. соседний ADR):
+  - **PyOpenMagnetics 1.3.10** — C++ engine MKF (Magnetics Knowledge
+    Foundation) с Python bindings, comprehensive database (1301+
+    core shapes, materials, wire standards, bobbins, insulation),
+    high-level API (`design_magnetics_from_converter()` —
+    single-call для всего transformer'а), AGENTS.md специально
+    для AI-агентов с инструкцией «NEVER use manual calculations».
+    Pure-analytic (без FEM internally) — учитывает temperature-
+    dependent material properties, geometrical fringing, real
+    commercial core constraints.
+  - **femmt @ master HEAD** (LEA Paderborn FEM toolkit) — поставился
+    бы, но тянет torch + nvidia-cu12 + triton + PyQt5 + sympy +
+    plotly + mag-net-hub (ML-based core-loss prediction). Размер:
+    7.6 GB venv → +5 GB в Docker layer (efactory:linux вырос бы
+    до ~13 GB).
+  - **Самописная extended formula** (μ_r, A_e, l_e + leakage
+    эмпирически + window utilization) — ~30 строк кода, но
+    Vladimir прямо сказал «нет» textbook formulas в production.
+  - **magpylib** — pure-Python, но не моделирует ferromagnetic
+    core (μ_r >> 1) → не подходит для трансформаторов.
+- **Решение:** **PyOpenMagnetics 1.3.10** как primary analytical
+  engine. Wheel cp313_x86_64 precompiled (11 MB), `.venv`
+  становится 215 MB вместо 7.6 GB. В efactory:linux Docker-layer:
+  +~50 MB.
+  - **Pilot (T113)**: PyOpenMagnetics analytical vs Elmer FEM
+    vs GetDP+Gmsh FEM на одной фикстуре (OPT 6П14П SE) —
+    3-точечное сравнение для ADR-выбора FEM-solver'а.
+  - **Integration (T113)**: два port'а в `src/ports/outbound/`:
+    `magnetic_analytics_port.py` → PyOpenMagnetics adapter;
+    `magnetic_field_solver_port.py` → выбранный FEM solver
+    adapter. Агент через MCP вызывает любой (analytical fast vs
+    FEM accurate, по задаче).
+- **Альтернативы (см. контекст):** femmt отвергнут по размеру;
+  самописная formula — по explicit указанию Vladimir-а; magpylib —
+  по физике (нет ferromagnetic core).
+- **Последствия:**
+  - **LLM-friendly API**: PyOpenMagnetics поставляется с
+    AGENTS.md (single source of truth для AI-агента) — наш
+    Claude Code frontend может ссылаться на этот документ
+    при design-задачах.
+  - **Dual port architecture**: analytical (быстро, для design
+    sweep'ов) + FEM (точно, для validation). Логичное
+    разделение по acceptance T113.
+  - **`design_magnetics_from_converter()`** — high-level
+    функция, агент one-shot спроектирует трансформатор по
+    параметрам конвертера. Это удобнее, чем строить magnetic
+    component вручную через MAS JSON.
+  - **Размер**: PyOpenMagnetics +11 MB wheel — ничтожно vs
+    femmt +5 GB.
+  - **Опциональное расширение**: если в будущем нужен ML
+    core-loss prediction (mag-net-hub) — поставим как
+    отдельный optional dependency, не в main runtime.
+
+### 2026-05-20 — Python проекта понижен 3.14 → 3.13 (scientific ecosystem)
+
+- **Контекст:** T113 (FEM-solver pilot) требует аналитическую
+  библиотеку магнитных расчётов как референс для acceptance ±10%
+  (изначальная спека Phase 3 пишет «PyOpenMagnetics», но это conkretное
+  название не критично). Реальные efactory-проекты требуют **боевой
+  магнитный toolkit** для design-задач — Vladimir подчеркнул, что
+  школьная формула `L = N²·μ·A_e/l_e` уместна только для demo, не
+  для production-агента. Кандидаты в Python:
+  - `pyopenmagnetics` 1.3.10 — wheels только cp310-cp313, sdist
+    падает на upstream-баге («Could not fetch additional schema»
+    при quicktype-этапе CMake build).
+  - `pyleecan` — `requires-python <3.11` (даже не close).
+  - `femmt` (LEA Paderborn, FEM toolkit с ONELAB/GetDP/Gmsh
+    под капотом) — `requires-python>=3.10` декларирует, но
+    `scipy~=1.12.0` pin → sdist Fortran build на 3.14.
+  - `magpylib` — pure Python, но не учитывает ferromagnetic core
+    (μ_r >> 1) → трансформатор без сердечника = бесполезно.
+  - `inductance` (dgarnier) — `<3.14`, плюс узкий plasma use case.
+  - Самописная формула — отвергнута Vladimir-ом: «школьная для
+    демо, в реальных проектах нужны сложные магнитные расчёты».
+- **Решение:** **Понизить `requires-python` efactory с >=3.14 до
+  >=3.13.** Python 3.13 — текущий de-facto stable для scientific
+  Python ecosystem; femmt + pyopenmagnetics + scipy 1.12 + numpy
+  1.26 — wheels precompiled, чистая установка через uv. Affects:
+  - `pyproject.toml`: `requires-python`, `tool.ruff.target-version
+    = "py313"`.
+  - `.python-version`: `3.14.5` → `3.13`.
+  - Dockerfile / CLAUDE.md / specs/T110-containerization/spec.md —
+    обновлены упоминания «3.14» → «3.13» (где упоминалась версия
+    языка; uv сам выбирает интерпретатор по requires-python).
+  - `uv.lock` пересобран (51 пакет, никаких version-bump'ов
+    кроме самого Python).
+  - На dev-машине Vladimir-а также — `uv` подхватывает 3.13 через
+    `.python-version` (3.13.13 уже установлен локально), без
+    отдельного шага.
+- **Альтернативы:**
+  - **Оставить 3.14 + изоляция femmt в `pilot.Dockerfile` (py 3.13
+    base) с pre-computed reference inductance.** Отвергли: реальные
+    efactory-проекты (design-задачи трансформаторов в efactory:linux)
+    лишены аналитики — агент жёстко привязан к нашему solver-wrapper
+    без второго мнения. Не отвечает Vladimir's концерну про «сложные
+    расчёты в реальных проектах».
+  - **Оставить 3.14 + самописная формула в integration.** Отвергли:
+    overly simplistic для production-агента (см. контекст выше).
+  - **Подождать пока scientific Python догонит до 3.14** (3-6 месяцев?).
+    Отвергли: блокирует T113 на неопределённый срок; преимущества
+    3.14 (PEP 750 t-strings, free-threaded `--disable-gil`) в нашем
+    коде сейчас не используются — downgrade без потерь.
+  - **Mixed: 3.13 в efactory:linux, 3.14 на dev-машине.** Отвергли:
+    раздвоение dev vs container — лишний source of bugs при тестах,
+    `uv.lock` всё равно один.
+- **Последствия:**
+  - **Зелёный путь к scientific Python ecosystem** — femmt,
+    pyopenmagnetics, scipy/numpy/pandas/matplotlib/pyleecan
+    (если бы поддерживала >=3.11) — все доступны через precompiled
+    wheels.
+  - **Никаких code-changes**: grep по `src/` и `tests/` — никаких
+    3.14-specific features (PEP 750 t-strings, free-threading,
+    PEP 765 `return-in-finally`, PEP 758 `except*` без скобок).
+  - **Pre-push gates на 3.13** — ruff/format/mypy/pytest все
+    зелёные сразу после downgrade.
+  - **Откат к 3.14** — когда femmt + pyopenmagnetics + scipy
+    выпустят wheels для cp314 (вероятно в течение года).
+    Откат — обратное изменение `requires-python` + lock rebuild;
+    проверка остаётся auto через `uv sync`.
+  - **CONCEPT §13** упоминал Python 3.14 — concept frozen,
+    не редактируется; uncoupling в README (current state)
+    при следующем content-update.
+
 ### 2026-05-20 — FreeCAD distribution: AppImage 1.1.1 внутри образа (а не apt)
 
 - **Контекст:** Phase 2 контейнеризации (T112) требует FreeCAD 1.0+

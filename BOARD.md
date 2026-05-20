@@ -61,6 +61,28 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T113** — [2026-05-20, taken into Doing] **FEM-solver: пилот и
+  интеграция.** Phase 3 контейнеризации, absorbs T058 (FEMM
+  bootstrap). Заменяет FEMM (Wine → Linux-native).
+  Pilot: **Elmer FEM** vs **GetDP+Gmsh** на одной фикстуре —
+  OPT 6П14П SE. Критерии: качество vs PyOpenMagnetics, API-удобство
+  для LLM-orchestration, время счёта, размер в образе.
+  Integration после ADR: `ports/outbound/magnetic_field_solver.py`
+  (Protocol), `adapters/outbound/fem_solver/<chosen>/` (adapter),
+  use case `mag_verify_field`.
+  Acceptance:
+  - Pilot: одна фикстура прогнана на обоих solver'ах, заполнена
+    сравнительная таблица в spec, ADR в DECISIONS.md.
+  - Integration: для OPT 6П14П расчётная индуктивность через выбранный
+    solver совпадает с PyOpenMagnetics в пределах ±10%; solver
+    доступен в efactory:linux runtime; integration-test зелёный.
+
+  **Структура (Vladimir clarify 2026-05-20):** один PR с phase-
+  commits на ветке `T113-fem`; pilot в одноразовом `pilot.Dockerfile`;
+  одна фикстура (OPT 6П14П SE) — 50Hz / flyback вынесены в BACKLOG
+  как cross-validation follow-up'ы (заведём после ADR).
+  Spec: `specs/T113-fem-solver/spec.md`. Ветка: `T113-fem`.
+
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
