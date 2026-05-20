@@ -24,7 +24,7 @@
 | Phase | Содержание | Acceptance |
 |---|---|---|
 | Phase 0 (Setup) | Downgrade Python 3.14→3.13 (см. ADR `DECISIONS.md` 2026-05-20). `uv add pyopenmagnetics`. ADR analytical toolkit. Spec (этот документ). T111 BACKLOG-маркер chore. | 4 gates ✅; venv 215 MB. |
-| Phase 1 (Pilot) | `pilot.Dockerfile` (одноразовый, py 3.13 + Elmer + GetDP + Gmsh + PyOpenMagnetics). Геометрия OPT 6П14П SE. Прогон трёх «точек»: PyOpenMagnetics analytical, Elmer FEM, GetDP+Gmsh FEM. Заполнить сравнительную таблицу (§Pilot table). ADR с выбором FEM-solver'а. | Таблица заполнена; ADR в `DECISIONS.md`. |
+| Phase 1 (Pilot) | **Host-side:** manual MAS skeleton OPT 6П14П SE (близко к ШЛ16×16) → `calculate_inductance_from_number_turns_and_gapping` (PyOM analytical, лёгкий путь). Генерация `.geo` из тех же dimensions. **Pilot Dockerfile (heavy run, `--memory=4g`):** (a) `design_magnetics_from_converter("push_pull", ...)` — full advisor optimization, реальная «тяжёлая» задача (stress test memory + времени); (b) Elmer FEM на manual MAS geometry; (c) GetDP+Gmsh FEM на той же geometry. Заполнить сравнительную таблицу (§Pilot table). ADR с выбором FEM-solver'а. | Таблица заполнена; ADR в `DECISIONS.md`; pilot отрабатывает в `--memory=4g` контейнере без OOM. |
 | Phase 2 (Integration) | apt-install выбранного solver'а в `Dockerfile` (base stage, рядом с KiCad / FreeCAD). `src/ports/outbound/magnetic_analytics_port.py` (Protocol для PyOpenMagnetics). `src/ports/outbound/magnetic_field_solver_port.py` (Protocol для FEM-solver'а). Adapter'ы в `src/adapters/outbound/`. Use case `mag_verify_field` в `src/application/`. | OPT 6П14П: analytical inductance совпадает с FEM ±10%; integration test зелёный; solver в efactory:linux runtime. |
 
 ## Pilot fixture: OPT 6П14П SE
@@ -34,22 +34,37 @@ Single-ended output transformer для лампового усилителя н�
 
 - **Primary inductance Lp**: 5–7 H (typical для SE OPT 6П14П).
 - **Turns ratio**: ~5000:8 Ω → N₁/N₂ ≈ 25.
-- **Core**: EI ferrite или silicon-steel laminated (выбираем EI
-  под референсный 6П14П SE — детали в `geometry.json` фикстуры).
+- **Core**: silicon-steel laminated EI — manual MAS skeleton,
+  размеры близки к ШЛ16×16 (стандарт советских OPT под 6П14П SE);
+  ближайший шейп из PyOM каталога подбирается grep'ом по
+  `get_core_shapes()` (family `e`, габариты ~42×21×16 мм).
 - **Operating frequency**: 20 Hz – 20 kHz (audio band; pilot
   считает на 1 kHz как mid-band reference).
+- **Air gap**: распределённый ~0.1 мм (типично для SE OPT для
+  компенсации DC bias класса A).
 
 Геометрия выкладывается в `tests/fixtures/magnetic/opt-6p14p-se/`:
 
 - `geometry.json` — JSON в формате PyOpenMagnetics MAS (Magnetic
-  Application Specification) — core dimensions, winding turns,
-  material, operating point. Использовать `design_magnetics_from_converter()`
-  или вручную составить.
+  Application Specification) — core (shape + material + gapping),
+  coil (turns), operating point. **Составляется вручную** в
+  `scripts/pilot/build_fixture.py` (запускается на хосте; advisor
+  не вызывается — только лёгкий `calculate_*` API).
 - `geometry.geo` — Gmsh-формат для FEM-solver'ов (Elmer / GetDP).
-  Тот же геометрический объект.
-- `expected.json` — analytical inductance из PyOpenMagnetics
-  (recorded в pilot); используется в integration acceptance test
+  Тот же геометрический объект, генерируется из `geometry.json`
+  скриптом `scripts/pilot/mas_to_gmsh.py`.
+- `expected.json` — analytical inductance из PyOM
+  `calculate_inductance_from_number_turns_and_gapping` (записывается
+  при сборке фикстуры); используется в integration acceptance test
   как reference.
+
+**Pilot heavy run (отдельно от фикстуры):** в `pilot.Dockerfile`
+прогоняется полный `design_magnetics_from_converter("push_pull", ...)`
+с audio-band параметрами — это «тяжёлая задача» для stress-test'а
+(memory + время), не источник geometry. Результаты идут в Pilot
+table как информационная колонка («PyOM advisor pick»), но фикстура
+для FEM построена на manual skeleton — иначе advisor каждый раз
+может выбирать разный core.
 
 50 Hz силовой трансформатор и flyback SMPS дроссель — **out of
 scope T113**, вынесены в BACKLOG (cross-validation follow-up'ы,
@@ -60,16 +75,17 @@ scope T113**, вынесены в BACKLOG (cross-validation follow-up'ы,
 Сравнительная таблица для ADR-решения. Заполняется в Phase 1, попадает
 в ADR `2026-MM-DD — Magnetic field verification: choice solver`.
 
-| Критерий | PyOpenMagnetics (analytical) | Elmer FEM | GetDP + Gmsh |
-|---|---|---|---|
-| Inductance Lp (расчётная, H) | _measured_ | _measured_ | _measured_ |
-| Время расчёта (s) | _measured_ | _measured_ | _measured_ |
-| Размер в Docker layer (apt deps, MB) | 11 (wheel) + ~50 deps | _measured_ | _measured_ |
-| API для LLM-orchestration | high (AGENTS.md, MAS-JSON) | средне (CLI + Sif config) | средне (CLI + GetDP .pro) |
-| Mesh quality (для FEM) | n/a | _assessment_ | _assessment_ |
-| Open-source license | MIT | GPL | GPL |
-| Поддержка под Linux + apt | ✅ pip wheel | ✅ `elmerfem-csc` apt | ✅ `getdp` + `gmsh` apt |
-| Community / commits last 6mo | _check_ | _check_ | _check_ |
+| Критерий | PyOM analytical (manual MAS) | PyOM advisor (push_pull, info-only) | Elmer FEM | GetDP + Gmsh |
+|---|---|---|---|---|
+| Inductance Lp (расчётная, H) | _measured_ | _measured_ | _measured_ | _measured_ |
+| Время расчёта (s) | _measured_ | _measured_ (heavy) | _measured_ | _measured_ |
+| Peak RAM (MB, через `/usr/bin/time -v`) | _measured_ | _measured_ | _measured_ | _measured_ |
+| Размер в Docker layer (apt deps, MB) | 11 (wheel) + ~50 deps | same | _measured_ | _measured_ |
+| API для LLM-orchestration | high (AGENTS.md, MAS-JSON) | high (single call) | средне (CLI + Sif config) | средне (CLI + GetDP .pro) |
+| Mesh quality (для FEM) | n/a | n/a | _assessment_ | _assessment_ |
+| Open-source license | MIT | MIT | GPL | GPL |
+| Поддержка под Linux + apt | ✅ pip wheel | same | ✅ `elmerfem-csc` apt | ✅ `getdp` + `gmsh` apt |
+| Community / commits last 6mo | _check_ | same | _check_ | _check_ |
 
 **Decision criteria (в порядке убывания веса):**
 
@@ -119,11 +135,26 @@ src/adapters/outbound/
 
 **Phase 1 (Pilot)** — после прогона:
 
-- `pilot.Dockerfile` собирается, один shot прогоняет 3 solver'а
-  на OPT 6П14П SE.
-- Pilot table в этом spec'е заполнена measured-значениями.
-- ADR в `DECISIONS.md` фиксирует выбор FEM-solver'а.
-- `tests/fixtures/magnetic/opt-6p14p-se/{geometry.json,geometry.geo,expected.json}` существуют.
+- `tests/fixtures/magnetic/opt-6p14p-se/{geometry.json,geometry.geo,expected.json}`
+  существуют. `geometry.json` — manual MAS skeleton (близко к
+  ШЛ16×16), `expected.json` — PyOM analytical Lp на нём; собрано
+  скриптами `scripts/pilot/build_fixture.py` + `mas_to_gmsh.py` на
+  хосте (только лёгкие `calculate_*` API, без advisor).
+- `pilot.Dockerfile` собирается; запуск через `docker run
+  --memory=4g efactory-pilot` прогоняет:
+  - PyOM analytical на manual MAS (sanity-check, должен совпасть
+    с `expected.json`),
+  - PyOM advisor — `design_magnetics_from_converter("push_pull",
+    audio-band, "available cores")` — «тяжёлая» задача,
+    information-only,
+  - Elmer FEM на `geometry.geo`,
+  - GetDP+Gmsh FEM на `geometry.geo`.
+- Pilot table в этом spec'е заполнена measured-значениями
+  (включая peak RAM через `/usr/bin/time -v`).
+- ADR в `DECISIONS.md` фиксирует выбор FEM-solver'а для Phase 2.
+- В контейнере с `--memory=4g` advisor отрабатывает без OOM
+  (если упирается — фиксируем требование к памяти в ADR; на хосте
+  Владимира всё равно advisor не запускается).
 
 **Phase 2 (Integration)** — после реализации:
 
@@ -153,10 +184,12 @@ src/adapters/outbound/
 
 (Заполняется в процессе реализации, finalize в ADR.)
 
-1. **OPT 6П14П SE — точные dimensions?** Из data/models/ есть SPICE-
-   library (`OPT_SE_5K_8.lib`), но нет geometry. Возможно нужно
-   взять референсный production datasheet (Hammond / TANGO / коп.
-   ШЛ16×16) и заморозить в fixture.
+1. ~~OPT 6П14П SE — точные dimensions?~~ **Closed 2026-05-20:**
+   manual MAS skeleton близко к ШЛ16×16, ближайший шейп в PyOM
+   каталоге (family `e`, ~42×21×16 мм). Production datasheet
+   (Hammond / TANGO) не привязываем — для pilot важна solver-
+   агрегация на **одной** geometry, а не её точное соответствие
+   конкретному коммерческому изделию.
 2. **Elmer vs GetDP — какой first-class в integration?** Решение из
    pilot table. В Phase 2 интегрируется **только выбранный**;
    второй — в BACKLOG как cross-check (опциональный extras).
