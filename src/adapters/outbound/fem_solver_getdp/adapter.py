@@ -31,14 +31,19 @@ import asyncio
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 from adapters.outbound.fem_solver_getdp.geometry import (
     ECoreDimensions,
     emit_e_core_geo,
 )
+from adapters.outbound.fem_solver_getdp.material import (
+    DEFAULT_NUM_POINTS,
+    FrohlichBHCurve,
+)
 from adapters.outbound.fem_solver_getdp.pro_template import (
     render_magnetostatic_pro,
+    render_magnetostatic_pro_nonlinear,
 )
 from ports.outbound.magnetic_field_solver import (
     MagneticFieldSolverFailedError,
@@ -52,6 +57,9 @@ if TYPE_CHECKING:
 DEFAULT_MUR_IRON = 8000.0  # Nanoperm-class μ_initial — linear approximation
 DEFAULT_I_REF = 1.0  # reference current 1 A для self-inductance
 
+MaterialModel = Literal['linear', 'nonlinear-frohlich']
+_VALID_MATERIAL_MODELS: tuple[MaterialModel, ...] = get_args(MaterialModel)
+
 
 class GetDpFemSolver:
     """
@@ -60,12 +68,21 @@ class GetDpFemSolver:
     Args:
         pyom_module: загруженный PyOpenMagnetics (из
             `load_pyopenmagnetics()` PyOM adapter) — для
-            `calculate_core_data` чтобы извлечь E-core dimensions.
+            `calculate_core_data` чтобы извлечь E-core dimensions
+            и `get_core_materials()` для Frohlich-Kennelly параметров.
         gmsh_bin: путь к gmsh binary (default — поиск в PATH).
         getdp_bin: путь к getdp binary (default — поиск в PATH).
         mur_iron: linear relative permeability iron region. По умолчанию
-            8000 (Nanoperm-class μ_initial). Per-material lookup —
-            Phase 2D follow-up.
+            8000 (Nanoperm-class μ_initial). Используется только в
+            `material_model='linear'`.
+        material_model: формулировка материала Iron region. `'linear'`
+            (back-compat, T113 baseline) — constant μ_r; `'nonlinear-
+            frohlich'` (T129) — tabulated ν(B) от Frohlich-Kennelly
+            кривой через GetDP `InterpolationLinear` + Picard
+            `IterativeLoop`. (μ_initial, B_sat) читаются из PyOM
+            `get_core_materials()` для `component.core.material_name`.
+        num_bh_points: количество точек в Frohlich BH-таблице
+            (default 16; ≥10 по спеке).
         work_dir_root: корень для временных work_dir (mesh, .pro,
             output). None — fresh `TemporaryDirectory` per call.
 
@@ -78,13 +95,27 @@ class GetDpFemSolver:
         gmsh_bin: str = 'gmsh',
         getdp_bin: str = 'getdp',
         mur_iron: float = DEFAULT_MUR_IRON,
+        material_model: MaterialModel = 'linear',
+        num_bh_points: int = DEFAULT_NUM_POINTS,
         work_dir_root: Path | None = None,
     ) -> None:
+        if material_model not in _VALID_MATERIAL_MODELS:
+            msg = (
+                f'material_model должен быть одним из '
+                f'{_VALID_MATERIAL_MODELS!r}, получено {material_model!r}'
+            )
+            raise ValueError(msg)
         self._pyom = pyom_module
         self._gmsh = gmsh_bin
         self._getdp = getdp_bin
         self._mur_iron = mur_iron
+        self._material_model: MaterialModel = material_model
+        self._num_bh_points = num_bh_points
         self._work_dir_root = work_dir_root
+
+    @property
+    def material_model(self) -> MaterialModel:
+        return self._material_model
 
     async def solve_inductance(self, component: MagneticComponent) -> float:
         """Async wrapper над blocking subprocess pipeline."""
@@ -107,10 +138,9 @@ class GetDpFemSolver:
             geo_path.write_text(emit_e_core_geo(dims))
             # area_window = window_w × window_h (m²); J_density считается в .pro
             pro_path.write_text(
-                render_magnetostatic_pro(
-                    mur_iron=self._mur_iron,
+                self._render_pro(
+                    component=component,
                     n_primary=component.primary_winding.number_turns,
-                    i_ref=DEFAULT_I_REF,
                     area_window=dims.window_w * dims.window_h,
                 ),
             )
@@ -121,6 +151,62 @@ class GetDpFemSolver:
             energy_per_depth = self._parse_energy(energy_path)
             total_energy = energy_per_depth * dims.core_depth
             return 2.0 * total_energy / (DEFAULT_I_REF**2)
+
+    def _render_pro(
+        self,
+        component: MagneticComponent,
+        n_primary: int,
+        area_window: float,
+    ) -> str:
+        """Выбор linear vs nonlinear-Frohlich .pro по `material_model`."""
+        if self._material_model == 'linear':
+            return render_magnetostatic_pro(
+                mur_iron=self._mur_iron,
+                n_primary=n_primary,
+                i_ref=DEFAULT_I_REF,
+                area_window=area_window,
+            )
+        mu_initial, b_sat = self._extract_frohlich_params(
+            component.core.material_name,
+        )
+        curve = FrohlichBHCurve.from_pyom_material(
+            mu_initial=mu_initial,
+            b_sat=b_sat,
+            num_points=self._num_bh_points,
+        )
+        return render_magnetostatic_pro_nonlinear(
+            bh_list_literal=curve.as_getdp_list_literal(),
+            n_primary=n_primary,
+            i_ref=DEFAULT_I_REF,
+            area_window=area_window,
+        )
+
+    def _extract_frohlich_params(self, material_name: str) -> tuple[float, float]:
+        """
+        Read (mu_initial, B_sat) из PyOM `get_core_materials()`.
+
+        PyOM 1.3.10 MAS schema:
+        - `material.permeability.initial` обычно list (varies frequency),
+          но может быть dict в старых данных. Берём первое entry
+          (low-frequency, temperature=25°C по convention).
+        - `material.saturation` обычно list (varies temperature) с
+          `magneticFluxDensity` ключом; может быть dict. Берём первое.
+
+        Raises:
+            LookupError: если material не найден, либо required поля
+                пусты/отсутствуют.
+
+        """
+        for mat in self._pyom.get_core_materials():
+            if mat.get('name') == material_name:
+                return (
+                    _read_initial_permeability(mat, material_name),
+                    _read_saturation_flux_density(mat, material_name),
+                )
+        msg = (
+            f'material {material_name!r} не найден в PyOM catalog (get_core_materials)'
+        )
+        raise LookupError(msg)
 
     def _compute_core_data(self, component: MagneticComponent) -> dict[str, Any]:
         core_fd = {
@@ -238,3 +324,52 @@ class GetDpFemSolver:
                     continue
         msg = f'energy_per_depth.txt не содержит float values: {text!r}'
         raise MagneticFieldSolverFailedError(msg)
+
+
+def _first_entry(
+    raw: object,
+    field_path: str,
+    material_name: str,
+) -> dict[str, Any]:
+    """
+    Извлечь первое (или единственное) entry из PyOM list/dict-поля.
+
+    LookupError — поле пусто или отсутствует.
+    TypeError    — поле есть, но shape не list/dict (malformed material data).
+    """
+    if isinstance(raw, list):
+        if not raw:
+            msg = f'material {material_name!r}: {field_path} список пуст'
+            raise LookupError(msg)
+        return raw[0]
+    if isinstance(raw, dict):
+        return raw
+    if raw is None:
+        msg = f'material {material_name!r}: {field_path} отсутствует'
+        raise LookupError(msg)
+    msg = (
+        f'material {material_name!r}: {field_path} имеет неожиданный shape '
+        f'({type(raw).__name__}); ожидался list или dict'
+    )
+    raise TypeError(msg)
+
+
+def _read_initial_permeability(mat: dict[str, Any], material_name: str) -> float:
+    """Pull `permeability.initial[0].value` (or scalar dict fallback)."""
+    perm = mat.get('permeability') or {}
+    entry = _first_entry(perm.get('initial'), 'permeability.initial', material_name)
+    value = entry.get('value')
+    if value is None:
+        msg = f'material {material_name!r}: permeability.initial[0].value is null'
+        raise LookupError(msg)
+    return float(value)
+
+
+def _read_saturation_flux_density(mat: dict[str, Any], material_name: str) -> float:
+    """Pull `saturation[0].magneticFluxDensity` (or scalar dict fallback)."""
+    entry = _first_entry(mat.get('saturation'), 'saturation', material_name)
+    b_sat = entry.get('magneticFluxDensity')
+    if b_sat is None:
+        msg = f'material {material_name!r}: saturation[0].magneticFluxDensity is null'
+        raise LookupError(msg)
+    return float(b_sat)
