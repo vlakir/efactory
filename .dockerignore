@@ -17,6 +17,11 @@ build/
 # Test fixture outputs (генерируются прогоном, не нужны в образе)
 tests/fixtures/output/
 
+# Pilot artifacts: pilot.Dockerfile mount-target `/work` хост-сторона.
+# Создаётся под root в контейнере, не должно попадать в build context
+# (build падает с EACCES даже на stat).
+pilot-out/
+
 # Git история — внутри образа не нужна (hatch_build T095 видит .git
 # отсутствие и silently skips pre-push hook auto-install).
 .git/

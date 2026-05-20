@@ -25,6 +25,137 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-05-20 — Magnetic analytical toolkit: PyOpenMagnetics (а не femmt / самописная формула)
+
+- **Контекст:** T113 требует analytical reference для magnetic
+  design (трансформаторы, дроссели, SMPS-компоненты) — как для
+  acceptance ±10% pilot/integration теста, так и для использования
+  runtime-агентом в реальных проектах (Vladimir 2026-05-20: «школьная
+  формула — упрощение только для демо, в реальных проектах нужны
+  сложные магнитные расчёты»). Кандидаты после downgrade Python 3.14
+  → 3.13 (см. соседний ADR):
+  - **PyOpenMagnetics 1.3.10** — C++ engine MKF (Magnetics Knowledge
+    Foundation) с Python bindings, comprehensive database (1301+
+    core shapes, materials, wire standards, bobbins, insulation),
+    high-level API (`design_magnetics_from_converter()` —
+    single-call для всего transformer'а), AGENTS.md специально
+    для AI-агентов с инструкцией «NEVER use manual calculations».
+    Pure-analytic (без FEM internally) — учитывает temperature-
+    dependent material properties, geometrical fringing, real
+    commercial core constraints.
+  - **femmt @ master HEAD** (LEA Paderborn FEM toolkit) — поставился
+    бы, но тянет torch + nvidia-cu12 + triton + PyQt5 + sympy +
+    plotly + mag-net-hub (ML-based core-loss prediction). Размер:
+    7.6 GB venv → +5 GB в Docker layer (efactory:linux вырос бы
+    до ~13 GB).
+  - **Самописная extended formula** (μ_r, A_e, l_e + leakage
+    эмпирически + window utilization) — ~30 строк кода, но
+    Vladimir прямо сказал «нет» textbook formulas в production.
+  - **magpylib** — pure-Python, но не моделирует ferromagnetic
+    core (μ_r >> 1) → не подходит для трансформаторов.
+- **Решение:** **PyOpenMagnetics 1.3.10** как primary analytical
+  engine. Wheel cp313_x86_64 precompiled (11 MB), `.venv`
+  становится 215 MB вместо 7.6 GB. В efactory:linux Docker-layer:
+  +~50 MB.
+  - **Pilot (T113)**: PyOpenMagnetics analytical vs Elmer FEM
+    vs GetDP+Gmsh FEM на одной фикстуре (OPT 6П14П SE) —
+    3-точечное сравнение для ADR-выбора FEM-solver'а.
+  - **Integration (T113)**: два port'а в `src/ports/outbound/`:
+    `magnetic_analytics_port.py` → PyOpenMagnetics adapter;
+    `magnetic_field_solver_port.py` → выбранный FEM solver
+    adapter. Агент через MCP вызывает любой (analytical fast vs
+    FEM accurate, по задаче).
+- **Альтернативы (см. контекст):** femmt отвергнут по размеру;
+  самописная formula — по explicit указанию Vladimir-а; magpylib —
+  по физике (нет ferromagnetic core).
+- **Последствия:**
+  - **LLM-friendly API**: PyOpenMagnetics поставляется с
+    AGENTS.md (single source of truth для AI-агента) — наш
+    Claude Code frontend может ссылаться на этот документ
+    при design-задачах.
+  - **Dual port architecture**: analytical (быстро, для design
+    sweep'ов) + FEM (точно, для validation). Логичное
+    разделение по acceptance T113.
+  - **`design_magnetics_from_converter()`** — high-level
+    функция, агент one-shot спроектирует трансформатор по
+    параметрам конвертера. Это удобнее, чем строить magnetic
+    component вручную через MAS JSON.
+  - **Размер**: PyOpenMagnetics +11 MB wheel — ничтожно vs
+    femmt +5 GB.
+  - **Опциональное расширение**: если в будущем нужен ML
+    core-loss prediction (mag-net-hub) — поставим как
+    отдельный optional dependency, не в main runtime.
+
+### 2026-05-20 — Python проекта понижен 3.14 → 3.13 (scientific ecosystem)
+
+- **Контекст:** T113 (FEM-solver pilot) требует аналитическую
+  библиотеку магнитных расчётов как референс для acceptance ±10%
+  (изначальная спека Phase 3 пишет «PyOpenMagnetics», но это conkretное
+  название не критично). Реальные efactory-проекты требуют **боевой
+  магнитный toolkit** для design-задач — Vladimir подчеркнул, что
+  школьная формула `L = N²·μ·A_e/l_e` уместна только для demo, не
+  для production-агента. Кандидаты в Python:
+  - `pyopenmagnetics` 1.3.10 — wheels только cp310-cp313, sdist
+    падает на upstream-баге («Could not fetch additional schema»
+    при quicktype-этапе CMake build).
+  - `pyleecan` — `requires-python <3.11` (даже не close).
+  - `femmt` (LEA Paderborn, FEM toolkit с ONELAB/GetDP/Gmsh
+    под капотом) — `requires-python>=3.10` декларирует, но
+    `scipy~=1.12.0` pin → sdist Fortran build на 3.14.
+  - `magpylib` — pure Python, но не учитывает ferromagnetic core
+    (μ_r >> 1) → трансформатор без сердечника = бесполезно.
+  - `inductance` (dgarnier) — `<3.14`, плюс узкий plasma use case.
+  - Самописная формула — отвергнута Vladimir-ом: «школьная для
+    демо, в реальных проектах нужны сложные магнитные расчёты».
+- **Решение:** **Понизить `requires-python` efactory с >=3.14 до
+  >=3.13.** Python 3.13 — текущий de-facto stable для scientific
+  Python ecosystem; femmt + pyopenmagnetics + scipy 1.12 + numpy
+  1.26 — wheels precompiled, чистая установка через uv. Affects:
+  - `pyproject.toml`: `requires-python`, `tool.ruff.target-version
+    = "py313"`.
+  - `.python-version`: `3.14.5` → `3.13`.
+  - Dockerfile / CLAUDE.md / specs/T110-containerization/spec.md —
+    обновлены упоминания «3.14» → «3.13» (где упоминалась версия
+    языка; uv сам выбирает интерпретатор по requires-python).
+  - `uv.lock` пересобран (51 пакет, никаких version-bump'ов
+    кроме самого Python).
+  - На dev-машине Vladimir-а также — `uv` подхватывает 3.13 через
+    `.python-version` (3.13.13 уже установлен локально), без
+    отдельного шага.
+- **Альтернативы:**
+  - **Оставить 3.14 + изоляция femmt в `pilot.Dockerfile` (py 3.13
+    base) с pre-computed reference inductance.** Отвергли: реальные
+    efactory-проекты (design-задачи трансформаторов в efactory:linux)
+    лишены аналитики — агент жёстко привязан к нашему solver-wrapper
+    без второго мнения. Не отвечает Vladimir's концерну про «сложные
+    расчёты в реальных проектах».
+  - **Оставить 3.14 + самописная формула в integration.** Отвергли:
+    overly simplistic для production-агента (см. контекст выше).
+  - **Подождать пока scientific Python догонит до 3.14** (3-6 месяцев?).
+    Отвергли: блокирует T113 на неопределённый срок; преимущества
+    3.14 (PEP 750 t-strings, free-threaded `--disable-gil`) в нашем
+    коде сейчас не используются — downgrade без потерь.
+  - **Mixed: 3.13 в efactory:linux, 3.14 на dev-машине.** Отвергли:
+    раздвоение dev vs container — лишний source of bugs при тестах,
+    `uv.lock` всё равно один.
+- **Последствия:**
+  - **Зелёный путь к scientific Python ecosystem** — femmt,
+    pyopenmagnetics, scipy/numpy/pandas/matplotlib/pyleecan
+    (если бы поддерживала >=3.11) — все доступны через precompiled
+    wheels.
+  - **Никаких code-changes**: grep по `src/` и `tests/` — никаких
+    3.14-specific features (PEP 750 t-strings, free-threading,
+    PEP 765 `return-in-finally`, PEP 758 `except*` без скобок).
+  - **Pre-push gates на 3.13** — ruff/format/mypy/pytest все
+    зелёные сразу после downgrade.
+  - **Откат к 3.14** — когда femmt + pyopenmagnetics + scipy
+    выпустят wheels для cp314 (вероятно в течение года).
+    Откат — обратное изменение `requires-python` + lock rebuild;
+    проверка остаётся auto через `uv sync`.
+  - **CONCEPT §13** упоминал Python 3.14 — concept frozen,
+    не редактируется; uncoupling в README (current state)
+    при следующем content-update.
+
 ### 2026-05-20 — FreeCAD distribution: AppImage 1.1.1 внутри образа (а не apt)
 
 - **Контекст:** Phase 2 контейнеризации (T112) требует FreeCAD 1.0+
@@ -94,6 +225,103 @@ ADR-Lite: компактный лог архитектурных решений 
   - **Прецедент**: при появлении в spec'ах будущих фаз тулов с
     отсутствующим apt-пакетом — AppImage внутри образа допустим
     как fallback с явным ADR.
+
+### 2026-05-20 — Magnetic field verification: GetDP+Gmsh выбран (Elmer — cross-validation в BACKLOG)
+
+- **Контекст:** ADR от 2026-05-19 предположительно (без measured data)
+  поставил Elmer FEM как primary, GetDP как fallback. T113 Phase 1
+  pilot (Stages A-E, 2026-05-20) дал реальные measured данные на
+  фикстуре OPT 6П14П SE (~12244 quadratic triangles, linear μ_r=8000
+  Nanoperm на iron, ±Jz coil в 2D-planar). Pilot table заполнена в
+  `specs/T113-fem-solver/spec.md`. Ключевые наблюдения:
+  - **Elmer и GetDP сошлись на одной mesh с одинаковой физикой до
+    printed precision: оба Lp = 23.7816 H, 0.00% cross-check.**
+    Расхождение FEM ↔ PyOM analytical ZHANG (6.96 H, 242% diff)
+    воспроизводится одинаково в обоих solver'ах → это physics gap
+    (operating-point-dependent μ_eff в PyOM vs constant μ_r=8000 в
+    linear FEM-формулировке), не bug одного из solver'ов.
+  - **GetDP**: 0.86 s, peak RSS 119 MB, ~45 MB apt-deps (`getdp` +
+    `libpetsc` + `libslepc` + `libgmsh`), штатно в Ubuntu 24.04
+    noble universe (без PPA), один subprocess (`getdp <.pro> -msh
+    <.msh> -solve Mag2D`).
+  - **Elmer**: 3.14 s (0.04 ElmerGrid + 3.10 ElmerSolver), peak RSS
+    47 MB, ~115 MB apt-deps (`elmerfem-csc` 100 MB + libmumps/
+    libhypre 15 MB), требует `ppa:elmer-csc-ubuntu/elmer-csc-ppa`
+    (нет в noble универсе), два subprocess'а (ElmerGrid + ElmerSolver),
+    .sif с известными квирками (см. auto-memory
+    `feedback_elmer_savescalars_quirks.md`: SaveScalars требует
+    `body int` + `Mask Name` + Active Solvers — за 4 итерации
+    debug'а на Stage D вылечилось).
+- **Решение:** **GetDP+Gmsh — first-class FEM-solver в Phase 2
+  integration.** Elmer кода Stage D в `scripts/pilot/elmer/
+  magnetostatic.sif` + `stage_elmer` в `run_pilot.py` сохраняется
+  на ветке T113-fem (pilot-only); в `Dockerfile` базовом образе
+  Phase 2 ставится только GetDP+Gmsh, Elmer apt-стек убирается.
+  Cross-validation Elmer ↔ GetDP — **BACKLOG T127** (опциональная
+  верификация на сложных случаях, когда GetDP результат вызывает
+  сомнение).
+- **Альтернативы:**
+  - **Elmer primary, GetDP fallback** (как было в pre-pilot ADR
+    2026-05-19) — отвергли:
+    - **+70 MB apt-deps** в базовом образе efactory:linux (115 vs
+      45) на одинаковой физике-pilot'е без выигрыша в точности.
+    - **+1 subprocess в LLM-orchestration pipeline** (ElmerGrid
+      перед каждым ElmerSolver) — overhead и лишний failure
+      mode для агента.
+    - **PPA dependency** — `elmerfem-csc` не в стандартном noble
+      universe, requires `software-properties-common` +
+      `add-apt-repository` etc. в Dockerfile (technical debt).
+    - **.sif квирки** — выше overhead на support будущих use cases
+      по сравнению с .pro синтаксисом GetDP.
+    - Преимущество Elmer в peak RSS (47 vs 119 MB) — в efactory
+      runtime (один FEM call за раз, контейнер 4 GB) не блокирующее.
+  - **Оба first-class** (двойной adapter, GetDP+Elmer) — отвергли:
+    cross-validation полезен, но **first-class дуплексность
+    усложняет API** (`mag_verify_field` теперь возвращает два
+    результата, агент решает какой trust'ить — а cross-check для
+    pilot уже показал, что они идентичны).
+  - **Только PyOpenMagnetics analytical (skip FEM)** — отвергли по
+    исходной цели T113: «полноценный magnetic toolkit ... FEM для
+    точного расчёта с учётом 3D-геометрии, leakage, fringing».
+    Analytical (reluctance circuit model) — недостаточно для
+    leakage/fringing-чувствительных задач (planar transformers,
+    LCC compensation networks, AGC дросселей).
+  - **Подождать FEMM Linux-port** — нет таких планов в upstream
+    (отвергнуто ещё в ADR 2026-05-19).
+- **Последствия:**
+  - **ADR 2026-05-19 заменён** в части primary-выбора (помечен
+    «[Заменено решением от 2026-05-20 ниже]» в заголовке).
+    Linux-native + Elmer/GetDP shortlist остаётся в силе; FEMM/Wine
+    остаётся отвергнутым; PyOpenMagnetics как analytical core
+    остаётся.
+  - **Phase 2 Dockerfile**: `apt install getdp gmsh` рядом с
+    KiCad / FreeCAD / ngspice. Elmer apt-deps **не ставятся** в
+    `efactory:linux`. Прирост размера базового образа: ~45 MB
+    (с current 6.65 GB → ~6.70 GB, под 7 GB threshold из spec).
+  - **Phase 2 adapters**: `src/adapters/outbound/fem_solver_getdp/
+    adapter.py` (subprocess wrapper) — реализуется в Phase 2.
+    `src/ports/outbound/magnetic_field_solver_port.py` остаётся
+    abstract Protocol; cross-validation T127 (если/когда заведём)
+    добавит `fem_solver_elmer/adapter.py` за тот же port.
+  - **Stage D Elmer infrastructure preserved**: `scripts/pilot/elmer/
+    magnetostatic.sif` + `stage_elmer()` в `scripts/pilot/run_pilot.py`
+    остаются в репо как proof-of-cross-check + готовый базис для
+    BACKLOG T127. Эти файлы — pilot-only, не runtime efactory.
+  - **BACKLOG**:
+    - **T127** — Power transformer 50 Hz fixture + cross-validation
+      GetDP ↔ Elmer (на linear физике; если разойдутся — flag для
+      review).
+    - **T128** — Flyback SMPS choke fixture + nonlinear B-H curve
+      в GetDP (`nu[] = NLF[...]{H}` constraint); сравнить с
+      PyOM analytical (это уберёт 242% gap, см. observation).
+    - **T<NEW>** — `mag_verify_field` use case API (как именно
+      агент вызывает FEM: MCP-tool? direct Python? Domain
+      command?) — уточняется при реализации Phase 2 после
+      chat-client (T012-T014).
+  - **Performance budget Phase 2**: один `mag_verify_field` call в
+    efactory pipeline = ~1 сек FEM solve + ~0.5 сек overhead
+    (mesh + adapter glue). LLM-агент может делать sweep'ы из
+    десятков сценариев без значимого overhead.
 
 ### 2026-05-19 — Distribution: Linux Docker image с полным стеком (включая GUI), кроссплатформенность отложена в отдельную фазу
 
@@ -186,7 +414,7 @@ ADR-Lite: компактный лог архитектурных решений 
     T110-T115 (см. BACKLOG.md). После Phase 0.9 все
     дальнейшие фазы исполняются внутри контейнера.
 
-### 2026-05-19 — Magnetic field verification: Linux-native FEM-solver (Elmer FEM primary, GetDP+Gmsh fallback), FEMM как legacy
+### 2026-05-19 — Magnetic field verification: Linux-native FEM-solver (Elmer FEM primary, GetDP+Gmsh fallback), FEMM как legacy [Заменено решением от 2026-05-20 ниже]
 
 - **Контекст:** ADR от 2026-05-15 фиксировал **FEMM + pyFEMM**
   как 2D-FEA для верификации магнитного поля трансформаторов и

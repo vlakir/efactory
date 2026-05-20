@@ -42,7 +42,7 @@ workflow.
 - Как радиолюбитель / инженер РЭА, я хочу **поставить efactory одной
   командой `docker pull` + `./efactory-up`** и сразу получить работающее
   окружение, потому что я не хочу собирать KiCad 10 + FreeCAD 1.0 +
-  ngspice + FEM-solver + Python 3.14 + uv-stack из исходников или
+  ngspice + FEM-solver + Python 3.13 + uv-stack из исходников или
   жонглировать пятью apt-репозиториями.
 - Как пользователь, я хочу **открывать схемы и платы в нативно
   выглядящем KiCad GUI**, который запускается из контейнера, но
@@ -83,7 +83,7 @@ workflow.
   build с финальным stage на slim variant).
 - ДОЛЖЕН ставить **KiCad 10 из официального KiCad apt-репозитория**
   (`ppa:kicad/kicad-10.0` или его dpkg-эквивалент в Ubuntu).
-- ДОЛЖЕН ставить **Python 3.14 через uv** в `/usr/local/` (не из
+- ДОЛЖЕН ставить **Python 3.13 через uv** в `/usr/local/` (не из
   apt — мы хотим контроль над минорной версией и venv-настройку).
 - ДОЛЖЕН ставить **ngspice**, **FreeCAD 1.0+** (с Sheet Metal
   workbench как addon), **Linux-native FEM-solver** (выбор по T113 —
@@ -832,8 +832,8 @@ guard'ом). **Проверить:** в Phase 0 убедиться, что guard
 срабатывает корректно, build не падает. Также проверить, что
 `.git/` в `.dockerignore` (мы не хотим тянуть всю историю в образ).
 
-**W5. KiCad 10 + uv 0.5+ + Python 3.14 совместимость.** uv 0.5+
-поддерживает Python 3.14, но эти версии всё ещё свежие (Python 3.14
+**W5. KiCad 10 + uv 0.5+ + Python 3.13 совместимость.** uv 0.5+
+поддерживает Python 3.13, но эти версии всё ещё свежие (Python 3.13
 вышел 2025-10). Возможны мелкие edge-cases (pip-resolve времени,
 wheel availability для каких-то наших зависимостей). **Митигация:**
 если в Phase 0 `uv sync` падает на каком-то пакете — pin'нем версию
@@ -940,7 +940,7 @@ vars table.
 
 Warning'ов (🟡) — 5, преимущественно про graphics passthrough и
 совместимость стека (Wayland, KiCad multi-path, Claude install,
-pre-commit hook в Docker, Python 3.14 wheel availability). Все
+pre-commit hook в Docker, Python 3.13 wheel availability). Все
 имеют простые митигации, решаются по ходу в соответствующих
 phases.
 

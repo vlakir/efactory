@@ -47,7 +47,11 @@
 <!-- Языки, фреймворки, ключевые библиотеки, целевая платформа. -->
 
 **Базовый стек шаблона (для Python-проектов):**
-- Python 3.14+ (`requires-python` в `pyproject.toml`).
+- Python 3.13+ (`requires-python` в `pyproject.toml`). 3.14 рассматривался
+  как первичная версия, но отвергнут 2026-05-20 (ADR в `DECISIONS.md`) —
+  scientific Python ecosystem (femmt, pyopenmagnetics, scipy 1.12, ...)
+  пока не догнал до 3.14: wheel'ов нет, sdist падает на upstream-багах.
+  Возврат к 3.14 — после стабилизации scientific stack.
 - Менеджер зависимостей и окружений: **`uv`** (выбран
   при `dreamteam init` через prompt `package_manager`; альтернативы:
   `uv` / `poetry` / `pdm` / `hatch` / `pip`).
