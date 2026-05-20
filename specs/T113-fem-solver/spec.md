@@ -72,20 +72,51 @@ scope T113**, вынесены в BACKLOG (cross-validation follow-up'ы,
 
 ## Pilot table
 
-Сравнительная таблица для ADR-решения. Заполняется в Phase 1, попадает
-в ADR `2026-MM-DD — Magnetic field verification: choice solver`.
+Сравнительная таблица для ADR-решения. Заполнена в Phase 1 (Stages A-E,
+2026-05-20), попала в ADR `2026-05-20 — Magnetic field verification:
+GetDP+Gmsh выбран (Elmer — cross-validation в BACKLOG)` в
+`DECISIONS.md`.
 
-| Критерий | PyOM analytical (manual MAS) | PyOM advisor (push_pull, info-only) | Elmer FEM | GetDP + Gmsh |
+| Критерий | PyOM analytical (manual MAS) | PyOM advisor (flyback¹, info-only) | Elmer FEM | GetDP + Gmsh |
 |---|---|---|---|---|
-| Inductance Lp (расчётная, H) | _measured_ | _measured_ | _measured_ | _measured_ |
-| Время расчёта (s) | _measured_ | _measured_ (heavy) | _measured_ | _measured_ |
-| Peak RAM (MB, через `/usr/bin/time -v`) | _measured_ | _measured_ | _measured_ | _measured_ |
-| Размер в Docker layer (apt deps, MB) | 11 (wheel) + ~50 deps | same | _measured_ | _measured_ |
-| API для LLM-orchestration | high (AGENTS.md, MAS-JSON) | high (single call) | средне (CLI + Sif config) | средне (CLI + GetDP .pro) |
-| Mesh quality (для FEM) | n/a | n/a | _assessment_ | _assessment_ |
+| Inductance Lp (расчётная, H) | 6.96 (ZHANG)² | 6.35e-3 (nominal magnetizing Lp на flyback design) | 23.78 | 23.78 |
+| Время расчёта (s) | 0.12 | 45.3 (heavy) | 0.04 (ElmerGrid) + 3.10 (solve) = 3.14 | 0.86 |
+| Peak RAM (MB, через `/usr/bin/time -v`) | 88 | 1067 | 47 | 119 |
+| Размер в Docker layer (apt deps, MB) | 11 (wheel) + ~50 deps | same | ~115 (`elmerfem-csc` 100 + `libmumps`/`libhypre` deps 15) | ~45 (`getdp` 5 + `libpetsc` 19 + `libslepc` 3 + `libgmsh` 18) |
+| API для LLM-orchestration | high (AGENTS.md, MAS-JSON) | high (single call) | среднее (CLI: ElmerGrid + ElmerSolver — два subprocess'а; .sif с квирками: SaveScalars `body int` + `Mask Name`, обязательность Active Solvers, см. auto-memory `feedback_elmer_savescalars_quirks.md`) | высокое (CLI: один subprocess `getdp <.pro> -msh <.msh> -solve <ResName>`; .pro более прямолинеен) |
+| Mesh quality (для FEM) | n/a | n/a | использует ту же `geometry.msh` через ElmerGrid (Gmsh msh22 → mesh.{header,nodes,elements,boundary}); качество идентично GetDP | reads `geometry.msh` напрямую; 12244 quadratic triangles, mesh-converged (B+C: 5334→12244 элементов: 23.71→23.78 H) |
 | Open-source license | MIT | MIT | GPL | GPL |
-| Поддержка под Linux + apt | ✅ pip wheel | same | ✅ `elmerfem-csc` apt | ✅ `getdp` + `gmsh` apt |
-| Community / commits last 6mo | _check_ | same | _check_ | _check_ |
+| Поддержка под Linux + apt | ✅ pip wheel (cp313 x86_64) | same | ✅ `elmerfem-csc` (Elmer 26.2, через `ppa:elmer-csc-ubuntu/elmer-csc-ppa` — в noble universe нет) | ✅ `getdp` (3.2.0) + `gmsh` (4.12.1) в noble universe штатно |
+| Community / commits last 6mo | active (1.3.10 May 2026) | same | github.com/ElmerCSC/elmerfem: 1575★, last push 2026-05-19, **330 commits last 6mo** (очень активный) | gitlab.onelab.info/getdp: последний stable release 3.5.0 (May 2022), но active snapshots, copyright 2026 (поддерживается, но slower release cadence) |
+
+¹ Spec изначально просит `push_pull`, но PyOM 1.3.10 advisor возвращает
+`{"data": []}` (нет подходящих cores) на типичных push_pull параметрах
+(50W/10W telecom 36–72V → 5V). Pilot stress-test реализован на
+canonical AGENTS.md §6.1 flyback (220V→12V/2A 100kHz 24W) — цель
+(advisor под нагрузкой, измерение времени+памяти) сохранена. См.
+auto-memory `feedback_pyom_advisor_quirks.md`.
+
+² PyOM analytical перебирает 5 reluctance моделей (ZHANG/MUEHLETHALER/
+BALAKRISHNAN/STENGLEIN/EFFECTIVE_AREA), Lp в диапазоне 6.65–7.02 H.
+В таблице — ZHANG (default).
+
+**Главный observation Phase 1:** Elmer и GetDP на одной mesh с
+идентичной физикой (linear μ_r=8000, ±Jz coil topology, Dirichlet
+A=0 на infinity boundary) сошлись **до printed precision: оба 23.78 H,
+0.00% cross-check**. Расхождение FEM ↔ PyOM analytical (242%) —
+воспроизводится одинаково в обоих solver'ах → известный physics
+model gap (operating-point-dependent μ_eff в PyOM vs constant
+μ_r=8000 в линейной FEM-формулировке), не bug в одном из solver'ов.
+В Phase 2 эта разница ликвидируется добавлением nonlinear B-H curve
+material (Elmer/GetDP оба supports) либо переходом на operating-point
+μ_eff в FEM-фазе.
+
+**Memory note:** PyOM advisor с `"available cores"` (~1301 shapes)
+требует > 6 GB peak RSS на нашей host'е (6.2 GB available) → OOM-kill
+в `--memory=4g` и `--memory=6g` контейнерах. С `"standard cores"`
+(~1250 magnetics после pruning) укладывается в 1067 MB / 4g → OK.
+Pilot использует "standard cores" (рекомендация для Phase 2 runtime
+agent — same, либо документировать большое требование к памяти).
 
 **Decision criteria (в порядке убывания веса):**
 
@@ -94,6 +125,26 @@ scope T113**, вынесены в BACKLOG (cross-validation follow-up'ы,
 3. API-удобство — насколько просто вызвать solver subprocess'ом
    с JSON-input / file-input.
 4. Поддержка модели materials / non-linear core.
+
+**Assessment по критериям:**
+
+1. **Близость к analytical**: оба FEM **одинаково расходятся** на 242%
+   (это physics gap, см. observation выше) → критерий не разделяет
+   solvers. *Tie.*
+2. **Docker layer**: GetDP ≈ 45 MB, Elmer ≈ 115 MB — оба под 250 MB
+   threshold, но **GetDP в 2.5× меньше** (плюс уже в noble universe,
+   не нужен PPA). *GetDP.*
+3. **API**: GetDP — один subprocess + один .pro файл, прямолинейный
+   синтаксис weak-form. Elmer — два subprocess'а (ElmerGrid + ElmerSolver),
+   .sif с известными квирками (см. таблицу). *GetDP.*
+4. **Material model**: оба поддерживают nonlinear B-H (Elmer: `Material
+   { H-B Curve = ... }`; GetDP: `nu[] = NLF[Material]{H}`). Elmer имеет
+   больше built-in модулей (eddy currents, JouleHeating) для будущих
+   расширений; GetDP — низкоуровневый DSL, всё руками. *Elmer slight
+   edge, но не блокирующее для T113 use case (magnetostatic).*
+
+→ **GetDP** выигрывает по 2 из 4 критериев (включая высший #2 по весу
+после tied #1), Elmer — по 1 (низшему #4). Decision в ADR.
 
 ## Integration architecture
 

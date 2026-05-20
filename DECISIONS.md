@@ -226,6 +226,103 @@ ADR-Lite: компактный лог архитектурных решений 
     отсутствующим apt-пакетом — AppImage внутри образа допустим
     как fallback с явным ADR.
 
+### 2026-05-20 — Magnetic field verification: GetDP+Gmsh выбран (Elmer — cross-validation в BACKLOG)
+
+- **Контекст:** ADR от 2026-05-19 предположительно (без measured data)
+  поставил Elmer FEM как primary, GetDP как fallback. T113 Phase 1
+  pilot (Stages A-E, 2026-05-20) дал реальные measured данные на
+  фикстуре OPT 6П14П SE (~12244 quadratic triangles, linear μ_r=8000
+  Nanoperm на iron, ±Jz coil в 2D-planar). Pilot table заполнена в
+  `specs/T113-fem-solver/spec.md`. Ключевые наблюдения:
+  - **Elmer и GetDP сошлись на одной mesh с одинаковой физикой до
+    printed precision: оба Lp = 23.7816 H, 0.00% cross-check.**
+    Расхождение FEM ↔ PyOM analytical ZHANG (6.96 H, 242% diff)
+    воспроизводится одинаково в обоих solver'ах → это physics gap
+    (operating-point-dependent μ_eff в PyOM vs constant μ_r=8000 в
+    linear FEM-формулировке), не bug одного из solver'ов.
+  - **GetDP**: 0.86 s, peak RSS 119 MB, ~45 MB apt-deps (`getdp` +
+    `libpetsc` + `libslepc` + `libgmsh`), штатно в Ubuntu 24.04
+    noble universe (без PPA), один subprocess (`getdp <.pro> -msh
+    <.msh> -solve Mag2D`).
+  - **Elmer**: 3.14 s (0.04 ElmerGrid + 3.10 ElmerSolver), peak RSS
+    47 MB, ~115 MB apt-deps (`elmerfem-csc` 100 MB + libmumps/
+    libhypre 15 MB), требует `ppa:elmer-csc-ubuntu/elmer-csc-ppa`
+    (нет в noble универсе), два subprocess'а (ElmerGrid + ElmerSolver),
+    .sif с известными квирками (см. auto-memory
+    `feedback_elmer_savescalars_quirks.md`: SaveScalars требует
+    `body int` + `Mask Name` + Active Solvers — за 4 итерации
+    debug'а на Stage D вылечилось).
+- **Решение:** **GetDP+Gmsh — first-class FEM-solver в Phase 2
+  integration.** Elmer кода Stage D в `scripts/pilot/elmer/
+  magnetostatic.sif` + `stage_elmer` в `run_pilot.py` сохраняется
+  на ветке T113-fem (pilot-only); в `Dockerfile` базовом образе
+  Phase 2 ставится только GetDP+Gmsh, Elmer apt-стек убирается.
+  Cross-validation Elmer ↔ GetDP — **BACKLOG T127** (опциональная
+  верификация на сложных случаях, когда GetDP результат вызывает
+  сомнение).
+- **Альтернативы:**
+  - **Elmer primary, GetDP fallback** (как было в pre-pilot ADR
+    2026-05-19) — отвергли:
+    - **+70 MB apt-deps** в базовом образе efactory:linux (115 vs
+      45) на одинаковой физике-pilot'е без выигрыша в точности.
+    - **+1 subprocess в LLM-orchestration pipeline** (ElmerGrid
+      перед каждым ElmerSolver) — overhead и лишний failure
+      mode для агента.
+    - **PPA dependency** — `elmerfem-csc` не в стандартном noble
+      universe, requires `software-properties-common` +
+      `add-apt-repository` etc. в Dockerfile (technical debt).
+    - **.sif квирки** — выше overhead на support будущих use cases
+      по сравнению с .pro синтаксисом GetDP.
+    - Преимущество Elmer в peak RSS (47 vs 119 MB) — в efactory
+      runtime (один FEM call за раз, контейнер 4 GB) не блокирующее.
+  - **Оба first-class** (двойной adapter, GetDP+Elmer) — отвергли:
+    cross-validation полезен, но **first-class дуплексность
+    усложняет API** (`mag_verify_field` теперь возвращает два
+    результата, агент решает какой trust'ить — а cross-check для
+    pilot уже показал, что они идентичны).
+  - **Только PyOpenMagnetics analytical (skip FEM)** — отвергли по
+    исходной цели T113: «полноценный magnetic toolkit ... FEM для
+    точного расчёта с учётом 3D-геометрии, leakage, fringing».
+    Analytical (reluctance circuit model) — недостаточно для
+    leakage/fringing-чувствительных задач (planar transformers,
+    LCC compensation networks, AGC дросселей).
+  - **Подождать FEMM Linux-port** — нет таких планов в upstream
+    (отвергнуто ещё в ADR 2026-05-19).
+- **Последствия:**
+  - **ADR 2026-05-19 заменён** в части primary-выбора (помечен
+    «[Заменено решением от 2026-05-20 ниже]» в заголовке).
+    Linux-native + Elmer/GetDP shortlist остаётся в силе; FEMM/Wine
+    остаётся отвергнутым; PyOpenMagnetics как analytical core
+    остаётся.
+  - **Phase 2 Dockerfile**: `apt install getdp gmsh` рядом с
+    KiCad / FreeCAD / ngspice. Elmer apt-deps **не ставятся** в
+    `efactory:linux`. Прирост размера базового образа: ~45 MB
+    (с current 6.65 GB → ~6.70 GB, под 7 GB threshold из spec).
+  - **Phase 2 adapters**: `src/adapters/outbound/fem_solver_getdp/
+    adapter.py` (subprocess wrapper) — реализуется в Phase 2.
+    `src/ports/outbound/magnetic_field_solver_port.py` остаётся
+    abstract Protocol; cross-validation T127 (если/когда заведём)
+    добавит `fem_solver_elmer/adapter.py` за тот же port.
+  - **Stage D Elmer infrastructure preserved**: `scripts/pilot/elmer/
+    magnetostatic.sif` + `stage_elmer()` в `scripts/pilot/run_pilot.py`
+    остаются в репо как proof-of-cross-check + готовый базис для
+    BACKLOG T127. Эти файлы — pilot-only, не runtime efactory.
+  - **BACKLOG**:
+    - **T127** — Power transformer 50 Hz fixture + cross-validation
+      GetDP ↔ Elmer (на linear физике; если разойдутся — flag для
+      review).
+    - **T128** — Flyback SMPS choke fixture + nonlinear B-H curve
+      в GetDP (`nu[] = NLF[...]{H}` constraint); сравнить с
+      PyOM analytical (это уберёт 242% gap, см. observation).
+    - **T<NEW>** — `mag_verify_field` use case API (как именно
+      агент вызывает FEM: MCP-tool? direct Python? Domain
+      command?) — уточняется при реализации Phase 2 после
+      chat-client (T012-T014).
+  - **Performance budget Phase 2**: один `mag_verify_field` call в
+    efactory pipeline = ~1 сек FEM solve + ~0.5 сек overhead
+    (mesh + adapter glue). LLM-агент может делать sweep'ы из
+    десятков сценариев без значимого overhead.
+
 ### 2026-05-19 — Distribution: Linux Docker image с полным стеком (включая GUI), кроссплатформенность отложена в отдельную фазу
 
 - **Контекст:** efactory интегрирует разнородный тулчейн —
@@ -317,7 +414,7 @@ ADR-Lite: компактный лог архитектурных решений 
     T110-T115 (см. BACKLOG.md). После Phase 0.9 все
     дальнейшие фазы исполняются внутри контейнера.
 
-### 2026-05-19 — Magnetic field verification: Linux-native FEM-solver (Elmer FEM primary, GetDP+Gmsh fallback), FEMM как legacy
+### 2026-05-19 — Magnetic field verification: Linux-native FEM-solver (Elmer FEM primary, GetDP+Gmsh fallback), FEMM как legacy [Заменено решением от 2026-05-20 ниже]
 
 - **Контекст:** ADR от 2026-05-15 фиксировал **FEMM + pyFEMM**
   как 2D-FEA для верификации магнитного поля трансформаторов и
