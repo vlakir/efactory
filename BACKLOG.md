@@ -214,32 +214,9 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      реализация / один PR. Methodology: "по возможности укрупняем
      PR". T130 ID не переиспользуется. -->
 
-- **T129** — [2026-05-20, выделено из T128 при investigation 2026-05-20;
-  2026-05-20 поглотила preliminary T130 при Clarify]
-  **Nonlinear Frohlich-Kennelly material model + DC-bias load line в
-  FEM-адаптере для incremental Lp на operating point.** Pilot 242%
-  gap (FEM linear 23.78 H vs PyOM ZHANG 6.96 H) вызван **двумя
-  независимыми причинами**: (1) PyOM учитывает operating-point
-  effective μ при DC bias, linear FEM — только μ_initial; (2) iron
-  в pilot fixture глубоко в saturation (H_dc=1289 A/m при
-  H_sat=200 A/m, 6.4× выше). Закрыть gap можно только обоими
-  изменениями вместе. Содержание: (a) synthesize Frohlich-Kennelly
-  curve `B(H) = μ₀·μ_init·H / (1 + μ₀·μ_init·H / B_sat)` из
-  PyOM `permeability.initial` + `saturation` (PyOM 1.3.10 не
-  экспонирует `bhCycle` ни для одного из 409 materials, probe
-  2026-05-20); (b) расширить `pro_template.py` GetDP fixed-point
-  IterativeLoop (Picard, проще Newton-Raphson — без JacNL term);
-  (c) параметр `material_model: Literal["linear","nonlinear-frohlich"]`
-  в `GetDpFemSolver` (default `"linear"` — back-compat); (d) при
-  `nonlinear-frohlich` использовать `operating_point.primary_dc_bias_a`
-  как DC excitation; (e) вычислять incremental L = ΔΦ/ΔI вокруг
-  operating point (метод two-point combined — два nonlinear solve
-  с разным I, finite difference на Φ). Подробности — в
-  `specs/T129-nonlinear-fem-dc-bias/spec.md`. Acceptance: integration
-  test `test_analytical_plus_fem_pilot_regression` переписан с
-  `discrepancy_flagged=True` на `relative_difference <= 0.10`;
-  linear mode даёт baseline 23.78 H ±5% (back-compat); nonlinear
-  solve завершается <30s на pilot mesh.
+<!-- T129 переехала в BOARD.md → Doing 2026-05-20 после Clarify+Analyze.
+     Спека: specs/T129-nonlinear-fem-dc-bias/spec.md. -->
+
 - **T127** — [2026-05-20, заведено по ADR 2026-05-20] **Cross-
   validation FEM-solver'ов: Elmer ↔ GetDP на дополнительных
   fixtures (50 Hz power transformer, опционально другие).** T113
