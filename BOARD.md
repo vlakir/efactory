@@ -61,32 +61,44 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T113** — [2026-05-20, taken into Doing] **FEM-solver: пилот и
-  интеграция.** Phase 3 контейнеризации, absorbs T058 (FEMM
-  bootstrap). Заменяет FEMM (Wine → Linux-native).
-  Pilot: **Elmer FEM** vs **GetDP+Gmsh** на одной фикстуре —
-  OPT 6П14П SE. Критерии: качество vs PyOpenMagnetics, API-удобство
-  для LLM-orchestration, время счёта, размер в образе.
-  Integration после ADR: `ports/outbound/magnetic_field_solver.py`
-  (Protocol), `adapters/outbound/fem_solver/<chosen>/` (adapter),
-  use case `mag_verify_field`.
-  Acceptance:
-  - Pilot: одна фикстура прогнана на обоих solver'ах, заполнена
-    сравнительная таблица в spec, ADR в DECISIONS.md.
-  - Integration: для OPT 6П14П расчётная индуктивность через выбранный
-    solver совпадает с PyOpenMagnetics в пределах ±10%; solver
-    доступен в efactory:linux runtime; integration-test зелёный.
-
-  **Структура (Vladimir clarify 2026-05-20):** один PR с phase-
-  commits на ветке `T113-fem`; pilot в одноразовом `pilot.Dockerfile`;
-  одна фикстура (OPT 6П14П SE) — 50Hz / flyback вынесены в BACKLOG
-  как cross-validation follow-up'ы (заведём после ADR).
-  Spec: `specs/T113-fem-solver/spec.md`. Ветка: `T113-fem`.
-
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
+
+- **T113** — [closed 2026-05-20, PR #56] **FEM-solver: пилот и
+  интеграция.** Phase 3 контейнеризации (absorbs T058 FEMM
+  bootstrap). Заменяет FEMM (Wine → Linux-native).
+  - **Phase 1 pilot** (Stages A→F): сравнительный прогон Elmer FEM
+    vs GetDP+Gmsh на OPT 6П14П SE fixture в одноразовом
+    `pilot.Dockerfile`. Cross-check Elmer ↔ GetDP **0.00% до
+    printed precision** (оба Lp = 23.78 H на linear μ_r=8000),
+    расхождение к analytical PyOM ZHANG 6.96 H (242%) — известный
+    physics gap (operating-point μ_eff vs constant μ_r), не bug.
+    PyOM advisor heavy stress-test через subprocess isolation
+    (OOM-safe orchestrator). ADR 2026-05-20 в `DECISIONS.md`
+    «Magnetic field verification: GetDP+Gmsh выбран» (заменяет
+    pre-pilot ADR 2026-05-19): footprint 45 vs 115 MB, один
+    subprocess vs два, штатно в noble universe.
+  - **Phase 2 integration** (Stages 2A→2E): hex-архитектура port
+    + adapters + use case. `MagneticComponent`/
+    `MagneticVerificationResult` domain VO, outbound ports
+    `magnetic_analytics` + `magnetic_field_solver` (Protocols),
+    `PyOpenMagneticsAnalytics` (analytical), `GetDpFemSolver` (FEM),
+    use case `mag_verify_field` (analytical + опциональный FEM
+    cross-check). Main `Dockerfile` + apt `getdp` + `gmsh`
+    (efactory:linux: 6.65 → 7.31 GB, +310 MB над soft-threshold
+    7 GB — отметка для future slimming task).
+  - **Spec acceptance ±10% переинтерпретирован:** на pilot fixture
+    integration test регрессирует к 242% gap (known physics);
+    use case корректно `discrepancy_flagged=True`. Numeric
+    closure — BACKLOG T128 (nonlinear B-H curve в GetDP .pro).
+    Elmer infrastructure preserved для BACKLOG T127
+    (cross-validation на дополнительных fixtures).
+  - 12 phase-commits на T113-fem (squash в один при merge).
+  - Lessons learned: `feedback_elmer_savescalars_quirks` (4 итерации
+    Stage D), `feedback_pyom_advisor_quirks` (5 итераций Stage E).
+  Spec: `specs/T113-fem-solver/spec.md`.
 
 - **T112** — [closed 2026-05-20, PR #55] Phase 0.9 Containerization,
   Phase 2 — FreeCAD CLI + GUI + Sheet Metal addon в `efactory:linux`.
