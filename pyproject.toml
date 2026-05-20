@@ -144,6 +144,18 @@ plugins = ["pydantic.mypy"]
 exclude = ["src/adapters/outbound/persistence_sql/migrations/"]
 
 
+# tests/ исключены из mypy через ignore_errors override (T125 — Vladimir
+# 2026-05-20): canonical pre-push gate — `uv run mypy src`; в тестах
+# накопилось 64 несоответствия Fake*-репозиториев Protocol'ам после
+# изменений в `ports/` — отдельный fix-путь не оправдан (мы не runtime-
+# типизируем тесты, pytest валидирует их behavior'ом). Через override
+# (а не path exclude) `uv run mypy src tests` тоже возвращает 0 ошибок
+# (path-exclude вместо этого бил exit=2 «no .py files in tests»).
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["src"]

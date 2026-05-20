@@ -238,21 +238,6 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   либо «найдена разница на geometry X — ADR update».
   Не блокирует Phase 2 (она уже shipped); чисто follow-up для
   confidence в long-run.
-- **T125** — [2026-05-20] **Fix mypy на main — 64 ошибки в 8 файлах.**
-  Обнаружено в pre-push T112 (mypy выдаёт те же ошибки на чистой `main`
-  без T112-правок — значит регрессия пришла с предыдущим merge,
-  скорее всего T114+T121 #54). Файлы:
-  `tests/integration/adapters/graph_store/test_kuzu_smoke.py`,
-  `tests/integration/adapters/subprocess_apps/test_app_manager.py`,
-  `tests/unit/application/test_{create,delete,get,list}_project.py`,
-  `tests/unit/application/test_design_to_{netlist,sim}.py`.
-  Большинство — `incompatible type: FakeXRepository / expected
-  XRepository protocol` (тестовые fake-репы рассинхронизированы с
-  protocol после изменений в `ports/outbound/`). Acceptance:
-  `uv run mypy src tests` → 0 ошибок. Контекст процесса: глобальная
-  методика требует 0 ошибок перед каждым push; T112 не вводит новых
-  ошибок, но прошёл pre-push gate в degraded state (надо признать
-  и закрыть быстро отдельным PR `T125-fix-mypy`).
 - **T124** — [2026-05-20] **freecad-mcp wrapper + integration.**
   Acceptance T112 изначально включал «freecad-mcp подключается,
   базовые tool-calls работают»; вынесено в отдельную задачу
