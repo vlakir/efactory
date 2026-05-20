@@ -61,31 +61,25 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T129** — [taken 2026-05-20] **Nonlinear Frohlich-Kennelly material
-  model + DC-bias load line в FEM-адаптере для incremental Lp на
-  operating point.** Закрывает T113 Phase 1 pilot 242% gap (FEM linear
-  23.78 H vs PyOM ZHANG 6.96 H) через nonlinear material + central-
-  difference DC-bias load line (3 nonlinear solve'a вокруг operating
-  point). Спека и Clarify+Analyze — `specs/T129-nonlinear-fem-dc-bias/
-  spec.md` (ветка `T129-nonlinear-fem-dc-bias`).
-  Acceptance:
-  - integration test `test_analytical_plus_fem_pilot_regression`
-    переписан с `discrepancy_flagged=True` на `relative_difference
-    <= 0.10` (Primary);
-  - linear mode без regression — baseline 23.78 H ±5% (Secondary,
-    back-compat default `material_model="linear"`);
-  - nonlinear solve <30s на pilot mesh 12244 quad triangles
-    (Performance);
-  - 4 pre-push gates зелёные, coverage не падает ниже 87%.
-  План implementation — 3 фазы (Phase A — Frohlich + InterpolationLinear
-  в .pro, Phase B — central-difference + L_inc + переписанный pilot
-  test, Phase C — closing ADR + BOARD Doing → Done), squash в один
-  PR при merge.
-
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
+
+- **T129** — [closed 2026-05-20, PR #61] **Nonlinear Frohlich-Kennelly
+  material model + DC-bias load line в FEM-адаптере — partial closure.**
+  Phase A (FrohlichBHCurve generator + nonlinear `.pro` template) +
+  Phase B (central-diff L_inc + `FemSolveOutcome` DTO + use case
+  integration) + Phase C (ADR + relaxed acceptance + BACKLOG forward).
+  T113 Phase 1 pilot 242% gap **частично закрыт до 70%** (3.5× win) —
+  Primary acceptance ±10% не достигнут из-за architectural blocker
+  (split-coil topology nullify net N·I + 2D-planar open-domain
+  overestimates L). End-to-end pipeline в `efactory:linux-t129`
+  container работает: nonlinear path сходится, L_inc вычисляется,
+  diagnostic поля пробрасываются. Phase A/B infrastructure ready для
+  T131 (SPICE saturable transformer, reuses Frohlich) и T133 (Elmer
+  pivot для full FEM cross-check). ADR + honest failure analysis в
+  `DECISIONS.md` 2026-05-20.
 
 - **T125** — [closed 2026-05-20, PR #57] **Fix mypy на main — 64
   ошибки в tests/.** Решение (Vladimir clarify 2026-05-20): не чинить
