@@ -42,11 +42,14 @@ from typing import Any
 FIXTURE_DIR = Path('/pilot/fixtures/opt-6p14p-se')
 GETDP_PRO_SRC = Path('/pilot/scripts/pilot/getdp/magnetostatic.pro')
 ELMER_SIF_SRC = Path('/pilot/scripts/pilot/elmer/magnetostatic.sif')
+ADVISOR_SUBPROCESS = Path('/pilot/scripts/pilot/advisor_subprocess.py')
 PRIMARY_TURNS = 2500       # consistency с build_fixture.py
 I_REF_FEM = 1.0            # ток через primary, общий для GetDP и Elmer
 # J_density для Elmer (hard-coded в .sif как Body Force; держим тут для J·A
 # метода расчёта Lp в Python — должен совпадать с константой в .sif).
 J_DENSITY_ELMER = 9.09182e6  # 2500 * 1.0 / (9.075e-3 * 30.3e-3)
+# OOM-detection: SIGKILL → rc=-9 (Python signal) или 137 (128+9, shell convention)
+OOM_RETURNCODES = (-9, 137)
 
 
 def _load_pyom() -> Any:
@@ -122,10 +125,63 @@ def stage_analytical_sanity(pyom: Any) -> dict[str, Any]:
     }
 
 
-# Stage 2: PyOM advisor heavy run — placeholder for next commit
-def stage_advisor_heavy(pyom: Any) -> dict[str, Any]:  # noqa: ARG001  - pending
-    """TODO: design_magnetics_from_converter('push_pull', ..., 'available cores')."""
-    return {'status': 'pending', 'note': 'to be implemented in next commit'}
+# Stage 2: PyOM advisor heavy run (subprocess, OOM-safe)
+def stage_advisor_heavy(work_dir: Path) -> dict[str, Any]:
+    """Run PyOM design_magnetics_from_converter('push_pull') as subprocess.
+
+    Subprocess isolation критична — advisor реально тяжёлый
+    (`available cores` advisor search 1301+ shapes, 60-180s per
+    AGENTS.md, ~hundreds of MB peak RSS). Docker --memory=4g лимит на
+    контейнер: при превышении OOM-killer выбирает самый жирный процесс
+    (advisor), parent orchestrator выживает и фиксирует diagnostic.
+
+    Логика подсчёта в child скрипте (scripts/pilot/advisor_subprocess.py):
+    realistic push-pull SMPS spec (50W, 100 kHz), Forward schema (push_pull
+    использует ту же что Forward, см. AGENTS.md §5.5+5.7).
+
+    Returns dict с status (ok/oom/error/timeout), elapsed, peak RSS,
+    advisor summary (core shape/material, turns, magnetizing Lp).
+    """
+    out_path = work_dir / 'advisor_result.json'
+    out_path.unlink(missing_ok=True)
+
+    t0 = time.monotonic()
+    r = _run_timed(
+        ['python', str(ADVISOR_SUBPROCESS), str(out_path)],
+        cwd=work_dir,
+    )
+    elapsed = time.monotonic() - t0
+
+    summary: dict[str, Any] = {}
+    if out_path.exists():
+        try:
+            summary = json.loads(out_path.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            summary = {'error': f'unparseable advisor_result.json: {exc}'}
+
+    rc = r['returncode']
+    oom = rc in OOM_RETURNCODES
+    success = (
+        rc == 0
+        and 'error' not in summary
+        and summary.get('data_count', 0) > 0
+    )
+
+    # Persist полный subprocess вывод — диагностика OOM/schema errors.
+    (work_dir / 'advisor_stdout.log').write_text(r['stdout'])
+    (work_dir / 'advisor_stderr.log').write_text(r['stderr'])
+
+    return {
+        'ok': success,
+        'oom': oom,
+        'returncode': rc,
+        'elapsed_s': elapsed,
+        'peak_rss_mb': r['peak_rss_mb'],
+        'wall_clock': r['wall_clock'],
+        'summary': summary,
+        'stdout_tail': r['stdout'].splitlines()[-10:],
+        'stderr_tail': r['stderr'].splitlines()[-10:],
+    }
 
 
 def _run_timed(cmd: list[str], cwd: Path | None = None) -> dict[str, Any]:
@@ -501,10 +557,64 @@ def main() -> int:
             for line in re_.get('solve_stderr_tail', []):
                 print(f'    err| {line}')
 
-    print('\n--- Stage 2: pending (next commits on T113-fem) ---')
-    results['advisor_heavy'] = (
-        stage_advisor_heavy(pyom) if not args.skip_advisor else {'status': 'skipped'}
-    )
+    # Checkpoint: persist FEM-результаты ДО запуска advisor — на случай
+    # если advisor OOM-killer выбьет всю контейнерную сессию, и хост
+    # увидел только partial-run.
+    results_file = args.work_dir / 'results.json'
+    results_file.write_text(json.dumps(results, indent=2))
+    print(f'\ncheckpoint wrote {results_file} (pre-advisor)')
+
+    print('\n--- Stage 2: PyOM advisor heavy (subprocess, OOM-safe) ---')
+    if args.skip_advisor:
+        ra = {'status': 'skipped', 'reason': '--skip-advisor flag'}
+        print('  skipped via --skip-advisor flag')
+    else:
+        ra = stage_advisor_heavy(args.work_dir)
+        print(
+            f"  elapsed: {ra['elapsed_s']:.2f}s   "
+            f"peak RSS: {ra['peak_rss_mb']:.1f} MB   "
+            f"wall: {ra['wall_clock']}",
+        )
+        if ra['ok']:
+            s = ra['summary']
+            print(f"  ok=True (rc={ra['returncode']})")
+            print(f"    data_count:    {s.get('data_count')!r}")
+            print(f"    core_shape:    {s.get('core_shape')!r}")
+            print(f"    core_material: {s.get('core_material')!r}")
+            print(f"    scoring:       {s.get('scoring')!r}")
+            for w in s.get('windings', []):
+                print(
+                    f"    winding {w.get('name','?')}: "
+                    f"{w.get('turns','?')} turns "
+                    f"(×{w.get('parallels',1)} parallel)",
+                )
+            mag_l = s.get('magnetizing_inductance_H')
+            if isinstance(mag_l, dict):
+                nominal = mag_l.get('nominal')
+                if nominal is not None:
+                    print(f'    magnetizing_inductance (nominal): {nominal} H')
+            elif mag_l is not None:
+                print(f'    magnetizing_inductance: {mag_l!r}')
+        elif ra['oom']:
+            print(f"  OOM-killed (rc={ra['returncode']}) — exceeded "
+                  f"docker --memory limit at peak RSS "
+                  f"{ra['peak_rss_mb']:.1f} MB")
+            print('  → ADR должен зафиксировать, что advisor требует '
+                  '> 4 GB на push-pull spec')
+        elif (
+            ra['returncode'] == 0
+            and ra['summary'].get('data_count') == 0
+        ):
+            print(f"  rc=0, но advisor вернул empty data[] "
+                  f"(elapsed {ra['elapsed_s']:.1f}s) — "
+                  f"converter spec несовместим с PyOM каталогом")
+        else:
+            print(f"  FAILED (rc={ra['returncode']}, oom={ra['oom']})")
+            if ra['summary'].get('error'):
+                print(f"    error: {ra['summary']['error']}")
+            for line in ra.get('stderr_tail', []):
+                print(f'    err| {line}')
+    results['advisor_heavy'] = ra
 
     results_file = args.work_dir / 'results.json'
     results_file.write_text(json.dumps(results, indent=2))

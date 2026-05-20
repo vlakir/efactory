@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         xz-utils \
         gmsh \
         getdp \
+        ngspice \
         time \
     && add-apt-repository -y ppa:elmer-csc-ubuntu/elmer-csc-ppa \
     && apt-get update && apt-get install -y --no-install-recommends \
