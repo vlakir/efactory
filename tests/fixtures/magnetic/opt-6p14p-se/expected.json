@@ -1,0 +1,24 @@
+{
+  "primaryInductance_H": 6.956400080747171,
+  "reluctanceModel_default": "ZHANG",
+  "primaryInductance_H_per_model": {
+    "ZHANG": 6.956400080747171,
+    "MUEHLETHALER": 7.019701903253783,
+    "BALAKRISHNAN": 6.845738575883186,
+    "STENGLEIN": 6.907580637140755,
+    "EFFECTIVE_AREA": 6.653561932499067
+  },
+  "method": "PyOpenMagnetics.calculate_inductance_from_number_turns_and_gapping",
+  "shape": "E 42/21/15",
+  "bobbin": "Bobbin E42/15",
+  "material": "Nanoperm 8000",
+  "primaryTurns": 2500,
+  "secondaryTurns": 100,
+  "gapLength_m": 0.0001,
+  "operatingFrequency_Hz": 1000.0,
+  "primaryPeakVoltage_V": 250.0,
+  "primaryDcBias_A": 0.05,
+  "effectiveArea_m2": 0.00014247668469902932,
+  "effectiveLength_m": 0.0973531041865669,
+  "effectiveVolume_m3": 1.3870547529661246e-05
+}
