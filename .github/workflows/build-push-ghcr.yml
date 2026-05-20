@@ -134,10 +134,18 @@ jobs:
         # Push только если smoke passed. Pull request runs не пушат
         # (workflow триггерится только на main/tag/dispatch — по
         # триггер-конфигу выше, на PR не запускается).
+        #
+        # GitHub Actions interpolates `${{ steps.tags.outputs.tags }}`
+        # в literal shell text ДО bash evaluation. Bash IFS=',' word-
+        # splitting применяется только к variable EXPANSIONS, не к
+        # literal-text-словам — поэтому literal `for T in a,b,c` даёт
+        # ОДНО слово "a,b,c", а не три. Fix: сначала assign к
+        # переменной, потом `read -ra` в array с IFS=','.
         run: |
           set -eu
-          IFS=','
-          for TAG in ${{ steps.tags.outputs.tags }}; do
+          TAGS_RAW='${{ steps.tags.outputs.tags }}'
+          IFS=',' read -ra TAGS_ARR <<< "${TAGS_RAW}"
+          for TAG in "${TAGS_ARR[@]}"; do
             echo "::group::Pushing ${TAG}"
             docker tag efactory:ci "${TAG}"
             docker push "${TAG}"
