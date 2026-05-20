@@ -1,14 +1,17 @@
-# Spec: Nonlinear FEM material + DC-bias load line (T129 + T130)
+# Spec: Nonlinear FEM material + DC-bias load line (T129)
 
 **Статус:** Draft
 **Дата создания:** 2026-05-20
+**История:** preliminary split T128 → T129 + T130 (2026-05-20
+investigation) был отменён в Clarify-фазе (2026-05-20 wave 2) — задачи
+признаны атомарными, T130 поглощена T129, ID T130 не переиспользуется.
 **Связанные документы:**
 - ADR `2026-05-20 — Magnetic field verification: GetDP+Gmsh выбран` в
   `DECISIONS.md`
 - T113 spec — `specs/T113-fem-solver/spec.md` (Phase 1 pilot, Phase 2
   integration; этот spec — Phase 3 follow-up)
-- T128 BACKLOG entry в `BACKLOG.md` (investigation phase; split в
-  T129 + T130)
+- T128 BACKLOG entry в `BACKLOG.md` (investigation phase; см. historical
+  comment с описанием обоих merge'ев)
 - Auto-memory `feedback_pyom_advisor_quirks.md` (PyOM 1.3.10 material
   data limitations probed 2026-05-20)
 
@@ -47,15 +50,15 @@ transformers с DC magnetization).
 - **Агент верифицирует SMPS choke** (T128 BACKLOG flyback fixture
   follow-up): DC current через дроссель кладёт ядро близко к
   saturation; incremental L (для switching ripple) сильно ниже
-  initial L. Без T130 FEM-валидация для choke бесполезна.
+  initial L. Без DC-bias load line FEM-валидация для choke бесполезна.
 - **Validation against PyOM**: при cross-check FEM ↔ PyOM на
   любом DC-biased компоненте текущий 242% gap делает acceptance
   test useless (он всегда падает с known-gap pattern). После
-  T129+T130 acceptance становится реальной regression-защитой.
+  T129 acceptance становится реальной regression-защитой.
 
 ## 3. Функциональные требования
 
-### T129 — Synthetic nonlinear material model
+### Nonlinear material model (Frohlich-Kennelly)
 
 - **ДОЛЖНА**: генерировать B-H curve таблицу (≥10 точек, B от
   0 до 0.99 × B_sat) из доступных PyOM material параметров
@@ -76,7 +79,7 @@ transformers с DC magnetization).
   (Jiles-Atherton hysteresis, anisotropic ferrites, frequency-
   dependent permeability) — это отдельные фичи.
 
-### T130 — DC-bias load line
+### DC-bias load line (incremental inductance at operating point)
 
 - **ДОЛЖНА**: при вычислении inductance с
   `material_model="nonlinear-frohlich"` использовать operating
@@ -109,9 +112,10 @@ transformers с DC magnetization).
   `2026-MM-DD — Nonlinear FEM + DC-bias load line closes T113
   242% gap` (с заменой acceptance footnote из `T113-fem-solver/spec.md`
   на фактический result).
-- **ДОЛЖНА**: BACKLOG cleanup — T129 + T130 entries удаляются;
-  если возникли side-tasks (например, advanced material model) —
-  заводятся как новые T-ID.
+- **ДОЛЖНА**: BACKLOG cleanup — T129 entry удаляется (T130 уже
+  поглощена T129 в Clarify-фазе, отдельной записи в BACKLOG нет);
+  если возникли side-tasks (например, advanced material model или
+  proper linearization fallback) — заводятся как новые T-ID.
 
 ## 4. Success Criteria
 
@@ -189,7 +193,7 @@ transformers с DC magnetization).
 ### Open questions
 
 1. **DC-bias method**: (A) two-point combined или (B) proper
-   linearization (см. §3 T130)? B физически правильнее, но
+   linearization (см. §3 "DC-bias load line")? B физически правильнее, но
    требует extraction `μ_diff` per-element и второго linear
    solve; A проще, но точность зависит от ΔI choice.
 2. **GetDP solver**: fixed-point IterativeLoop (Picard) vs
