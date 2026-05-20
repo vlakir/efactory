@@ -48,3 +48,6 @@ vanilla_docker.sh
 # Temp / docs builds
 temp/
 doc/
+
+# T113 pilot run outputs (results.json, mesh artifacts, *.msh, *.pos, etc.)
+pilot-out/
