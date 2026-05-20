@@ -192,23 +192,48 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   (метод `_add_simulation_props` и аналоги). T100-test'ы должны
   остаться зелёными (netlist export не меняется, меняется только
   GUI-warning поведение).
-- **T128** — [2026-05-20, заведено по ADR 2026-05-20] **Nonlinear B-H
-  curve в GetDP magnetostatic .pro для закрытия 242% physics gap.**
-  T113 Phase 1 pilot показал: linear μ_r=8000 в FEM vs PyOM operating-
-  point μ_eff → 242% расхождение на OPT 6П14П SE (analytical 6.96 H
-  vs FEM 23.78 H). Решение: добавить nonlinear B-H curve в
-  `pro_template.py` (GetDP конструкция `nu[] = NLF[Material]{H}`),
-  лукапить B-H точки из PyOM `get_core_materials()[i]['bhCycle']`
-  или `magneticFluxDensitySaturation`. Содержание: расширить
-  `GetDpFemSolver` чтобы выбирать nonlinear-template если material
-  имеет B-H data; добавить тест на OPT 6П14П, что FEM nonlinear
-  совпадает с analytical в пределах ±10%. Optional flyback SMPS
-  choke fixture для cross-check. Acceptance: integration test
-  `test_analytical_plus_fem_pilot_regression` в
-  `tests/integration/application/test_mag_verify_field.py`
-  перестаёт быть "regression к ожидаемому 242% gap" — становится
-  "agreement within ±10%". Spec.md и ADR обновляются после
-  закрытия (помечается «closed by T128»).
+<!-- T128 (Nonlinear B-H curve, originally proposed в ADR 2026-05-20)
+     split при investigation 2026-05-20: оригинальная задача
+     "single PR закроет 242% gap" оказалась невыполнимой за одну
+     сессию — корень gap в DC bias loaded operating point, не
+     только в материальной нелинейности (probe Nanoperm:
+     H_dc=1289 A/m > H_sat=200 A/m, core в saturation).
+     Plus PyOM 1.3.10 не экспонирует bhCycle (probe 409 materials,
+     все null) — B-H синтезируется аналитически. Разделено на
+     T129 (synthetic Frohlich material model, infrastructure)
+     + T130 (DC-bias load line, реально закроет gap). T128 ID
+     не переиспользуется. -->
+
+- **T130** — [2026-05-20, выделено из T128 при investigation 2026-05-20]
+  **DC-bias load-line модель в FEM для incremental Lp на operating
+  point.** Pilot 242% gap (FEM linear 23.78 H vs PyOM ZHANG 6.96 H)
+  вызван **не только** материальной нелинейностью, но и тем, что
+  PyOM учитывает operating point (50 mA DC bias × 2500 витков
+  даёт H_dc ≈ 1289 A/m в iron, выше PyOM H_sat=200 A/m — core в
+  saturation regime). FEM же считает small-signal Lp без DC bias.
+  Содержание: solve nonlinear magnetostatic steady-state с
+  combined DC + AC excitation на primary; линеаризовать вокруг
+  operating point; вычислить incremental Lp = ∂Φ/∂I. Требует
+  base T129 (nonlinear material). Acceptance: integration test
+  `test_analytical_plus_fem_pilot_regression` становится
+  "agreement within ±10%".
+- **T129** — [2026-05-20, выделено из T128 при investigation 2026-05-20]
+  **Synthetic Frohlich-Kennelly B-H curve из PyOM material data +
+  GetDP nonlinear formulation.** PyOM 1.3.10 не экспонирует
+  `bhCycle` ни для одного из 409 materials (probe 2026-05-20) —
+  доступны только `permeability.initial`, `saturation` (одна точка:
+  H_sat=200, B_sat=1.2 T для Nanoperm 8000), `coerciveForce`.
+  Содержание: synthesize Frohlich-Kennelly curve `B(H) = μ_0 μ_init H
+  / (1 + μ_0 μ_init H / B_sat)` из этих параметров (10-20 точек);
+  расширить `pro_template.py` с GetDP fixed-point IterativeLoop
+  (Picard метод — проще Newton-Raphson, не требует JacNL term);
+  параметр `material_model: Literal["linear","nonlinear-frohlich"]`
+  в `GetDpFemSolver`. Сам по себе **не закроет 242% gap** —
+  без DC-bias load line (T130) FEM с nonlinear материалом всё равно
+  small-signal, iron не входит в saturation. Acceptance: nonlinear
+  pipeline runs end-to-end, выдаёт Lp; unit test на Frohlich
+  curve generator; integration test (skipif gmsh/getdp) runs
+  пайплайн без падения. Полноценное закрытие gap — T130.
 - **T127** — [2026-05-20, заведено по ADR 2026-05-20] **Cross-
   validation FEM-solver'ов: Elmer ↔ GetDP на дополнительных
   fixtures (50 Hz power transformer, опционально другие).** T113
