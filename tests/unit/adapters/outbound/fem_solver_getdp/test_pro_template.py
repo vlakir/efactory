@@ -90,7 +90,8 @@ def test_nonlinear_template_keeps_coil_topology() -> None:
         i_ref=1.0,
         area_window=2.75e-4,
     )
-    # split current direction идентична linear
+    # split coil topology (T113 pilot Stage B+C): +Jz в Primary,
+    # -Jz в Secondary (return-leg simulation).
     assert 'js[Primary]   = Vector[0, 0,  J_density];' in out
     assert 'js[Secondary] = Vector[0, 0, -J_density];' in out
     assert 'N_primary    = 2500;' in out

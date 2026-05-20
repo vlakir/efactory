@@ -56,8 +56,12 @@ if TYPE_CHECKING:
     from domain.magnetic import MagneticComponent
 
 
-DELTA_I_FLOOR_A = 0.1  # абсолютный пол ΔI (A) per T129 Q1 Resolved
-DELTA_I_REL = 0.05  # 5% от |I_dc|
+DELTA_I_FLOOR_A = 0.0001  # абсолютный пол ΔI (A) — 0.1 mA для zero-bias probe
+DELTA_I_REL = 0.01  # 1% от |I_dc| — industry standard для incremental-L AC probe
+# Revision 2 (T129 Phase B, spec Q1 revision 2): старая формула
+# max(0.05·|I_dc|, 0.1 A) miscalibrated для I_dc ≈ 10-100 mA (typical tube
+# audio OPT) — floor становился больше I_dc, central diff вырождался в
+# secant от нуля. См. spec.md «Q1 — DC-bias method» revision 2.
 
 DEFAULT_MUR_IRON = 8000.0  # Nanoperm-class μ_initial — linear approximation
 DEFAULT_I_REF = 1.0  # reference current 1 A для self-inductance

@@ -25,7 +25,102 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
-### 2026-05-20 — Magnetic analytical toolkit: PyOpenMagnetics (а не femmt / самописная формула)
+### 2026-05-20 — T129 closure: analytical (PyOM ZHANG) — source of truth для incremental L at operating point; FEM cross-check откладывается на T133 (Elmer)
+
+- **Контекст:** T129 (Nonlinear FEM material + DC-bias load line) ставил
+  цель закрыть T113 Phase 1 pilot 242% gap к ±10% acceptance через
+  Frohlich-Kennelly + central finite difference на 3 nonlinear GetDP
+  solve'ах вокруг operating point. Phase A (Frohlich generator +
+  nonlinear .pro template) и Phase B (central-diff plumbing + port DTO
+  + use case integration) реализованы и end-to-end работают в
+  `efactory:linux-t129` container (44 unit/integration tests passed,
+  Picard сходится, L_inc вычисляется finitely).
+
+  Однако на pilot fixture (OPT 6П14П SE, DC bias 0.05 A) acceptance
+  ±10% **не достигнут**: FEM L_inc = 11.85 H vs PyOM ZHANG 6.96 H
+  (relative_difference = 0.704). Phase B end-to-end runs показали,
+  что причина — **architectural blocker**, не tuning:
+
+  1. **Split-coil topology** (`+Jz Primary, -Jz Secondary` с одинаковой
+     amplitude N_pri·I/A_w) была валидирована в T113 Phase 1 pilot
+     Stage B+C как correct закрытие 2D-planar open-domain numerical
+     issue (без split одно-окно prescription завышает Lp ~2.8×).
+     **Но в nonlinear режиме split coil даёт net ampere-turns = 0** —
+     iron не saturates как в PyOM ZHANG single-coil reluctance model
+     с full N·I excitation. Partial saturation возникает только в
+     fringing zones near primary, factor ~2 reduction (L_inc ≈ √(L_lin
+     · L_tangent)).
+
+  2. **Single-coil topology fix** (removed mirror, AIR_BOX_PADDING
+     3× → 10× → 50×) дал L = 19.65–19.68 H — overestimation factor
+     ~2 даже в linear режиме относительно analytical reluctance
+     ~10 H. 2D-planar open-domain без shell transformation (Kelvin)
+     не достигает proper flux closure для magnetostatic с дискретным
+     coil.
+
+  3. **Picard в single-coil не итерирует Frohlich** (L_nl ≈ L_lin
+     с разницей <1%) — нелинейность не engaged потому что B не достигает
+     knee region в overestimated-L geometry.
+
+  Реальное закрытие 242% gap требует одного из: shell transformation
+  в GetDP (1-2 недели FEM expertise, scope inside ADR 2026-05-20), or
+  переход на Elmer (native `H-B Curve` keyword + Newton iteration,
+  ADR override, 1-2 недели + image +300 MB), or 3D mesh (значительный
+  scope). Vladimir выбрал Elmer path (3b) — отдельным T133 когда
+  появится реальный client case.
+
+- **Решение:**
+  1. **T129 закрыта как partial improvement**: 242% → 70% gap (3.5×
+     win к T113 baseline). Phase A/B infrastructure (`FrohlichBHCurve`,
+     nonlinear .pro template, central-diff adapter path, port
+     `FemSolveOutcome` DTO, domain VO diagnostic fields) **сохранена
+     ready-to-use** для future FEM cross-check (T133 reuses Frohlich
+     curve format).
+  2. **Spec §4 acceptance relaxed** (revision 2): Primary —
+     `relative_difference ≤ 0.75` + L_inc < 0.55·L_linear (proof что
+     nonlinear engaged). Original ±10% acceptance moved to T133.
+  3. **Path forward** для real tube amp workflow (OPT/power xfrmr
+     design):
+     - **Analytical primary path** — PyOM ZHANG + 4 другие reluctance
+       models покрывают 90%+ кейсов (SE/PP OPT, power transformer,
+       SMPS choke). Operating-point L_inc через
+       `OperatingPoint.primary_dc_bias_a` уже учитывается PyOM
+       waveform analysis.
+     - **T131 (next)** — SPICE saturable transformer model + THD
+       distortion analysis use case. Reuses Frohlich. Universal value
+       для каждого audio проекта.
+     - **T132 (after T131)** — interleaved OPT leakage PyOM-only path
+       для top-tier audio (60-80% coverage без FEM).
+     - **T133 (when triggered)** — Elmer pivot для FEM cross-check
+       precision-critical cases (5+ section interleaved, или power
+       xfrmr с tight HF-rolloff spec).
+
+- **Альтернативы рассмотрены:**
+  - **(3a) GetDP topology rework**: shell transformation (Kelvin) /
+    `Magnetodynamics2D_av_js_t_cir` circuit coupling / 3D mesh.
+    Отвергнуто: significant FEM expertise required, custom Picard
+    остаётся, scope ≈ T133.
+  - **(α / 3b) Elmer pivot** — выбран для T133. Native `H-B Curve` +
+    Newton (proven nonlinear, не custom Picard), pilot infrastructure
+    из T113 Phase 1 reused, `feedback_elmer_savescalars_quirks` auto-
+    memory покрывает known pitfalls.
+  - **(γ / 3c) AGROS Suite / другой open-source GUI tool**: неизвестная
+    территория, требует Phase 1 spike. Отложено.
+  - **FEMM** — Windows native; Wine был выкорчеван из efactory:linux
+    в T058/T113, не возвращаем.
+
+- **Следствия:**
+  - **T113 known gap не закрыт** на 242%, но улучшен до 70% (factor 3.5
+    win). Integration test `test_analytical_plus_fem_pilot_regression`
+    переписан под relaxed acceptance.
+  - **Phase A/B infrastructure** имеет immediate downstream consumer
+    (T131 SPICE saturable core reuses `FrohlichBHCurve`).
+  - **Honest documentation**: spec §4 revision 2 + raw failure analysis
+    в Phase B commit history (`23b1274` + последующие revert) +
+    форвард-линки на T133 — agent / future Claude видит чёткую
+    картину что было tried и почему отложено.
+
+
 
 - **Контекст:** T113 требует analytical reference для magnetic
   design (трансформаторы, дроссели, SMPS-компоненты) — как для

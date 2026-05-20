@@ -217,6 +217,70 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- T129 переехала в BOARD.md → Doing 2026-05-20 после Clarify+Analyze.
      Спека: specs/T129-nonlinear-fem-dc-bias/spec.md. -->
 
+- **T131** — [2026-05-20, заведено в Phase C T129] **SPICE saturable
+  transformer model + THD distortion analysis use case.** Закрывает
+  detailed harmonic distortion analysis для любого tube amplifier
+  design (universal, не niche): vacuum tube nonlinearity уже моделируется
+  (T106/T107), а **OPT core saturation / hysteresis distortion** — нет.
+  Currently OPT моделируется как linear ideal transformer (`K1 L1 L2
+  0.99`).
+  Содержание:
+  - Generator `src/adapters/outbound/spice_models/saturable_core.py`:
+    input = `MagneticComponent` + `FrohlichBHCurve` (reuse T129 Phase A),
+    output = ngspice `.subckt` saturable transformer (B-source с table
+    lookup от Frohlich, или `.model CORE` level=1).
+  - Use case `simulate_distortion_spectrum(component, schematic)`:
+    inject saturable subckt в KiCad schematic, run transient SPICE,
+    FFT → THD per frequency / power level.
+  - Pilot acceptance: SE-amp 6П14П демо с saturable OPT → THD @ 1W
+    matches published reference (Stereophile / Audio Note class A
+    measurements ±2 dB на 1 kHz).
+  Reuses **полностью** T129 Phase A `FrohlichBHCurve`. Scope ~2-3
+  дня. Не зависит от FEM topology blocker'а — чисто SPICE-path.
+- **T132** — [2026-05-20, заведено в Phase C T129] **Interleaved
+  OPT leakage inductance — PyOM-only analytical path.** Top-tier
+  audio OPT использует sandwich-секционную намотку (P-S-P, 5-section,
+  ...) для минимизации Lσ (HF-rolloff). PyOM `calculate_leakage_
+  inductance` поддерживает multi-section через bobbin schema, но
+  efactory сейчас не enrich'ает MAS schema с layer order.
+  Содержание:
+  - Domain VO: `Bobbin.section_layout: tuple[WindingSection, ...]` —
+    sandwich порядок и параметры (insulation thickness, layer count).
+  - PyOM payload mapping: собрать `windingWindow.sections` correctly.
+  - Test fixture с known reference — например, published Plitron /
+    Sowter / Hashimoto datasheet OPT.
+  Покрывает 60-80% interleaved cases. Для 5+ section с FEM cross-
+  check — T133.
+  Не зависит от FEM blocker'а. Scope ~1-2 дня. **Зависит от T131
+  только как ordering preference** (THD universal value vs interleaved
+  niche).
+- **T133** — [2026-05-20, заведено в Phase C T129] **Elmer FEM pivot —
+  переход на Elmer для nonlinear B-H + DC bias FEM cross-check.**
+  T129 Phase B показал: GetDP 2D-planar с split-coil topology
+  блокирован для DC bias modeling (242% → 70% gap, Primary acceptance
+  ±10% не достигнут). Path forward — **Elmer FEM pivot** (вариант
+  3b / α из T129 Phase C discussion):
+  - ADR override 2026-05-20 «GetDP над Elmer» — пересмотр на
+    «Elmer для nonlinear, GetDP остаётся для linear/geometry».
+  - Elmer 2D-axisymmetric или 2D-planar с native `H-B Curve` keyword
+    + Newton iteration (out-of-the-box nonlinear support, не
+    требует custom Picard).
+  - Pilot infrastructure из T113 Phase 1 Stage D (`scripts/pilot/
+    elmer/`) переиспользуется; `feedback_elmer_savescalars_quirks`
+    auto-memory покрывает 4 pitfall'а.
+  - New adapter `src/adapters/outbound/fem_solver_elmer/` + integration
+    test pilot achieves ±10% к PyOM ZHANG на OPT 6П14П SE DC-biased.
+  - Reuses T129 Phase A `FrohlichBHCurve` как input format для Elmer
+    H-B table.
+  Альтернативы (3a — GetDP topology rework через shell transformation
+  / circuit coupling / 3D; 3c — AGROS Suite) рассмотрены и отвергнуты
+  в пользу 3b: Elmer уже частично исследован + native nonlinear
+  support лучше than custom Picard на GetDP. Scope ~1-2 недели.
+  Image +300 MB (apt elmerfem-csc уже доступен в Ubuntu 24.04 universe).
+  Триггер: появление реального client case с требованием ±10% FEM
+  precision (top-tier interleaved OPT 5+ section, или high-precision
+  power transformer design).
+
 - **T127** — [2026-05-20, заведено по ADR 2026-05-20] **Cross-
   validation FEM-solver'ов: Elmer ↔ GetDP на дополнительных
   fixtures (50 Hz power transformer, опционально другие).** T113

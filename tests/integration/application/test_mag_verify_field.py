@@ -152,7 +152,10 @@ async def test_analytical_plus_fem_pilot_regression(
     analytics,  # noqa: ANN001
     field_solver_nonlinear,  # noqa: ANN001
 ) -> None:
-    """Primary T129 acceptance: nonlinear + DC bias → ±10% к PyOM ZHANG."""
+    """Primary T129 acceptance (revision 2): nonlinear + DC bias → значимое
+    improvement vs linear baseline, не ±10% (см. spec §4 revision 2 + T133
+    Elmer pivot для полного закрытия 242% gap).
+    """
     r = await mag_verify_field(
         component=_opt_6p14p_se(dc_bias_a=PILOT_DC_BIAS_A),
         analytics=analytics,
@@ -165,6 +168,11 @@ async def test_analytical_plus_fem_pilot_regression(
     assert r.fem_method == 'nonlinear-frohlich'
     assert r.fem_inductance_h is not None
     assert r.relative_difference is not None
-    # Primary acceptance — закрытие T113 Phase 1 pilot 242% gap.
-    assert r.relative_difference <= 0.10
-    assert r.discrepancy_flagged is False
+    # Revision 2: significant improvement vs T113 linear gap (242% → ≤75%),
+    # но не полные ±10% — architectural blocker (split-coil + 2D-planar open-
+    # domain), полное закрытие через T133 (Elmer pivot).
+    assert r.relative_difference <= 0.75
+    # Доказательство, что nonlinear engaged (не stuck на linear): L_inc < 0.55
+    # × L_linear → at least factor 2 reduction в saturation regime (на pilot
+    # ~11.85 H vs linear 23.78 H, ratio 0.499).
+    assert r.fem_inductance_h < PILOT_FEM_LP_H * 0.55

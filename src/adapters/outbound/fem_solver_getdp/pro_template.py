@@ -200,10 +200,16 @@ Function {{
   // Tabulated ν(B) from Frohlich-Kennelly (μ_initial, B_sat) → reluctivity
   // {{B0,nu0, B1,nu1, ...}}; первая точка (0, 1/(μ₀·μ_init)) задаёт
   // касательную в нуле, остальные — chord ν = H/B.
-  nu[Iron]    = InterpolationLinear[ Norm[{{d a}}] ]{{ List[{bh_list_literal}] }};
+  //
+  // GetDP discipline: nu[Region] объявляется как функция $1 (B norm), в
+  // Galerkin/PostProcessing вызывается с явным аргументом — `{{d a}}` нельзя
+  // использовать прямо в Function (discrete quantity available only в
+  // Galerkin/PP context). См. femmt/electro_magnetic/ind_axi_python_*.pro.
+  nu[Iron]    = InterpolationLinear[ Norm[$1] ]{{ List[{bh_list_literal}] }};
   nu[NonIron] = 1.0 / mu0;
 
-  // Coil topology идентична linear: +Jz в Primary, -Jz в Secondary.
+  // Coil topology идентична linear: split current direction
+  // +Jz в Primary, -Jz в Secondary (T113 pilot Stage B+C).
   N_primary    = {n_primary};
   I_ref        = {i_ref:g};
   area_window  = {area_window:g};
@@ -259,7 +265,9 @@ Formulation {{
       {{ Name a; Type Local; NameOfSpace Hcurl_a_2D; }}
     }}
     Equation {{
-      Galerkin {{ [ nu[] * Dof{{d a}}, {{d a}} ];
+      // nu[Region][$1] — Iron tabulated, NonIron constant — вызывается с
+      // current B = {{d a}} для Picard re-evaluation на каждой итерации.
+      Galerkin {{ [ nu[{{d a}}] * Dof{{d a}}, {{d a}} ];
                  In Domain; Jacobian Vol; Integration I1; }}
       Galerkin {{ [ -js[], {{a}} ];
                  In Primary;   Jacobian Vol; Integration I1; }}
@@ -292,7 +300,7 @@ PostProcessing {{
     Quantity {{
       {{ Name energy_per_depth;
         Value {{
-          Integral {{ [ 0.5 * nu[] * {{d a}} * {{d a}} ];
+          Integral {{ [ 0.5 * nu[{{d a}}] * {{d a}} * {{d a}} ];
                      In Domain; Jacobian Vol; Integration I1; }}
         }}
       }}
