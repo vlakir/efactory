@@ -41,8 +41,12 @@ from typing import Any
 
 FIXTURE_DIR = Path('/pilot/fixtures/opt-6p14p-se')
 GETDP_PRO_SRC = Path('/pilot/scripts/pilot/getdp/magnetostatic.pro')
+ELMER_SIF_SRC = Path('/pilot/scripts/pilot/elmer/magnetostatic.sif')
 PRIMARY_TURNS = 2500       # consistency с build_fixture.py
-I_REF_GETDP = 1.0          # ток через primary в GetDP physics
+I_REF_FEM = 1.0            # ток через primary, общий для GetDP и Elmer
+# J_density для Elmer (hard-coded в .sif как Body Force; держим тут для J·A
+# метода расчёта Lp в Python — должен совпадать с константой в .sif).
+J_DENSITY_ELMER = 9.09182e6  # 2500 * 1.0 / (9.075e-3 * 30.3e-3)
 
 
 def _load_pyom() -> Any:
@@ -214,7 +218,7 @@ def stage_getdp(work_dir: Path, depth_m: float) -> dict[str, Any]:
         # 3D energy = energy_per_depth × core depth
         # L = 2W / I_ref²
         total_energy = energy_per_depth * depth_m
-        lp_henry = 2.0 * total_energy / (I_REF_GETDP ** 2)
+        lp_henry = 2.0 * total_energy / (I_REF_FEM ** 2)
 
     ok = r['returncode'] == 0 and lp_henry is not None
     return {
@@ -229,9 +233,158 @@ def stage_getdp(work_dir: Path, depth_m: float) -> dict[str, Any]:
     }
 
 
-def stage_elmer(work_dir: Path, depth_m: float) -> dict[str, Any]:  # noqa: ARG001
-    """TODO Stage D: Elmer FEM magnetostatic 2D."""
-    return {'status': 'pending'}
+def _parse_elmer_scalars(scalars_path: Path) -> dict[str, Any]:
+    """Parse Elmer SaveScalars `body int` + `Mask Name` output.
+
+    SaveScalars writes one row per steady-state step into ``scalars.dat`` and
+    column descriptions into ``scalars.dat.names``. Для нашего solver'а
+    (Variable=A, Operator='body int', Mask Name=Primary/Secondary) ждём
+    одну row из N float'ов. .names описывает columns строкой формата:
+
+        1: body int: a mask primary
+        2: body int: a mask secondary
+
+    Returns dict with:
+      - ``mask_to_int_A``: {mask_name_lower: ∫_body A dA} (float)
+      - ``raw_floats``: все числа из последней строки (для диагностики)
+      - ``names_text``: содержимое .names файла (для диагностики)
+    """
+    text = scalars_path.read_text()
+    lines = [line for line in text.splitlines() if line.strip()]
+    raw_floats: list[float] = []
+    if lines:
+        for tok in lines[-1].split():
+            try:
+                raw_floats.append(float(tok))
+            except ValueError:
+                continue
+
+    names_text = ''
+    mask_to_int: dict[str, float] = {}
+    names_path = scalars_path.parent / (scalars_path.name + '.names')
+    if names_path.exists():
+        names_text = names_path.read_text()
+        # Match "<col_idx>: <desc> mask <name>" (Elmer 26.2 формат для
+        # Operator='body int' + Mask Name=<NameOfBodyProperty>).
+        mask_pattern = re.compile(
+            r'^\s*(\d+):.*?mask\s+(\w+)', re.IGNORECASE | re.MULTILINE,
+        )
+        for m in mask_pattern.finditer(names_text):
+            col_idx = int(m.group(1))  # 1-based column в scalars.dat
+            mask_name = m.group(2).lower()
+            if 1 <= col_idx <= len(raw_floats):
+                mask_to_int[mask_name] = raw_floats[col_idx - 1]
+
+    return {
+        'mask_to_int_A': mask_to_int,
+        'raw_floats': raw_floats,
+        'names_text': names_text,
+    }
+
+
+def stage_elmer(work_dir: Path, depth_m: float) -> dict[str, Any]:
+    """Run Elmer FEM magnetostatic 2D on geometry.msh; compute L_p via J·A.
+
+    Зеркалит stage_getdp (та же mesh, та же физика, тот же energy method;
+    но через identity ½ ∫ B·H dV = ½ ∫ J·A dV для линейного материала):
+
+      W_per_depth = ½ · J_density · (∫_Primary A − ∫_Secondary A)
+      Lp          = 2 · W_per_depth · core_depth / I_ref²
+
+    ElmerGrid конвертирует /work/geometry.msh → /work/mesh-elmer/, затем
+    ElmerSolver на /work/magnetostatic.sif. ∫_body A берётся из
+    /work/scalars.dat (SaveScalars body integral от Variable=A).
+    """
+    msh_local = work_dir / 'geometry.msh'
+    sif_local = work_dir / 'magnetostatic.sif'
+    sif_local.write_text(ELMER_SIF_SRC.read_text())
+
+    # Stage D.1 — ElmerGrid: msh22 → Elmer mesh format
+    t_grid = time.monotonic()
+    r_grid = _run_timed(
+        [
+            'ElmerGrid', '14', '2', str(msh_local),
+            '-autoclean',
+            '-out', 'mesh-elmer',
+        ],
+        cwd=work_dir,
+    )
+    grid_elapsed = time.monotonic() - t_grid
+    grid_ok = (
+        r_grid['returncode'] == 0
+        and (work_dir / 'mesh-elmer' / 'mesh.header').exists()
+    )
+
+    if not grid_ok:
+        return {
+            'ok': False,
+            'stage': 'ElmerGrid',
+            'grid_elapsed_s': grid_elapsed,
+            'grid_returncode': r_grid['returncode'],
+            'grid_stderr_tail': r_grid['stderr'].splitlines()[-10:],
+            'grid_stdout_tail': r_grid['stdout'].splitlines()[-10:],
+        }
+
+    # Stage D.2 — ElmerSolver
+    t_solve = time.monotonic()
+    r_solve = _run_timed(
+        ['ElmerSolver', str(sif_local)],
+        cwd=work_dir,
+    )
+    solve_elapsed = time.monotonic() - t_solve
+
+    # Persist полный Elmer stdout/stderr — критично для диагностики, т.к.
+    # _tail (5 строк) показывает только хвост `/usr/bin/time -v`, не
+    # содержательный output ElmerSolver.
+    (work_dir / 'elmer_stdout.log').write_text(r_solve['stdout'])
+    (work_dir / 'elmer_stderr.log').write_text(r_solve['stderr'])
+    (work_dir / 'elmer_grid.log').write_text(
+        f"=== STDOUT ===\n{r_grid['stdout']}\n=== STDERR ===\n{r_grid['stderr']}",
+    )
+
+    scalars_path = work_dir / 'scalars.dat'
+    parsed = (
+        _parse_elmer_scalars(scalars_path)
+        if scalars_path.exists()
+        else {'mask_to_int_A': {}, 'raw_floats': [], 'names_text': ''}
+    )
+
+    # .sif определяет Body Properties `Primary = Logical True` и
+    # `Secondary = Logical True` на соответствующих bodies, использует их как
+    # Mask Name для SaveScalars 'body int' — см. magnetostatic.sif Solver 2.
+    mask_to_int = parsed['mask_to_int_A']
+    int_a_primary = mask_to_int.get('primary')
+    int_a_secondary = mask_to_int.get('secondary')
+
+    energy_per_depth = None
+    lp_henry = None
+    if int_a_primary is not None and int_a_secondary is not None:
+        energy_per_depth = 0.5 * J_DENSITY_ELMER * (
+            int_a_primary - int_a_secondary
+        )
+        total_energy = energy_per_depth * depth_m
+        lp_henry = 2.0 * total_energy / (I_REF_FEM ** 2)
+
+    ok = r_solve['returncode'] == 0 and lp_henry is not None
+    return {
+        'ok': ok,
+        'grid_elapsed_s': grid_elapsed,
+        'grid_peak_rss_mb': r_grid['peak_rss_mb'],
+        'solve_elapsed_s': solve_elapsed,
+        'solve_peak_rss_mb': r_solve['peak_rss_mb'],
+        # combined wall-time + peak (для таблицы pilot)
+        'elapsed_s': grid_elapsed + solve_elapsed,
+        'peak_rss_mb': max(r_grid['peak_rss_mb'], r_solve['peak_rss_mb']),
+        'returncode': r_solve['returncode'],
+        'int_a_primary': int_a_primary,
+        'int_a_secondary': int_a_secondary,
+        'energy_per_depth_J_per_m': energy_per_depth,
+        'lp_henry': lp_henry,
+        'raw_floats': parsed['raw_floats'],
+        'names_text': parsed['names_text'],
+        'solve_stderr_tail': r_solve['stderr'].splitlines()[-5:],
+        'solve_stdout_tail': r_solve['stdout'].splitlines()[-5:],
+    }
 
 
 def main() -> int:
@@ -303,11 +456,55 @@ def main() -> int:
         for line in rg['stderr_tail']:
             print(f'    err| {line}')
 
-    print('\n--- Stage 2, 5: pending (next commits on T113-fem) ---')
+    print('\n--- Stage 5: Elmer FEM ---')
+    re_ = stage_elmer(args.work_dir, depth_m)
+    results['elmer'] = re_
+    print(
+        f"  grid: {re_.get('grid_elapsed_s', 0):.3f}s "
+        f"({re_.get('grid_peak_rss_mb', 0):.1f} MB)   "
+        f"solve: {re_.get('solve_elapsed_s', 0):.3f}s "
+        f"({re_.get('solve_peak_rss_mb', 0):.1f} MB)",
+    )
+    if re_['ok']:
+        print(f"  Lp (Elmer) = {re_['lp_henry']:.6g} H")
+        analytical_ref = r1['lp_h_per_model']['ZHANG']
+        rel_analytic = abs(re_['lp_henry'] - analytical_ref) / analytical_ref
+        print(
+            f"  vs analytical ZHANG ({analytical_ref:.6g} H): "
+            f'{rel_analytic * 100:.2f}% diff',
+        )
+        if rg.get('lp_henry') is not None:
+            rel_getdp = abs(re_['lp_henry'] - rg['lp_henry']) / rg['lp_henry']
+            print(
+                f"  vs GetDP ({rg['lp_henry']:.6g} H): "
+                f'{rel_getdp * 100:.2f}% cross-check',
+            )
+    else:
+        print('  Lp not computed — diagnostic:')
+        if re_.get('stage') == 'ElmerGrid':
+            print(f"    ElmerGrid rc={re_.get('grid_returncode')}")
+            for line in re_.get('grid_stdout_tail', []):
+                print(f'    out| {line}')
+            for line in re_.get('grid_stderr_tail', []):
+                print(f'    err| {line}')
+        else:
+            print(f"    ElmerSolver rc={re_.get('returncode')}")
+            print(f"    int_A_primary   = {re_.get('int_a_primary')!r}")
+            print(f"    int_A_secondary = {re_.get('int_a_secondary')!r}")
+            print(f"    raw_floats      = {re_.get('raw_floats')!r}")
+            if re_.get('names_text'):
+                print('    .names content:')
+                for line in re_['names_text'].splitlines():
+                    print(f'      | {line}')
+            for line in re_.get('solve_stdout_tail', []):
+                print(f'    out| {line}')
+            for line in re_.get('solve_stderr_tail', []):
+                print(f'    err| {line}')
+
+    print('\n--- Stage 2: pending (next commits on T113-fem) ---')
     results['advisor_heavy'] = (
         stage_advisor_heavy(pyom) if not args.skip_advisor else {'status': 'skipped'}
     )
-    results['elmer'] = stage_elmer(args.work_dir, depth_m)
 
     results_file = args.work_dir / 'results.json'
     results_file.write_text(json.dumps(results, indent=2))
