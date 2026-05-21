@@ -49,7 +49,9 @@ class FemSolveOutcome:
     self-inductance L_p из energy method (W = 0.5·L·I²). Для
     `method='nonlinear-frohlich'` — incremental L_inc вокруг
     `OperatingPoint.primary_dc_bias_a` через central finite difference
-    на трёх nonlinear solve'ах.
+    на двух nonlinear solve'ах (`I_dc ± ΔI/2`; middle solve `I_dc`
+    был в первоначальном дизайне для `peak_flux_density_t` diagnostic,
+    но удалён в ultrareview revision — peak отложен на follow-up T-ID).
 
     `peak_flux_density_t` — max |B| по mesh после nonlinear solve [T];
     None в linear режиме или если diagnostic не реализован.

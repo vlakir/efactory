@@ -257,9 +257,13 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 - **T133** — [2026-05-20, заведено в Phase C T129] **Elmer FEM pivot —
   переход на Elmer для nonlinear B-H + DC bias FEM cross-check.**
   T129 Phase B показал: GetDP 2D-planar с split-coil topology
-  блокирован для DC bias modeling (242% → 70% gap, Primary acceptance
-  ±10% не достигнут). Path forward — **Elmer FEM pivot** (вариант
-  3b / α из T129 Phase C discussion):
+  блокирован для DC bias modeling — Frohlich curve не engaging
+  (L_nl/L_lin ≈ 0.997 на pilot после ultrareview bug_001 fix; T113
+  baseline gap 242% сохраняется без изменений, Primary acceptance
+  ±10% недостижим в текущей topology — изначальная заявка «70% gap»
+  была artefact flux linkage formula error, retracted в revision 3
+  spec/ADR). Path forward — **Elmer FEM pivot** (вариант 3b / α из
+  T129 Phase C discussion):
   - ADR override 2026-05-20 «GetDP над Elmer» — пересмотр на
     «Elmer для nonlinear, GetDP остаётся для linear/geometry».
   - Elmer 2D-axisymmetric или 2D-planar с native `H-B Curve` keyword

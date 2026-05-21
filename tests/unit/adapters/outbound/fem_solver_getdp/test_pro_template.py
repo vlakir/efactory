@@ -97,8 +97,11 @@ def test_nonlinear_template_keeps_coil_topology() -> None:
     assert 'N_primary    = 2500;' in out
 
 
-def test_linear_back_compat_render_byte_identical_to_baseline() -> None:
-    """Pilot Stage B+C формат не изменился — критично для T113 regression."""
+def test_linear_back_compat_render_preserves_critical_markers() -> None:
+    """Pilot Stage B+C критичные substring-маркеры сохранены — критично для
+    T113 regression (ultrareview bug_012: name был misleading «byte-identical»,
+    но тело проверяет только presence из 3 substrings — переименовано).
+    """
     out = render_magnetostatic_pro(
         mur_iron=8000.0,
         n_primary=2500,
