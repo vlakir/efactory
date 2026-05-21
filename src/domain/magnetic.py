@@ -12,9 +12,9 @@ Domain-уровень — без знания о PyOM MAS-schema или GetDP .p
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 FemMethod = Literal['linear', 'nonlinear-frohlich']
 
@@ -89,6 +89,45 @@ class OperatingPoint(BaseModel):
     primary_ac_peak_a: Annotated[float, Field(ge=0)] = 0.0
 
 
+class WindingSection(BaseModel):
+    """
+    Одна секция в interleaved sandwich-намотке (T132).
+
+    `winding_name` ссылается на `Winding.name` родительского компонента
+    (валидируется в `MagneticComponent`). `layer_count=None` — adapter
+    позволяет PyOM автоматически распределить turns между секциями
+    с одинаковым именем.
+    """
+
+    model_config = _FROZEN
+
+    winding_name: str = Field(..., min_length=1)
+    layer_count: Annotated[int, Field(ge=1)] | None = None
+
+
+class InterleavingPattern(BaseModel):
+    """
+    Sandwich-секционный layout обмоток на bobbin'е (T132).
+
+    `sections` — физический порядок секций (например, P-S-P-S-P для
+    типового 5-section hi-end audio OPT). PyOM `wind` использует единые
+    inter-section insulation и bobbin margin для всей конструкции —
+    per-section overrides пока вне scope (PyOM API ограничение,
+    см. probe T132 Analyze §W3).
+    """
+
+    model_config = _FROZEN
+
+    sections: tuple[WindingSection, ...] = Field(..., min_length=1)
+    inter_section_thickness_m: Annotated[float, Field(ge=0)] = 25e-6
+    bobbin_margin_m: Annotated[float, Field(ge=0)] = 0.001
+
+    @property
+    def pattern(self) -> tuple[str, ...]:
+        """Имена обмоток в физическом порядке секций (read-only view)."""
+        return tuple(s.winding_name for s in self.sections)
+
+
 class MagneticComponent(BaseModel):
     """Полная спецификация магнитного компонента для analytical+FEM расчётов."""
 
@@ -98,6 +137,25 @@ class MagneticComponent(BaseModel):
     core: Core
     windings: tuple[Winding, ...] = Field(..., min_length=1)
     operating_point: OperatingPoint
+    # T132: опциональный sandwich-layout. None → backward compat для
+    # T113/T129 use cases (magnetizing inductance / FEM), которые работают
+    # без layered coil. Required для `analyze_interleaved_leakage`.
+    section_layout: InterleavingPattern | None = None
+
+    @model_validator(mode='after')
+    def _validate_section_layout_names(self) -> Self:
+        if self.section_layout is None:
+            return self
+        winding_names = {w.name for w in self.windings}
+        for section in self.section_layout.sections:
+            if section.winding_name not in winding_names:
+                msg = (
+                    f'section_layout references unknown winding '
+                    f'{section.winding_name!r}; '
+                    f'available windings: {sorted(winding_names)}'
+                )
+                raise ValueError(msg)
+        return self
 
     @property
     def primary_winding(self) -> Winding:
@@ -107,6 +165,24 @@ class MagneticComponent(BaseModel):
                 return w
         msg = f'no primary winding in component {self.name!r}'
         raise ValueError(msg)
+
+
+class LeakageInductanceResult(BaseModel):
+    """
+    Результат расчёта leakage inductance Lσ (T132).
+
+    `source_winding` — имя обмотки, относительно которой считается
+    leakage; `leakage_to[target]` — Lσ от source к target [H].
+    Для пары (primary, secondary) содержит ровно один элемент.
+    `coupling_factor` k ∈ [0, 1]: k = √(1 - Lσ/L_self) (идеальный
+    трансформатор → k=1, полностью развязанный → k=0).
+    """
+
+    model_config = _FROZEN
+
+    source_winding: str = Field(..., min_length=1)
+    leakage_to: dict[str, Annotated[float, Field(ge=0)]] = Field(..., min_length=1)
+    coupling_factor: Annotated[float, Field(ge=0, le=1)]
 
 
 class MagneticVerificationResult(BaseModel):
