@@ -25,6 +25,99 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+
+### 2026-05-21 — Сторонние review-боты отключены: primary path — self-review + `/ultrareview` on-demand
+
+- **Контекст:** ADR 2026-05-19 «Сторонние review-боты: CodeRabbit как
+  best-effort, primary path = self-review + опциональный `/ultrareview`»
+  оставлял CodeRabbit и Qodo Merge подключёнными на best-effort
+  основе — «silent rate-limit не блокирует merge, мы их игнорируем
+  если не отвечают». Через полтора месяца практики выяснилось, что
+  модель «best-effort» создаёт больше когнитивной нагрузки чем
+  пользы:
+  - **CodeRabbit на free tier часто висит** или отвечает с задержкой
+    в часы; даже когда отвечает, львиная доля комментариев — generic
+    «consider adding more tests» / «consider error handling» без
+    привязки к domain. ADR 2026-05-19 это констатировал, но не
+    действовал.
+  - **Paid tier upsell** появляется в каждой review-сессии («upgrade
+    to Pro for 10× faster reviews»), что воспринимается как давление
+    конвертироваться в paid customer ради скорости — но реальная
+    ценность комментариев не растёт пропорционально.
+  - **Qodo Merge** (бот, упомянут в ADR 2026-05-19) — то же явление,
+    плюс ещё одна context window замусоривается его summary'ями.
+  - **`/ultrareview`** показал себя как высококачественная альтернатива
+    (multi-agent cloud review, on-demand): T129 PR #61 первая
+    итерация ultrareview нашла критический math bug (`bug_001`,
+    flux linkage missing Secondary integral term) который повлиял на
+    закрытие всей задачи. Уровень глубины анализа сильно выше
+    CodeRabbit'а. User-triggered + paid по time — это
+    положительная asymmetry: платим только когда нужно глубоко.
+
+- **Решение:** **Отключить CodeRabbit и Qodo Merge через config-файлы**
+  в репо (Path A из обсуждения 2026-05-21):
+  - `.coderabbit.yaml` — `reviews.auto_review.enabled: false` +
+    minimization noise (chill profile, no high_level_summary, no
+    request_changes, no walkthrough auto-expand).
+  - `.pr_agent.toml` — `github_app.handle_pr_actions = []`,
+    `pr_commands = []`, `config.publish_output = false`. Бот не
+    делает ничего на PR open / sync; даже если оживёт через manual
+    `/review`, ничего не публикует автоматически.
+  - **Не uninstall'им** через GitHub Settings → Apps (Path B) —
+    оставляем возможность revert через editing config'ов
+    одним PR. Path B рекомендован как опциональный second layer
+    через UI если в дальнейшем bot'ы окажутся ignore'ущими наши
+    configs (rare, но возможно).
+  - **Primary review path:** self-review checklist (project
+    CLAUDE.md «Code review каждого PR» — 7 пунктов) + `/ultrareview`
+    on-demand для важных PR'ов (cross-cutting refactor, security,
+    milestone-фазы).
+  - **`/ultrareview` findings → PR comment manually:** агент
+    `claude-code-guide` подтвердил (2026-05-21), что нет built-in
+    auto-post в GitHub PR. Pattern: после ultrareview run я
+    обрабатываю findings в чате с Vladimir, фиксирую решения per
+    finding (учесть / отбросить / отложить), и публикую summary в
+    `gh pr comment <PR#>` для historical traceability на PR-page.
+
+- **Альтернативы рассмотрены:**
+  - **Оставить как было** (best-effort) — отвергнуто: ретро PR
+    #56/#57/#58/#59/#60 показали что noise > value на free tier.
+  - **Перейти на paid tier CodeRabbit** ($15-30/month/dev) —
+    отвергнуто: cost не оправдан relative `/ultrareview` quality
+    + on-demand pricing model (paid per use is cheaper for our
+    PR volume ~10-20/month).
+  - **Включить только manual review через slash-commands в чате
+    PR** (`@coderabbitai review`) — отвергнуто: усложняет workflow,
+    добавляет UI step; легче через config disable.
+  - **Uninstall apps через GitHub UI (Path B)** — отвергнуто как
+    primary action: requires manual UI steps + uninstall не
+    versioned в git (нет audit trail в repo); config disable
+    versionable, revertable одним PR. Path B remains опциональным
+    second layer.
+  - **Mandatory `/ultrareview` перед merge каждого PR** — кратко
+    принято 2026-05-21, **откатано в тот же день** после уточнения
+    pricing (claude-code-guide агент): free tier — 3 runs **lifetime
+    per account** (one-time, не renewable), далее $5–20 per run usage
+    credits. При нашем PR-throughput 10-20/мес mandatory означало бы
+    $50-400/мес поверх Pro/Max подписки — экономически не оправдано.
+    `/ultrareview` остаётся on-demand для важных PR'ов; для маленьких
+    PR (методических, docs, single bug-fix) — self-review достаточно.
+
+- **Последствия:**
+  - **Каждый новый PR сразу идёт на self-review** без ожидания
+    бота — снимает «надо ли подождать» dilemma.
+  - **`/ultrareview` quota** (free / paid по time) — primary
+    external review budget. Используется выборочно.
+  - **PR-страницы remain clean** — без auto-summary'ев и generic
+    suggestions от ботов.
+  - **ADR 2026-05-19** про CodeRabbit best-effort — superseded
+    этим решением. Раздел «Сторонние ревью не игнорировать» в
+    `CLAUDE.md` обновлён: теперь explicit «отключены, primary —
+    self-review + /ultrareview manual post».
+  - **Reversibility:** один PR редактирующий config'и возвращает
+    бот в auto-mode (если ADR пересмотрят).
+
+
 ### 2026-05-20 — T129 closure: analytical (PyOM ZHANG) — source of truth для incremental L at operating point; FEM cross-check откладывается на T133 (Elmer)
 
 - **Контекст:** T129 (Nonlinear FEM material + DC-bias load line) ставил

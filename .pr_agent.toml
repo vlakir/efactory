@@ -1,0 +1,28 @@
+# Qodo Merge / PR-Agent configuration — auto-actions disabled for efactory.
+#
+# Решение 2026-05-21 (см. DECISIONS.md): отключаем сторонние review-боты.
+# Primary review path — self-review checklist + `/ultrareview` on-demand.
+# См. comment в `.coderabbit.yaml` за подробным обоснованием.
+#
+# Если ADR пересмотрят — заполнить `pr_commands` обратно для auto-review
+# / describe / improve at PR open.
+
+[config]
+# Молчаливый режим: бот не должен публиковать что-либо автоматически.
+publish_output = false
+publish_output_progress = false
+
+[github_app]
+# Empty handle_pr_actions = ничего не делать на PR open / sync.
+# Empty pr_commands = никаких auto-команд после PR open.
+handle_pr_actions = []
+pr_commands = []
+
+[pr_reviewer]
+# Defensive — даже если бот запустится через manual `/review`, не блокировать merge.
+require_score_review = false
+require_tests_review = false
+require_estimate_effort_to_review = false
+
+[pr_description]
+publish_description_as_comment = false
