@@ -240,16 +240,14 @@ def test_3d_sif_includes_calcfields_post_solver() -> None:
     assert 'MagnetoDynamicsCalcFields' in sif
 
 
-def test_3d_sif_has_4_bodies_ungapped_phase3b() -> None:
-    """Phase 3b mesh = 4 bodies (core/primary/secondary/air, без gaps)."""
+def test_3d_sif_has_7_bodies_gapped_phase3d() -> None:
+    """Phase 3d mesh = 7 bodies (core/primary/secondary/3 gaps/air)."""
     sif = render_magnetostatic_sif_linear_3d(
         mur_iron=8000.0, n_primary=2500, i_ref=1.0, area_window=2.74972e-4,
     )
-    assert 'Body 1' in sif
-    assert 'Body 2' in sif
-    assert 'Body 3' in sif
-    assert 'Body 4' in sif
-    assert 'Body 5' not in sif  # no gaps в Phase 3b
+    for i in range(1, 8):
+        assert f'Body {i}' in sif
+    assert 'Body 8' not in sif
 
 
 def test_3d_sif_current_density_uses_z_component() -> None:

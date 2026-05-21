@@ -65,11 +65,20 @@ def test_emit_e_core_geo_3d_uses_opencascade_kernel() -> None:
     assert 'SetFactory("OpenCASCADE")' in geo
 
 
-def test_emit_e_core_geo_3d_contains_4_physical_volumes() -> None:
-    """Phase 3b ungapped E-core — 4 volumes: core, primary, secondary, air."""
-    geo = emit_e_core_geo_3d(_opt_6p14p_dims())
+def test_emit_e_core_geo_3d_default_contains_7_physical_volumes() -> None:
+    """Phase 3d gapped E-core — 7 volumes: core, primary, secondary, 3 gaps, air."""
+    geo = emit_e_core_geo_3d(_opt_6p14p_dims())  # default with_gaps=True
+    for name in ('core', 'primary', 'secondary', 'gap_center', 'gap_left', 'gap_right', 'air'):
+        assert f'Physical Volume("{name}"' in geo
+
+
+def test_emit_e_core_geo_3d_ungapped_mode_4_volumes() -> None:
+    """with_gaps=False (Phase 3b smoke mode) — 4 volumes без gaps."""
+    geo = emit_e_core_geo_3d(_opt_6p14p_dims(), with_gaps=False)
     for name in ('core', 'primary', 'secondary', 'air'):
         assert f'Physical Volume("{name}"' in geo
+    for name in ('gap_center', 'gap_left', 'gap_right'):
+        assert f'Physical Volume("{name}"' not in geo
 
 
 def test_emit_e_core_geo_3d_contains_outer_physical_surface() -> None:
@@ -79,19 +88,21 @@ def test_emit_e_core_geo_3d_contains_outer_physical_surface() -> None:
 
 
 def test_emit_e_core_geo_3d_uses_boolean_difference() -> None:
-    """OCC BooleanDifference вырезает windings из core и iron+windings из air."""
+    """OCC sequential BooleanDifference вырезает все cutouts из core, потом air."""
     geo = emit_e_core_geo_3d(_opt_6p14p_dims())
-    # 2 actual operations + 1 comment mention = 3 total.
     assert 'iron_with_holes[] = BooleanDifference' in geo
     assert 'air_volume[] = BooleanDifference' in geo
 
 
-def test_emit_e_core_geo_3d_omits_gaps_phase3b() -> None:
-    """Phase 3b упрощение — gaps опущены (lateral coords extend за core)."""
+def test_emit_e_core_geo_3d_gaps_clipped_to_core_geometry() -> None:
+    """Lateral gap bounds computed из core geometry, не PyOM lateral_x."""
     geo = emit_e_core_geo_3d(_opt_6p14p_dims())
-    assert 'gap_center' not in geo
-    assert 'gap_left' not in geo
-    assert 'gap_right' not in geo
+    # Right lateral leg: x ∈ [win_right_x + win_w, +half_cw]
+    #                     = [0.005975 + 0.009075, +0.021075]
+    #                     = [0.01505, 0.021075]
+    # С 50 μm inset: [0.0151, 0.021025]
+    # Box(6) = { 0.0151, ..., width=0.005925, ... }
+    assert '0.01505' in geo or '0.0151' in geo  # gap right xmin near 15.05 mm
 
 
 def test_emit_e_core_geo_3d_z_extent_includes_air_padding() -> None:

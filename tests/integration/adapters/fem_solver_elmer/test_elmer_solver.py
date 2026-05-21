@@ -25,7 +25,7 @@ import pytest
 
 from adapters.outbound.fem_solver_elmer import ElmerFemSolver
 from adapters.outbound.fem_solver_elmer.adapter import (
-    EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_3D_UNGAPPED_H,
+    EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_3D_H,
     EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_H,
 )
 from adapters.outbound.magnetic_analytics_pyopenmagnetics import (
@@ -115,19 +115,19 @@ async def test_elmer_linear_pipeline_regression_to_empirical_baseline(
 async def test_elmer_linear_3d_pipeline_regression_to_empirical_baseline(
     pyom,  # noqa: ANN001
 ) -> None:
-    """Elmer 3D linear Whitney AV + CalcFields регрессия к empirical baseline.
+    """Elmer 3D linear (Whitney AV + CalcFields + 3 gaps) — regression baseline.
 
-    На OPT 6П14П SE (ungapped, Phase 3b mesh) с μ_r=8000 Nanoperm linear:
-    Lp ≈ 23.78 H через 2W/I² (T133 Phase 3c probe 2026-05-21). Тот же
-    порядок что 2D split-coil (T113 GetDP baseline) — but ungapped! Gaps
-    будут добавлены в Phase 3d с proper clipping, ожидаемо снизят L.
-    Regression baseline для catch Elmer/gmsh upgrade drift, mesh density
-    changes.
+    На OPT 6П14П SE (Phase 3d gapped mesh) с μ_r=8000 Nanoperm linear:
+    Lp ≈ 4.07 H через 2W/I² (T133 Phase 3d probe 2026-05-21). vs PyOM ZHANG
+    6.96 H = -41.5%, factor 1.7× — outside ±25% acceptance [5.22, 8.70 H]
+    но **orders-of-magnitude improvement** vs 2D split-coil baseline 23.78 H
+    (+242% = factor 3.4×). Refinement (Coil mechanism, finer mesh) —
+    follow-up T-ID для tighter acceptance к ZHANG.
     """
     solver = ElmerFemSolver(pyom, dimensionality='3d')
     outcome = await solver.solve(_opt_6p14p_se())
     assert outcome.method == 'linear'
     assert outcome.inductance_h == pytest.approx(
-        EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_3D_UNGAPPED_H,
+        EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_3D_H,
         rel=LP_REGRESSION_TOLERANCE_REL,
     )

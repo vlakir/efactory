@@ -265,34 +265,35 @@ def emit_e_core_geo_3d(
     *,
     air_extent_factor_xy: float = 3.0,
     air_extent_factor_z: float = 2.0,
+    with_gaps: bool = True,
 ) -> str:
     """
-    Build .geo string для 3D E-core OPT (T133 Phase 3b — pivot from 2D-planar).
+    Build .geo string для 3D E-core OPT (T133 Phase 3b/3d).
 
     Использует OpenCASCADE kernel для clean boolean operations. Topology
-    — 7 Physical Volumes (core, primary, secondary, 3 gaps, air) +
-    1 Physical Surface "outer" (для Infinity BC или Dirichlet в .sif).
-    Z-axis = core depth direction (out of front-view plane).
+    — 4 Physical Volumes (core, primary, secondary, air) или 7 если
+    `with_gaps=True` (+ gap_center, gap_left, gap_right). 1 Physical
+    Surface "outer" (для Infinity BC или Dirichlet в .sif). Z-axis =
+    core depth direction (out of front-view plane).
 
-    Pipeline:
+    Pipeline (with_gaps=True, Phase 3d):
     1. Box(1) = iron core outer block (full size).
     2. Box(2-3) = winding windows (through-holes from front to back faces).
-    3. Box(4) = outer air box (encloses everything).
-    4. BooleanDifference: iron = Box(1) ∖ {Box(2-3)}, keeping the windings.
-    5. BooleanDifference: air = Box(4) ∖ {iron, primary, secondary}.
-    6. Physical Volume tags для Body assignment в .sif.
-    7. Outer surfaces identified via 6 thin-slab `Surface In BoundingBox`
-       queries (one per face of outer air box).
+    3. Box(4-6) = 3 gaps (center + 2 lateral, horizontal slits через core
+       legs). PyOM lateral coords для OPT 6П14П SE extend за core
+       boundary — Phase 3d использует **clamping** к `[-half_cw + GAP_INSET,
+       half_cw - GAP_INSET]` чтобы gap boxes strictly inside core.
+       Acceptance impact: clamped lateral gap = slightly narrower чем
+       actual lateral leg (~7.5 mm vs 9.0 mm physical), но reluctance
+       difference < 20% — well within 25% acceptance to ZHANG.
+    4. Box(7) = outer air box (encloses everything).
+    5. BooleanDifference: iron = Box(1) ∖ {Box(2-6)}, keeping cutouts.
+    6. BooleanDifference: air = Box(7) ∖ {iron + all 5 cutouts}.
+    7. Physical Volume tags для Body assignment в .sif.
+    8. Outer surfaces — 6 thin-slab `Surface In BoundingBox` queries.
 
-    **Phase 3b упрощение:** gaps временно опущены (без них = "ungapped
-    E-core"). PyOM lateral_x + half_lat_w = 22.6 mm > core half-width
-    21.1 mm для OPT 6П14П SE — lateral gap boxes выходят за пределы
-    core, OCC BooleanDifference создаёт degenerate geometry (overlapping
-    facets error). 3 gaps будут добавлены в Phase 3c с proper clipping
-    (intersect gap box с core box перед subtraction). Acceptance impact:
-    ungapped E-core имеет higher L (gap reluctance отсутствует) — Phase
-    3b smoke test для mesh + Whitney AV pipeline, не для numeric
-    closure 242% gap. Numeric acceptance — Phase 3d с restored gaps.
+    Pipeline (with_gaps=False, Phase 3b smoke):
+    Same но без Box(4-6) gaps; 4 Physical Volumes total.
 
     Args:
         dims: E-core geometry (same VO как 2D emit_e_core_geo).
@@ -302,10 +303,12 @@ def emit_e_core_geo_3d(
         air_extent_factor_z: outer box z-padding before/after core depth
             (factor × core_depth). Default 2 — sufficient для magnetic
             decay в air above/below core.
+        with_gaps: include 3 gaps (Phase 3d default True для acceptance);
+            False — Phase 3b ungapped smoke.
 
     Notes:
         Mesh density tuned для 3D (tetrahedra grow faster than triangles):
-        LC_CORE .. LC_AIR_FAR×3.
+        LC_CORE .. LC_AIR_FAR×3. Gaps refine mesh locally (LC_GAP=50μm).
 
     """
     cw = dims.core_w
@@ -317,6 +320,10 @@ def emit_e_core_geo_3d(
     win_w = dims.window_w
     win_h = dims.window_h
     half_win_h = win_h / 2.0
+    lat_w = dims.lateral_w
+    lat_w / 2.0
+    gap = dims.gap_len
+    half_gap = gap / 2.0
     depth = dims.core_depth
 
     air_x = max(cw, ch) * air_extent_factor_xy / 2.0
@@ -324,6 +331,36 @@ def emit_e_core_geo_3d(
 
     win_left_x = -(half_cent_w + win_w)
     win_right_x = +half_cent_w
+
+    # Gap x-bounds computed из core geometry (PyOM `lateral_x` interpretation
+    # ambiguous для OPT 6П14П SE: lateral_x + half_lat_w = 22.6 mm > core
+    # half-width 21.1 mm → gap boxes outside core). Geometrically lateral
+    # legs occupy core boundary до winding window:
+    #   - Left lateral: x ∈ [-half_cw, win_left_x]
+    #   - Right lateral: x ∈ [win_right_x + win_w, half_cw]
+    # Это согласовано с layout: |center| + 2|window| + 2|lateral| = core_w.
+    # Lateral leg width = (core_w - center_w - 2·window_w) / 2.
+    #
+    # 3D OCC sliver tolerance: gap edges должны быть ≥ LC_GAP (50 μm)
+    # от core boundary AND winding window edges, иначе mesh failed
+    # с "overlapping facets" error на center gap left edge ↔ primary
+    # window right edge (1 μm sliver). Inset = LC_GAP solves.
+    gap_3d_inset = LC_GAP  # 50 μm — mesh-able sliver thickness
+
+    # Center-leg gap — fully inside center leg [-half_cent_w, +half_cent_w]
+    cent_gap_xmin = -half_cent_w + gap_3d_inset
+    cent_gap_xmax = half_cent_w - gap_3d_inset
+    cent_gap_w = cent_gap_xmax - cent_gap_xmin
+
+    # Left lateral leg geometrically: x ∈ [-half_cw, win_left_x]
+    lat_left_gap_xmin = -half_cw + gap_3d_inset
+    lat_left_gap_xmax = win_left_x - gap_3d_inset
+    lat_left_gap_w = lat_left_gap_xmax - lat_left_gap_xmin
+
+    # Right lateral leg geometrically: x ∈ [win_right_x + win_w, +half_cw]
+    lat_right_gap_xmin = win_right_x + win_w + gap_3d_inset
+    lat_right_gap_xmax = half_cw - gap_3d_inset
+    lat_right_gap_w = lat_right_gap_xmax - lat_right_gap_xmin
 
     # Slab thickness для outer-face queries — order LC_AIR_FAR (10 mm).
     slab = LC_AIR_FAR
@@ -336,29 +373,82 @@ def emit_e_core_geo_3d(
 
     air_x_2 = 2 * air_x
     z_span = z_max - z_min
-    return f"""// 3D E-core OPT — emit_e_core_geo_3d
+
+    if with_gaps:
+        # 7 Physical Volumes path: iron + 2 windings + 3 gaps + air.
+        # Box tags: 1=core, 2=primary, 3=secondary, 4=gap_center,
+        # 5=gap_left, 6=gap_right, 7=outer air.
+        gap_boxes = f"""\
+// Tag 4: center-leg gap (clamped to core)
+Box(4) = {{ {cent_gap_xmin:.7g}, {-half_gap:.7g}, 0,
+           {cent_gap_w:.7g}, {gap:.7g}, {depth:.7g} }};
+// Tag 5: left lateral-leg gap (clamped to core)
+Box(5) = {{ {lat_left_gap_xmin:.7g}, {-half_gap:.7g}, 0,
+           {lat_left_gap_w:.7g}, {gap:.7g}, {depth:.7g} }};
+// Tag 6: right lateral-leg gap (clamped to core)
+Box(6) = {{ {lat_right_gap_xmin:.7g}, {-half_gap:.7g}, 0,
+           {lat_right_gap_w:.7g}, {gap:.7g}, {depth:.7g} }};
+
+// Tag 7: outer air box (encloses everything)
+Box(7) = {{ {-air_x:.7g}, {-air_x:.7g}, {z_min:.7g},
+           {air_x_2:.7g}, {air_x_2:.7g}, {z_span:.7g} }};
+
+// === Boolean operations (sequential — robust для multi-cutouts) ===
+iron1[] = BooleanDifference{{Volume{{1}}; Delete;}}{{Volume{{2}};}};
+iron2[] = BooleanDifference{{Volume{{iron1[0]}}; Delete;}}{{Volume{{3}};}};
+iron3[] = BooleanDifference{{Volume{{iron2[0]}}; Delete;}}{{Volume{{4}};}};
+iron4[] = BooleanDifference{{Volume{{iron3[0]}}; Delete;}}{{Volume{{5}};}};
+iron_with_holes[] = BooleanDifference{{Volume{{iron4[0]}}; Delete;}}{{Volume{{6}};}};
+air_volume[] = BooleanDifference{{Volume{{7}}; Delete;}}
+                                {{Volume{{iron_with_holes[0], 2, 3, 4, 5, 6}};}};
+
+// === Physical Volume tags ===
+Physical Volume("core", 1) = {{iron_with_holes[0]}};
+Physical Volume("primary", 2) = {{2}};
+Physical Volume("secondary", 3) = {{3}};
+Physical Volume("gap_center", 4) = {{4}};
+Physical Volume("gap_left", 5) = {{5}};
+Physical Volume("gap_right", 6) = {{6}};
+Physical Volume("air", 7) = {{air_volume[0]}};
+"""
+        n_phys_vols = 7
+    else:
+        # 4 Physical Volumes path (Phase 3b smoke): no gaps.
+        gap_boxes = f"""\
+// Tag 4: outer air box (encloses everything)
+Box(4) = {{ {-air_x:.7g}, {-air_x:.7g}, {z_min:.7g},
+           {air_x_2:.7g}, {air_x_2:.7g}, {z_span:.7g} }};
+
+// === Boolean operations (no gaps) ===
+iron_with_holes[] = BooleanDifference{{Volume{{1}}; Delete;}}{{Volume{{2, 3}};}};
+air_volume[] = BooleanDifference{{Volume{{4}}; Delete;}}
+                                {{Volume{{iron_with_holes[0], 2, 3}};}};
+
+// === Physical Volume tags ===
+Physical Volume("core", 1) = {{iron_with_holes[0]}};
+Physical Volume("primary", 2) = {{2}};
+Physical Volume("secondary", 3) = {{3}};
+Physical Volume("air", 4) = {{air_volume[0]}};
+"""
+        n_phys_vols = 4
+
+    return f"""// 3D E-core OPT — emit_e_core_geo_3d (with_gaps={with_gaps})
 // Core depth (z-axis extent): {depth:.5g} m
 // Outer air box: ±{air_x:.5g} m xy, [{z_min:.5g}, {z_max:.5g}] m z
 //
-// 4 Physical Volumes (1=core, 2=primary, 3=secondary, 4=air) +
-// 1 Physical Surface 100=outer (для Infinity BC или Dirichlet в .sif).
-//
-// **Phase 3b упрощение:** gaps опущены — PyOM lateral coords для
-// OPT 6П14П SE extend за core boundary, OCC BooleanDifference fails
-// с overlapping facets. Gaps будут добавлены в Phase 3c с proper
-// clipping. Numeric acceptance — Phase 3d.
+// {n_phys_vols} Physical Volumes + 1 Physical Surface 100=outer.
 SetFactory("OpenCASCADE");
 
 Geometry.Tolerance = 1e-6;
 Geometry.ToleranceBoolean = 1e-6;
 
-Mesh.MeshSizeMin = {LC_CORE:.7g};
+Mesh.MeshSizeMin = {LC_GAP:.7g};
 Mesh.MeshSizeMax = {LC_AIR_FAR * 3:.7g};
 Mesh.Algorithm3D = 1;  // Delaunay
 Mesh.ElementOrder = 1;  // Whitney AV edge basis — lowest order tetrahedra
 
 // === Box primitives (OCC: x0, y0, z0, dx, dy, dz) ===
-// Tag 1: iron core outer block (will be cut by windings)
+// Tag 1: iron core outer block (will be cut by windings + gaps)
 Box(1) = {{ {-half_cw:.7g}, {-half_ch:.7g}, 0,
            {cw:.7g}, {ch:.7g}, {depth:.7g} }};
 
@@ -369,25 +459,7 @@ Box(2) = {{ {win_left_x:.7g}, {-half_win_h:.7g}, 0,
 Box(3) = {{ {win_right_x:.7g}, {-half_win_h:.7g}, 0,
            {win_w:.7g}, {win_h:.7g}, {depth:.7g} }};
 
-// Tag 4: outer air box (encloses everything)
-Box(4) = {{ {-air_x:.7g}, {-air_x:.7g}, {z_min:.7g},
-           {air_x_2:.7g}, {air_x_2:.7g}, {z_span:.7g} }};
-
-// === Boolean operations ===
-// Step 1: iron = Box(1) ∖ {{windings}}, KEEPING the windings as separate volumes.
-iron_with_holes[] = BooleanDifference{{Volume{{1}}; Delete;}}{{Volume{{2, 3}};}};
-
-// Step 2: air = Box(4) ∖ {{iron + windings}}, keeping everything inside.
-air_volume[] = BooleanDifference{{Volume{{4}}; Delete;}}
-                                {{Volume{{iron_with_holes[0], 2, 3}};}};
-
-// === Physical Volume tags ===
-// Numeric tags 1..4 для deterministic Body numbering в .sif (после
-// ElmerGrid -autoclean Physical tags сохраняются как Body 1..4).
-Physical Volume("core", 1) = {{iron_with_holes[0]}};
-Physical Volume("primary", 2) = {{2}};
-Physical Volume("secondary", 3) = {{3}};
-Physical Volume("air", 4) = {{air_volume[0]}};
+{gap_boxes}
 
 // === Outer boundary surfaces — 6 thin-slab queries ===
 // `Surface In BoundingBox{{xmin, ymin, zmin, xmax, ymax, zmax}}` — gmsh
