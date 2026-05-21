@@ -112,9 +112,27 @@ fail незаметно проскочит в `git commit`.
   Claude (self-review с чеклистом: scope / архитектура / код /
   линтеры / документация / соглашения / безопасность). Иногда —
   Разработчик.
-- **Сторонние ревью не игнорировать.** Боты типа qodo-code-review —
-  читать, анализировать, обсуждать с Разработчиком; фиксировать
-  решение (учесть / отбросить / отложить).
+- **Сторонние review-боты отключены** (CodeRabbit + Qodo Merge,
+  решение 2026-05-21 в `DECISIONS.md`): `.coderabbit.yaml` +
+  `.pr_agent.toml` в репо имеют `auto_review.enabled: false` /
+  `handle_pr_actions = []`. Primary review path — self-review +
+  `/ultrareview` on-demand для важных PR'ов.
+- **`/ultrareview` — on-demand external review**, не mandatory.
+  Free tier — **3 runs lifetime per account** (one-time allotment,
+  без renewal); после исчерпания — **$5–20 per run** usage credits.
+  При нашем PR-throughput (10-20/мес) mandatory означало бы $50-400/мес
+  поверх Pro/Max подписки — экономически не оправдано.
+  Используется выборочно на важных PR (cross-cutting refactor,
+  security-sensitive, milestone-фазы). Для маленьких PR (методических,
+  docs, single bug-fix) — self-review достаточно. Quota check —
+  `/usage-credits` в Claude Code CLI перед запуском.
+- **`/ultrareview` findings → PR comment manually.** Когда Vladimir
+  запускает `/ultrareview <PR#>`, findings приходят в наш чат
+  (JSON с severity/file/comment). Claude обрабатывает каждое (учесть
+  / отбросить / отложить с обоснованием), фиксирует решения, и
+  публикует summary в `gh pr comment <PR#>` для historical traceability
+  на PR-странице (auto-post в GitHub нет, подтверждено агентом
+  2026-05-21).
 
 ### Closing-правка `BOARD: Doing → Done` — отдельным commit'ом ПОСЛЕ `gh pr create`
 

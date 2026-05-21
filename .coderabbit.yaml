@@ -1,0 +1,29 @@
+# CodeRabbit configuration — auto-review disabled for efactory.
+#
+# Решение 2026-05-21 (см. DECISIONS.md): отключаем сторонние review-боты,
+# поскольку silent rate-limit + paid-tier upsell на каждом PR не оправдывают
+# noise и cognitive load. Primary review path для efactory:
+#   1. Self-review checklist (project CLAUDE.md §"Code review каждого PR")
+#   2. `/ultrareview` on-demand для важных PR'ов (cross-cutting refactor,
+#      security-sensitive changes, milestone-фазы).
+#
+# Если ADR пересмотрят — выставить `reviews.auto_review.enabled: true` обратно.
+
+language: en
+
+reviews:
+  # Главное — не запускать review автоматически.
+  auto_review:
+    enabled: false
+    drafts: false
+  # Минимизация noise даже если бот случайно запустится:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: false
+  poem: false
+  review_status: false
+  collapse_walkthrough: true
+  abort_on_close: true
+
+chat:
+  auto_reply: false
