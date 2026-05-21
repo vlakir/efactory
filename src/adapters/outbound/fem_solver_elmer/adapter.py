@@ -1,5 +1,5 @@
 """
-Elmer FEM 2D-planar magnetostatic adapter (T133 Phase 1 — linear mode).
+Elmer FEM 2D-planar magnetostatic adapter (T133 Phase 1+2 — 2D infrastructure).
 
 Реализует `MagneticFieldSolver` outbound port методом energy / J·A:
   W_per_depth = 0.5 · J_density · ∫_Primary A_z dA   (single-coil)
@@ -7,23 +7,49 @@ Elmer FEM 2D-planar magnetostatic adapter (T133 Phase 1 — linear mode).
 
 Параллельный к `GetDpFemSolver` (T113/T129): тот же port, та же mesh
 pipeline (Gmsh `.msh` через `ElmerGrid 14 2 -autoclean -out`), отличается
-solver backend и outer BC treatment (Infinity BC vs Dirichlet).
+solver backend (MgDyn2D vs GetDP linear) и outer BC treatment (Infinity
+BC Robin-type vs Dirichlet A=0).
 
-Phase 1 ограничения:
-- **Linear `material_model='linear'` only.** Nonlinear `H-B Curve` —
-  Phase 2.
-- E-core shapes (через `ECoreDimensions.from_pyom_core`); другие shape
-  classes — будущее follow-up.
+**⚠️ 2D-planar inherent precision limitation** (T133 Phase 3 empirical
+finding, см. auto-memory `feedback_fem_2d_inherent_gap_to_zhang`):
+На E-core fixture (OPT 6П14П SE: Nanoperm 8000, μ_r=8000 linear)
+этот adapter даёт **Lp = 19.65 H** vs PyOM ZHANG analytical 6.96 H
+(+182%). Это **physics, не bug** — ZHANG reluctance model предполагает
+fully closed magnetic circuit (100% flux в iron), 2D-planar FEM
+inherently включает 3D leakage/fringing effects. T113 GetDP split-coil
++ Dirichlet даёт +242%. **Никакой 2D-planar вариант не попадает в
+acceptance ±25% к ZHANG**; closure требует 3D mesh (T133 Phase 3+,
+`emit_e_core_geo_3d` + `MagnetoDynamics` Whitney AV solver).
+
+**Где 2D adapter остаётся полезным:**
+- **2D-axisymmetric** для toroidal/pot cores (separate emit_* function,
+  не сделана).
+- **Leakage расчёты** (T135) — gap reluctance не в leakage path.
+- **Cross-validation backend** для GetDP linear self-consistency
+  на same fixture (numerical reproducibility check).
+- **Quick prototyping** — сравнение топологий без полного 3D mesh.
+
+**Nonlinear-frohlich path (T133 Phase 2) — known instability:** на
+pilot probe (DC bias 50 mA) Elmer Newton iteration падает с
+`IEEE_UNDERFLOW_FLAG IEEE_DENORMAL STOP 1`. Path сохранён как
+infrastructure для возможного refinement, но не для production
+acceptance без debugging.
+
+Адаптерные ограничения:
+- `material_model='linear'` — production-ready (с known inherent gap).
+- `material_model='nonlinear-frohlich'` — infrastructure-only,
+  numerical instability на low DC bias.
+- E-core shapes only (через `ECoreDimensions.from_pyom_core`).
 - One operating point, не sweep.
 - Single-coil topology: только Primary энергизована (`+Jz`), Secondary
-  трактуется как air (no source). Отличается от T113 split-coil.
+  трактуется как air. Отличается от T113 split-coil.
 
 Pipeline:
   1. PyOM `calculate_core_data(shape, material, gapping)` → core dims.
   2. `emit_e_core_geo(dims)` → .geo (shared с GetDP).
   3. `gmsh -2 -format msh22 .geo -o .msh` (subprocess).
   4. `ElmerGrid 14 2 .msh -autoclean -out mesh-elmer/` (subprocess —
-     auto-memory feedback_elmer_2d_keyword_pitfalls: -autoclean
+     auto-memory `feedback_elmer_2d_keyword_pitfalls`: -autoclean
      обязателен для predictable Body/Boundary numbering).
   5. `sif_template.render_magnetostatic_sif_linear(...)` → case.sif.
   6. `ElmerSolver case.sif` (subprocess; cwd = work_dir).
@@ -72,6 +98,11 @@ DELTA_I_REL = 0.01
 
 MaterialModel = Literal['linear', 'nonlinear-frohlich']
 _VALID_MATERIAL_MODELS: tuple[MaterialModel, ...] = get_args(MaterialModel)
+
+# Empirical baseline на OPT 6П14П SE (single-coil + Infinity BC, T133
+# Phase 3 acceptance probe 2026-05-21): linear mode даёт Lp ≈ 19.65 H.
+# Используется integration test'ом как regression baseline (drift ±5%).
+EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_H = 19.65
 
 
 class ElmerFemSolver:
