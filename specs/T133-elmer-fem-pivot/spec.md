@@ -1,6 +1,6 @@
 # Spec: Elmer FEM pivot — nonlinear B-H + DC-bias closure 242% gap (T133)
 
-**Статус:** Phase 2 complete (nonlinear mode + central-diff DC bias, готова к Phase 3)
+**Статус:** Phase 3 in progress — **3D pivot β** (2D-planar gap inherent, см. §8)
 **Дата создания:** 2026-05-21
 **Связанные документы:**
 - ADR `2026-05-20 — T129 closure: analytical (PyOM ZHANG) — source of truth
@@ -540,6 +540,18 @@ transformer) = T127 BACKLOG, отдельный T-ID. Scope discipline:
   consistent BC numbering, predictable .sif templates. Auto-memory
   `feedback_elmer_savescalars_quirks` будет расширена этим pitfall'ом.
 
+- **~~N1.~~ ✅ RESOLVED in Phase 3a probe (2026-05-21):** Elmer linear
+  cross-check Elmer↔GetDP linear на **разной топологии** действительно
+  даёт разные L_p:
+  - GetDP split-coil + Dirichlet (T113): **Lp = 23.78 H**.
+  - Elmer single-coil + Infinity BC (T133 Phase 1 топология):
+    **Lp = 19.65 H**.
+  Различие 17% — отражает разную физическую интерпретацию (split-coil
+  enforces antisymmetric J, single-coil + open BC даёт другой
+  field distribution). Cross-validation "Elmer same backend на same
+  .sif twice" работает (numerical reproducibility); cross-backend
+  agreement на same fixture отдельный T-ID не требуется в рамках T133.
+
 - **N9. CheckKeyword "Unlisted keyword: [a]" — informational only.**
   Elmer 26.2 reports `Unlisted keyword: [a] in section: [boundary
   condition 1]` для `A = Real 0.0` Dirichlet BC, но Dirichlet
@@ -549,6 +561,112 @@ transformer) = T127 BACKLOG, отдельный T-ID. Scope discipline:
   matching работает по variable name, keyword catalog
   предусматривает только subset known keywords. T113 .sif
   тоже выдавал этот warning (verified Phase 0 probe).
+
+---
+
+## 8. 3D pivot (revision 2, 2026-05-21 после Phase 3a probe)
+
+**Триггер:** Phase 3a empirical probe на pilot fixture OPT 6П14П SE
+(2026-05-21, image efactory:linux rebuilt с elmerfem-csc) показал:
+
+| Backend (linear, μ_r=8000) | Lp [H] | rel diff к ZHANG 6.96 H |
+|----------------------------|--------|-------------------------|
+| **PyOM ZHANG analytical (reference)** | **6.96** | — |
+| GetDP split-coil + Dirichlet (T113 baseline) | 23.78 | **+242%** |
+| Elmer single-coil + Infinity BC (T133 Phase 1) | 19.65 | **+182%** |
+
+**Acceptance ±25%** = [5.22, 8.70] H, **target ±10%** = [6.26, 7.65] H.
+
+**Финдинг:** ни один 2D-planar вариант (split-coil, single-coil,
+Dirichlet, Infinity BC, любая комбинация) не попадает даже в
+acceptance band. Топологический pivot single-coil → Infinity BC дал
+улучшение 242% → 182% (factor 3.4 → 2.8), но всё ещё в 3× выше
+acceptance. Nonlinear Frohlich дополнительно уменьшит L по знаку
+правильному, но max effect ~30-50% — недостаточно для closure factor
+3 gap.
+
+**Причина gap:** ZHANG reluctance model предполагает **fully closed
+magnetic circuit** (100% flux в iron, no fringing, no leakage); любая
+**2D-planar FEM** инherently включает **3D эффекты, отсутствующие в
+analytical** — out-of-plane leakage, in-plane fringing над краями
+gaps, недостаточно ограниченные открытым BC поля. 2D-axisymmetric
+не подходит — E-core not radially symmetric.
+
+**Решение (β-pivot per Vladimir 2026-05-21):** в той же ветке
+T133-elmer-fem-pivot расширить scope с 2D-planar на 3D. 2D Phase 1+2
+infrastructure **сохраняется** (полезна для 2D-axisymmetric pot/
+toroidal cores в будущем, для leakage-only расчётов T135, и для
+cross-validation backend). Phase 3 заново разбита:
+
+- **Phase 3a — 3D probe.** Pilot probe (mirror Phase 0 для 2D) в
+  pilot.Dockerfile / efactory:linux: проверить Elmer
+  `MagnetoDynamics` (3D solver, не 2D) поддерживает E-core
+  topology через extruded gmsh mesh + coil current handling
+  (Coil keyword или volumetric J vector) + H-B Curve + Newton.
+- **Phase 3b — 3D mesh generator.** `emit_e_core_geo_3d(dims)`:
+  extrude существующих 2D surfaces в z по `core_depth` через
+  gmsh `Extrude` примитив + air shell (3D box с infinity boundary).
+  Physical Volumes (core, primary, secondary, gaps, air) +
+  Physical Surfaces (infinity boundary).
+- **Phase 3c — 3D adapter mode.** Новый `material_model` literal:
+  `'linear-3d'` / `'nonlinear-frohlich-3d'` (или dimensionality
+  как separate ctor param — decide в Phase 3c). Новый
+  `sif_template.render_magnetostatic_sif_3d_*`.
+- **Phase 3d — Acceptance.** Run на pilot fixture, проверить
+  попадание в acceptance ±25% (target ±10%) к PyOM ZHANG.
+- **Phase 3e — ADR + closing.** Перенос BOARD Doing → Done,
+  ADR override в DECISIONS.md, BACKLOG cleanup.
+
+**Scope expansion impact:**
+- **+1-2 недели работы** beyond original Phase 3 estimate.
+- **Image не растёт** (elmerfem-csc уже включает 3D MagnetoDynamics solver).
+- **Test runtime** — 3D integration может быть 10-30 min per solve;
+  возможно потребует `pytest.mark.slow` marker и отдельный CI gate.
+- **2D Phase 1+2 не дед-вейт:** preserved для axisymmetric, leakage
+  (T135), cross-validation backend.
+
+**Анализ Phase 3 нужно расширить** (Critical/Warning для 3D probe
+findings — после фазы 3a).
+
+### Phase 3a probe results (2026-05-21)
+
+- **3D mesh generation through gmsh `Extrude` works.** `probe3d_whitney_av.geo`
+  (iron cuboid 100×100×50 mm в air box 400×400×300 mm) → 9641 nodes,
+  45981 tetrahedra, 4782 boundary triangles после `ElmerGrid 14 2
+  -autoclean -out`. Gmsh `Extrude {0, 0, h} { Surface{...}; }` корректно
+  создаёт Physical Volumes из 2D Physical Surfaces.
+- **3D Whitney AV solver converges с tree gauge + MUMPS direct.**
+  `probe3d_whitney_av.sif`: ElmerSolver completes за 5.26 s CPU,
+  NRM = 4.2e-9 finite. **`Use Tree Gauge = Logical True`** обязателен
+  (Whitney edge basis A unique только up to gradient — без gauge
+  iterative solver не сходится, see Phase 3a first attempt с
+  `BiCGStabL` + `ILU0` который diverged за 5000 iter).
+- **Linear solver choice:** MUMPS direct works для small-mesh (~10K
+  nodes). Для full E-core OPT mesh (≥ 50K elements ожидаемо) может
+  потребоваться Hypre BoomerAMG или MultiGrid — Phase 3c probe.
+- **`AV {e} = Real 0.0` Dirichlet keyword unused.** Default tangential
+  A BC = natural (PEC-like, A_tangential = 0 на boundary без явного
+  enforcement); работает для magnetostatic с current density bulk
+  source. Explicit Dirichlet edge BC syntax — Phase 3b probe.
+- **Coil mechanism для OPT primary winding (Phase 3c):** Elmer
+  `MagnetoDynamics.so` + `CoilSolver.so` поддерживают `Coil Type =
+  "stranded"` + `Coil Normal` + `Coil Cross Section` + `Number of
+  Turns`. CoilSolver pre-computes coil current vector field, MGDynamics
+  uses его как source. Этот path — proper representation OPT primary
+  (3D loop вокруг центральной ноги, не simple body force).
+- **H-B Curve в 3D solver:** strings показывают `H-B Curve Variable`
+  (richer than 2D `H-B Curve`); same `Variable Coupled iter; Real
+  cubic; ... End` syntax ожидаемо работает. Phase 3c probe для
+  nonlinear path подтвердит.
+- **Flux linkage extraction:** strings `Calculate Flux Linkage requested
+  but Vector Potential and/or Current Density missing!` — Elmer
+  поддерживает auto flux linkage расчёт когда `Calculate Flux Linkage
+  = Logical True` + Coil mechanism. Это direct Lp output, не через
+  manual energy integral.
+
+**Phase 3a verdict:** **3D path viable** для Elmer 26.2. Core capabilities
+(mesh, solver, gauge, Coil, H-B Curve) присутствуют. Phase 3b/3c —
+интеграция в efactory adapter.
 
 - **N6. Phase 0 pilot — единая branch, отдельный commit.** Per
   project rule «один PR — один коммит», Phase 0/1/2/3 коммитятся

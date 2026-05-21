@@ -1,0 +1,94 @@
+! T133 Phase 3a probe — Elmer 3D MagnetoDynamics Whitney AV solver smoke.
+!
+! Цель: подтвердить feasibility 3D pivot (после 2D-planar showed inherent
+! gap к ZHANG на ±182-242%). Тестирует:
+!   - 3D Whitney AV edge basis converges (нужен tree gauge для
+!     gauge-fixing — A unique up to gradient в edge basis).
+!   - MUMPS direct linear solver достаточен для small 3D mesh (5-10K nodes).
+!   - Body Force vector current density (Current Density 1/2/3 = ...).
+!
+! Empirical (probe в efactory:linux 2026-05-21):
+!   - Convergence: 5.26 s CPU, NRM = 4.2e-9 finite.
+!   - 9641 nodes / 45981 tetrahedra / 4782 boundary triangles.
+!   - Unused keyword "AV {e} = Real 0.0" — default tangential A BC OK
+!     для magnetostatic с current в bulk; explicit Dirichlet требует
+!     другого keyword syntax (probe в Phase 3b).
+
+Header
+  Mesh DB "." "mesh-3d"
+End
+
+Simulation
+  Coordinate System = "Cartesian"
+  Simulation Type = "Steady state"
+  Steady State Max Iterations = 1
+End
+
+Constants
+  Permeability of Vacuum = Real 1.25663706143592e-6
+End
+
+Body 1
+  Name = "Iron"
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 2
+  Body Force = 1
+End
+
+Body 2
+  Name = "Air"
+  Target Bodies(1) = 2
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Name = "Air"
+  Relative Permeability = Real 1.0
+End
+
+Material 2
+  Name = "Iron_Linear"
+  Relative Permeability = Real 1000.0
+End
+
+! Body Force = current density vector (3 components, A/m²).
+! Здесь +Jz=1e5 в iron — простой smoke; real OPT primary использует
+! Coil mechanism (CoilSolver.so + Coil Type = "stranded" + Coil Normal)
+! в Phase 3c.
+Body Force 1
+  Current Density 1 = Real 0
+  Current Density 2 = Real 0
+  Current Density 3 = Real 1.0e5
+End
+
+Equation 1
+  Name = "MagnetoDynamics"
+  Active Solvers(1) = 1
+End
+
+! Whitney AV solver — 3D edge basis vector potential A + scalar V.
+! Tree gauge: gauge-fixing для устранения A → A+∇φ ambiguity
+! (per strings "Direct solver (with tree gauge) is only possible with
+! the lowest order edge basis!").
+! MUMPS direct: суперлинейный, OK для < 50K elements.
+Solver 1
+  Equation = "MGDynamics"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+  Variable = "AV"
+  Use Tree Gauge = Logical True
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "MUMPS"
+  Nonlinear System Max Iterations = 1
+End
+
+! Outer boundary — tangential A = 0 (natural перевод PEC-like BC).
+! `AV {e} = Real 0.0` reported as "Unused keyword" — ElmerSolver
+! применяет default natural BC; explicit Dirichlet на edge basis
+! требует другого syntax (Phase 3b probe).
+Boundary Condition 1
+  Name = "Outer"
+  Target Boundaries(1) = 3
+  AV {e} = Real 0.0
+End
