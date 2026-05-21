@@ -13,6 +13,7 @@ from adapters.outbound.ngspice.wrapper import build_wrapper
 from domain.application import ApplicationKind
 from domain.simulation import (
     AcAnalysis,
+    FourierAnalysis,
     OpAnalysis,
     TranAnalysis,
 )
@@ -143,6 +144,34 @@ def test_build_wrapper_ac_directive() -> None:
     assert '1000000' in wrapper or '1e+06' in wrapper or '1e6' in wrapper
 
 
+def test_build_wrapper_fourier_directive() -> None:
+    netlist = '* sample\n'
+    raw = Path('/tmp/out.raw')
+
+    wrapper = build_wrapper(
+        netlist,
+        FourierAnalysis(
+            tran=TranAnalysis(t_step=1e-5, t_stop=10e-3),
+            fundamental_hz=1000.0,
+            n_harmonics=10,
+            signal='v(load)',
+        ),
+        raw,
+    )
+
+    # ngspice требует .tran top-level + `fourier` interactive в .control
+    # (top-level `.four` директива не процессится при наличии .control).
+    assert '.TRAN' in wrapper
+    assert 'set nfreqs=10' in wrapper
+    assert 'fourier 1000' in wrapper
+    assert 'v(load)' in wrapper
+    # `fourier` команда должна идти после `run`, иначе ngspice не имеет
+    # transient data для анализа.
+    run_pos = wrapper.find('  run\n')
+    fourier_pos = wrapper.find('fourier 1000')
+    assert 0 < run_pos < fourier_pos
+
+
 def test_build_wrapper_strips_dot_end_from_netlist() -> None:
     netlist = '* sample\nV1 in 0 1\nR1 in 0 1k\n.end\n'
     raw = Path('/tmp/out.raw')
@@ -266,6 +295,93 @@ async def test_run_raises_failed_when_raw_missing(tmp_path: Path) -> None:
         await simulator.run(netlist, OpAnalysis())
 
 
+async def test_run_fourier_parses_stdout_for_four_block(
+    tmp_path: Path,
+) -> None:
+    netlist = await _write_netlist(tmp_path)
+    raw_text = (
+        'Title: t\nDate: d\nCommand: c\nPlotname: Transient Analysis\n'
+        'Flags: real\nNo. Variables: 2\nNo. Points: 1\n'
+        'Variables:\n\t0\ttime\ttime\n\t1\tv(load)\tvoltage\n'
+        'Values:\n 0\t0.0\n\t1.0\n'
+    )
+    fourier_stdout = (
+        'Fourier analysis for v(load):\n'
+        '  No. Harmonics: 10, THD: 2.5 %, '
+        'Gridsize: 200, Interpolation Degree: 1\n'
+        '\n'
+        'Harmonic  Frequency        Magnitude     Phase       '
+        'Norm. Mag    Norm. Phase\n'
+        '--------  ---------        ---------     -----       '
+        '---------    -----------\n'
+        '0         0                0.001         0           0            0\n'
+        '1         1000             1.0           0           1            0\n'
+        '2         2000             0.025         0           0.025        0\n'
+        '3         3000             0.0125        0           0.0125       0\n'
+        '4         4000             0.00625       0           0.00625      0\n'
+        '5         5000             0.003125      0           0.003125     0\n'
+        '6         6000             0.0015625     0           0.0015625    0\n'
+        '7         7000             0.00078125    0           0.00078125   0\n'
+        '8         8000             0.000390625   0           0.000390625  0\n'
+        '9         9000             0.0001953125  0           0.0001953125 0\n'
+    )
+
+    def write_raw_side_effect() -> None:
+        raw = netlist.parent / f'{netlist.stem}.raw'
+        raw.write_text(raw_text)
+
+    app_manager = FakeAppManager(
+        result=RunResult(0, fourier_stdout, ''),
+        side_effect=write_raw_side_effect,
+    )
+    simulator = NgspiceSimulator(app_manager)  # type: ignore[arg-type]
+
+    analysis = FourierAnalysis(
+        tran=TranAnalysis(t_step=1e-5, t_stop=10e-3),
+        fundamental_hz=1000.0,
+        n_harmonics=10,
+        signal='v(load)',
+    )
+    result = await simulator.run(netlist, analysis)
+
+    assert result.fourier_result is not None
+    assert result.fourier_result.thd_percent == 2.5
+    assert result.fourier_result.fundamental_hz == 1000.0
+    assert len(result.fourier_result.harmonics) == 10
+    assert result.time_series is None
+    assert result.operating_points is None
+    assert result.ac_sweep is None
+
+
+async def test_run_fourier_raises_when_block_missing(tmp_path: Path) -> None:
+    netlist = await _write_netlist(tmp_path)
+    raw_text = (
+        'Title: t\nDate: d\nCommand: c\nPlotname: Transient Analysis\n'
+        'Flags: real\nNo. Variables: 2\nNo. Points: 1\n'
+        'Variables:\n\t0\ttime\ttime\n\t1\tv(load)\tvoltage\n'
+        'Values:\n 0\t0.0\n\t1.0\n'
+    )
+
+    def write_raw_side_effect() -> None:
+        (netlist.parent / f'{netlist.stem}.raw').write_text(raw_text)
+
+    app_manager = FakeAppManager(
+        result=RunResult(0, 'ngspice ran but no .four block emitted', ''),
+        side_effect=write_raw_side_effect,
+    )
+    simulator = NgspiceSimulator(app_manager)  # type: ignore[arg-type]
+
+    analysis = FourierAnalysis(
+        tran=TranAnalysis(t_step=1e-5, t_stop=10e-3),
+        fundamental_hz=1000.0,
+        n_harmonics=10,
+        signal='v(load)',
+    )
+
+    with pytest.raises(SimulationFailedError, match='.four'):
+        await simulator.run(netlist, analysis)
+
+
 async def test_run_propagates_custom_timeout(tmp_path: Path) -> None:
     netlist = await _write_netlist(tmp_path)
     raw_text = (
@@ -369,6 +485,72 @@ async def test_integration_ac_on_rc_filter(tmp_path: Path) -> None:
     imag = ac.traces_imag['v(out)'][fc_idx]
     magnitude = (real * real + imag * imag) ** 0.5
     assert magnitude == pytest.approx(0.707, abs=0.05)
+
+
+@needs_ngspice
+async def test_integration_fourier_on_pure_sine_returns_low_thd(
+    tmp_path: Path,
+) -> None:
+    """Чистый sin-источник на R-нагрузке → THD ≈ 0 (numerical noise only)."""
+    netlist = tmp_path / 'sine.cir'
+    netlist.write_text(
+        '* pure sine\n'
+        'V1 in 0 SIN(0 1 1000)\n'
+        'R1 in 0 1k\n',
+    )
+    app_manager_local = _make_local_app_manager()
+    simulator = NgspiceSimulator(app_manager_local)
+
+    analysis = FourierAnalysis(
+        tran=TranAnalysis(t_step=1e-6, t_stop=10e-3),
+        fundamental_hz=1000.0,
+        n_harmonics=10,
+        signal='v(in)',
+    )
+    result = await simulator.run(netlist, analysis)
+
+    assert result.fourier_result is not None
+    fr = result.fourier_result
+    assert fr.fundamental_hz == pytest.approx(1000.0, rel=1e-3)
+    # Чистый sin: только численный noise — THD < 1%.
+    assert fr.thd_percent < 1.0
+    assert len(fr.harmonics) == 10
+    # n=1 — fundamental, должен быть ≈ 1V amplitude (peak).
+    fundamental = next(h for h in fr.harmonics if h.n == 1)
+    assert fundamental.magnitude == pytest.approx(1.0, abs=0.05)
+
+
+@needs_ngspice
+async def test_integration_fourier_on_clipped_sine_returns_high_thd(
+    tmp_path: Path,
+) -> None:
+    """Hard-clipped sin (tanh ≈ saturation) → THD > 10%, нечётные гармоники."""
+    netlist = tmp_path / 'clip.cir'
+    netlist.write_text(
+        '* tanh clipping\n'
+        'V1 in 0 SIN(0 1 1000)\n'
+        'B1 out 0 V = tanh(5*V(in))\n'
+        'R1 out 0 1k\n',
+    )
+    app_manager_local = _make_local_app_manager()
+    simulator = NgspiceSimulator(app_manager_local)
+
+    analysis = FourierAnalysis(
+        tran=TranAnalysis(t_step=1e-6, t_stop=10e-3),
+        fundamental_hz=1000.0,
+        n_harmonics=10,
+        signal='v(out)',
+    )
+    result = await simulator.run(netlist, analysis)
+
+    assert result.fourier_result is not None
+    fr = result.fourier_result
+    assert fr.thd_percent > 10.0
+    # tanh-clip — symmetric нелинейность → доминируют нечётные гармоники
+    # (n=3, 5). Чётные (n=2, 4) близки к нулю.
+    h3 = next(h for h in fr.harmonics if h.n == 3)
+    h2 = next(h for h in fr.harmonics if h.n == 2)
+    assert h3.normalized > h2.normalized
 
 
 @needs_ngspice

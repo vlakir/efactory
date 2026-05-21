@@ -70,10 +70,44 @@ class AcAnalysis(BaseModel):
         return self
 
 
+class FourierAnalysis(BaseModel):
+    """ngspice `.four` analysis: pairs with TranAnalysis (T131 Phase B)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    type: Literal['four'] = 'four'
+    tran: TranAnalysis
+    fundamental_hz: float = Field(gt=0.0)
+    n_harmonics: int = Field(ge=2, le=20)
+    signal: str = Field(min_length=1)
+
+
 AnalysisSpec = Annotated[
-    OpAnalysis | TranAnalysis | AcAnalysis,
+    OpAnalysis | TranAnalysis | AcAnalysis | FourierAnalysis,
     Field(discriminator='type'),
 ]
+
+
+class HarmonicSample(BaseModel):
+    """Один harmonic из ngspice `.four` output (T131 Phase B)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    n: int = Field(ge=0)
+    frequency_hz: float = Field(ge=0.0)
+    magnitude: float = Field(ge=0.0)
+    phase_deg: float
+    normalized: float = Field(ge=0.0)
+
+
+class FourierResult(BaseModel):
+    """ngspice `.four` block parsed (T131 Phase B)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    fundamental_hz: float = Field(gt=0.0)
+    thd_percent: float = Field(ge=0.0)
+    harmonics: tuple[HarmonicSample, ...] = Field(min_length=1)
 
 
 class TimeSeries(BaseModel):
@@ -133,13 +167,14 @@ class AcSweep(BaseModel):
 
 
 class SimulationResult(BaseModel):
-    """Результат одного анализа — ровно одна из трёх ветвей заполнена."""
+    """Результат одного анализа — ровно одна из четырёх ветвей заполнена."""
 
     model_config = ConfigDict(frozen=True)
 
     operating_points: dict[str, float] | None = None
     time_series: TimeSeries | None = None
     ac_sweep: AcSweep | None = None
+    fourier_result: FourierResult | None = None
 
     @model_validator(mode='after')
     def _check_exactly_one_branch(self) -> Self:
@@ -149,13 +184,15 @@ class SimulationResult(BaseModel):
                 ('operating_points', self.operating_points),
                 ('time_series', self.time_series),
                 ('ac_sweep', self.ac_sweep),
+                ('fourier_result', self.fourier_result),
             )
             if value is not None
         ]
         if len(filled) != 1:
             msg = (
                 f'SimulationResult: exactly one of (operating_points, '
-                f'time_series, ac_sweep) must be set; got {filled}.'
+                f'time_series, ac_sweep, fourier_result) must be set; '
+                f'got {filled}.'
             )
             raise ValueError(msg)
         return self

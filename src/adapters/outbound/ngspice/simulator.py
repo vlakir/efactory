@@ -5,12 +5,17 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
+from adapters.outbound.ngspice.four_parser import (
+    NgspiceFourierParseError,
+    parse_four_output,
+)
 from adapters.outbound.ngspice.raw_parser import (
     NgspiceRawParseError,
     parse_ngspice_raw,
 )
 from adapters.outbound.ngspice.wrapper import build_wrapper
 from domain.application import ApplicationKind
+from domain.simulation import FourierAnalysis, SimulationResult
 from ports.outbound.app_manager import (
     ApplicationNotInstalledError,
     ApplicationStartError,
@@ -23,7 +28,7 @@ from ports.outbound.simulator import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from domain.simulation import AnalysisSpec, SimulationResult
+    from domain.simulation import AnalysisSpec
     from ports.outbound.app_manager import AppManager
 
 
@@ -65,6 +70,17 @@ class NgspiceSimulator:
             details = result.stderr.strip() or result.stdout.strip()
             msg = f'ngspice exit {result.returncode} on {netlist}: {details}'
             raise SimulationFailedError(msg)
+
+        if isinstance(analysis, FourierAnalysis):
+            try:
+                fourier_result = parse_four_output(
+                    result.stdout,
+                    signal=analysis.signal,
+                )
+            except NgspiceFourierParseError as exc:
+                msg = f'ngspice .four parse failed: {exc}'
+                raise SimulationFailedError(msg) from exc
+            return SimulationResult(fourier_result=fourier_result)
 
         raw_exists = await asyncio.to_thread(raw_path.is_file)
         if not raw_exists:
