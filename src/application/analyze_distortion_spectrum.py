@@ -3,8 +3,9 @@ analyze_distortion_spectrum — THD-спектр через saturable SPICE (T13
 
 Use case-orchestrator:
 
-1. Сгенерировать saturable transformer subckt (Phase A) из
-   `MagneticComponent` + `FrohlichBHCurve` (spec'а).
+1. Сгенерировать saturable transformer subckt (Phase A + Phase E
+   redesign на XSPICE gyrator-capacitor) из `MagneticComponent` +
+   `FrohlichBHCurve` (spec'а).
 2. Заменить library reference в netlist'е (`.include <target>.lib`)
    на inline saturable subckt с тем же subckt-name (Phase C
    `substitute_subckt_library`).
@@ -23,6 +24,38 @@ Use case-orchestrator:
 Calibration **single-pass**, не closed-loop — ThdSweepSpec.find_closest
 с tolerance ±20% обеспечивает acceptance gating уже на стороне caller'а
 (см. T131 spec Q3 / Analyze W1).
+
+**Caller-side pitfalls (T131 Phase D lessons):**
+
+- **Floating secondary OPT требует DC reference** перед Fourier'ом.
+  Real OPT-схемы часто имеют secondary с обоими концами floating
+  (R_load в loop между S1 и S2, ни один не grounded). ngspice Fourier
+  на `v(/sec_a)` с floating reference даёт arbitrary DC offset и
+  нерелевантную fundamental magnitude. **Fix:** caller должен
+  injected'ить `R_dc_leak /sec_b 0 1Meg` в netlist перед передачей
+  его в use case (1 MΩ к GND неизмеримо влияет на signal — leak-current
+  через 8 Ω load всего 8·10⁻⁶ A peak — но фиксирует DC reference).
+  См. `tests/acceptance/test_saturable_thd_se_amp.py::_add_secondary_dc_leak`.
+
+- **Saturation contribution metric** для acceptance gating:
+  `THD@f_low - THD@f_high > threshold_pp` (например > 0.5 pp). Эта
+  diagnostic separates "saturable модель реально contribute'ит" от
+  "tube THD dominate'ит, OPT-модель passive". При высокой частоте
+  flux excursion (B = V_pri/(2πf·N·A)) масштабируется ~ 1/f → saturable
+  OPT работает линейно; THD при f_high — pure tube-only baseline.
+  THD при f_low (где flux excursion велик) — saturation kicks in.
+  Positive `saturation_contribution` = T131 raison d'être validated.
+  Negative или ≈ 0 указывает либо на bug в saturable generator
+  (saturation не engaging), либо на miscalibrated voltage swing
+  (V_pri слишком low для saturation knee).
+
+- **`voltage_per_root_power` calibration** в small-signal range
+  underestimates V_in для large-signal targets из-за tube
+  compression. Single-pass calibration ±20% measured-power tolerance
+  обычно держит этот error в acceptable bound, но при extreme
+  compression (V_grid близко к cutoff / saturation) actual power
+  может отойти на 30-50% от target. Find_closest с power_tolerance
+  parameter regulates это на стороне acceptance test.
 """
 
 from __future__ import annotations

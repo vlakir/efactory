@@ -38,6 +38,68 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- T094 закрыт ADR от 2026-05-19 в DECISIONS.md (вариант "в":
      /ultrareview как primary external review, CodeRabbit best-effort). -->
 
+- **T134** — [2026-05-21, заведено в Phase E T131] **Agent Knowledge
+  Base — infrastructure для накопления technical knowledge у
+  efactory CLI agent'а.**
+
+  **Контекст.** efactory CLI agent (будущий, фаза 1b «Чат-клиент»)
+  будет отдельной runtime-сущностью со своими ресурсами; **не имеет
+  доступа** к auto-memory Гвидо (вне репо) и mem0 (приватная Vladimir
+  + Гвидо). Md-файлы репо (`DECISIONS.md`, `CHANGELOG.md`, `specs/*`,
+  `CLAUDE.md`) — dev-process артефакты для Гвидо и человека-ревьюера,
+  **не** primary канал знаний для agent'а. Архив сохранится в git,
+  но это не должно быть основным механизмом передачи знаний.
+
+  **Цель.** Слой persistence для efactory CLI agent: формат хранения,
+  initial-seed content (curated на release-bake), append-API (агент
+  пополняет в проде), retrieval (context-aware lookup перед
+  принятием решения).
+
+  **Контрольный пример (regression target из T131).** Каждый из этих
+  3 уроков должен быть представлен в KB после implementation:
+
+  1. **«Saturable магнетика с активными элементами требует XSPICE
+     gyrator-capacitor (lcouple+core), не PWL current-source».**
+     Источник: Phase E redesign 2026-05-21. PWL B-source с C_int
+     integrator + active EL84 Koren model давал numerical blow-up
+     (magnitudes ~1e+65) из-за algebraic loop. XSPICE gyrator-cap
+     (Hamill 1993) изолирует нелинейность в магнитной области.
+     ⇒ Если agent попросят добавить новую saturable модель
+     (capacitor, inductor) — должен предложить gyrator-cap путь.
+
+  2. **«Floating secondary OPT требует R_dc_leak (~1 MΩ к GND) перед
+     Fourier analysis».** Источник: Phase D acceptance test
+     post-processing 2026-05-21. Без DC reference v(/sec_a) получает
+     arbitrary DC offset, ngspice Fourier даёт нерелевантную fundamental
+     magnitude. ⇒ Если agent проектирует netlist post-processing для
+     любого транса с floating secondary — должен auto-inject leak.
+
+  3. **«Saturation contribution metric = THD@f_low - THD@f_high как
+     diagnostic для saturable models».** Источник: Phase E
+     acceptance gate 2026-05-21. Чистая abs-THD bound недостаточна
+     (compact-core configurations выходят за published [1%, 5%]
+     band published для больших cores); positive saturation
+     contribution = saturable модель реально активна. ⇒ Если agent
+     создаёт похожий THD-acceptance gate — должен включать
+     saturation contribution diagnostic.
+
+  **Acceptance.**
+  - Spec формата KB (chunk schema, indexing strategy, retrieval API).
+  - Skeleton implementation (read + write API минимум).
+  - Initial-seed loader (bootstrap-script: parse curated content
+    из репо при первом запуске efactory CLI agent).
+  - Acceptance test: задаются 3 регрессионных query из T131 control
+    example выше, KB возвращает релевантные chunks с правильным
+    ranking.
+  - **Не входит**: полный seeding текущих знаний (отдельная задача
+    после KB skeleton готов); production-quality vector DB tuning.
+
+  Scope ~3-5 дней. Зависит от: концепция фазы 1b «Чат-клиент»
+  (CONCEPT.md §13).
+
+  Не зависит от: T131 (T131 уже закрыт, ADR в `DECISIONS.md` +
+  docstring обогащения адресуют immediate dev-process persistence).
+
 
 ### Tech Debt (отложено)
 
