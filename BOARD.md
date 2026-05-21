@@ -61,6 +61,16 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T132** — [взято в работу 2026-05-21, после T131] **Interleaved
+  OPT leakage inductance — PyOM analytical path.** Sandwich-секционная
+  намотка (P-S-P, 5-section) для минимизации Lσ → HF-rolloff
+  bandwidth. Domain enrichment `section_layout` на Bobbin/Coil VO +
+  PyOM `calculate_leakage_inductance` payload mapping + use case
+  `analyze_interleaved_leakage` + pilot acceptance test на Hammond
+  1627A-class reference (±25% к published Lσ ≈ 5 mH). Scope ~1-2 дня.
+  Spec: `specs/T132-interleaved-leakage/spec.md` (Draft, phase
+  Clarify). Ветка: `T132-interleaved-leakage`.
+
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем

@@ -287,23 +287,10 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      "T131 SPICE saturable + THD" следующей content-задачей. Spec —
      specs/T131-saturable-thd/spec.md (Draft, в Clarify-фазе). -->
 
-- **T132** — [2026-05-20, заведено в Phase C T129] **Interleaved
-  OPT leakage inductance — PyOM-only analytical path.** Top-tier
-  audio OPT использует sandwich-секционную намотку (P-S-P, 5-section,
-  ...) для минимизации Lσ (HF-rolloff). PyOM `calculate_leakage_
-  inductance` поддерживает multi-section через bobbin schema, но
-  efactory сейчас не enrich'ает MAS schema с layer order.
-  Содержание:
-  - Domain VO: `Bobbin.section_layout: tuple[WindingSection, ...]` —
-    sandwich порядок и параметры (insulation thickness, layer count).
-  - PyOM payload mapping: собрать `windingWindow.sections` correctly.
-  - Test fixture с known reference — например, published Plitron /
-    Sowter / Hashimoto datasheet OPT.
-  Покрывает 60-80% interleaved cases. Для 5+ section с FEM cross-
-  check — T133.
-  Не зависит от FEM blocker'а. Scope ~1-2 дня. **Зависит от T131
-  только как ordering preference** (THD universal value vs interleaved
-  niche).
+<!-- T132 переведена в BOARD.md → Doing 2026-05-21 после T131 closure.
+     Spec — specs/T132-interleaved-leakage/spec.md (Draft, в Clarify-
+     фазе). -->
+
 - **T133** — [2026-05-20, заведено в Phase C T129] **Elmer FEM pivot —
   переход на Elmer для nonlinear B-H + DC bias FEM cross-check.**
   T129 Phase B показал: GetDP 2D-planar с split-coil topology
