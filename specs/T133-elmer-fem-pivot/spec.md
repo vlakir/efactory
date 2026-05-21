@@ -1,6 +1,6 @@
 # Spec: Elmer FEM pivot — nonlinear B-H + DC-bias closure 242% gap (T133)
 
-**Статус:** Phase 1 complete (adapter scaffolding linear mode, готова к Phase 2)
+**Статус:** Phase 2 complete (nonlinear mode + central-diff DC bias, готова к Phase 3)
 **Дата создания:** 2026-05-21
 **Связанные документы:**
 - ADR `2026-05-20 — T129 closure: analytical (PyOM ZHANG) — source of truth

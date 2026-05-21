@@ -35,14 +35,20 @@ def _fake_completed(rc: int = 0, stdout: str = '', stderr: str = '') -> subproce
 
 
 def test_default_material_model_is_linear() -> None:
-    """Phase 1 default = linear (single supported value пока что)."""
+    """Default = linear (back-compat, parallel to GetDpFemSolver)."""
     solver = ElmerFemSolver(_FakePyOM())
     assert solver.material_model == 'linear'
 
 
+def test_material_model_accepts_nonlinear_frohlich() -> None:
+    """Phase 2 — nonlinear-frohlich теперь принимается."""
+    solver = ElmerFemSolver(_FakePyOM(), material_model='nonlinear-frohlich')
+    assert solver.material_model == 'nonlinear-frohlich'
+
+
 def test_material_model_rejects_unknown_value() -> None:
     with pytest.raises(ValueError, match='material_model'):
-        ElmerFemSolver(_FakePyOM(), material_model='nonlinear-frohlich')  # type: ignore[arg-type]
+        ElmerFemSolver(_FakePyOM(), material_model='magic-newton')  # type: ignore[arg-type]
 
 
 def test_parse_body_int_a_reads_last_float_in_file(tmp_path: Any) -> None:

@@ -44,10 +44,13 @@ from typing import TYPE_CHECKING, Any, Literal, get_args
 from adapters.outbound.fem_common import (
     ECoreDimensions,
     emit_e_core_geo,
+    extract_frohlich_params,
 )
 from adapters.outbound.fem_solver_elmer.sif_template import (
     render_magnetostatic_sif_linear,
+    render_magnetostatic_sif_nonlinear,
 )
+from domain.material import DEFAULT_NUM_POINTS, FrohlichBHCurve
 from ports.outbound.magnetic_field_solver import (
     FemSolveOutcome,
     MagneticFieldSolverFailedError,
@@ -62,8 +65,12 @@ if TYPE_CHECKING:
 DEFAULT_MUR_IRON = 8000.0  # Nanoperm-class μ_initial — linear approximation
 DEFAULT_I_REF = 1.0  # reference current 1 A для self-inductance
 
-# Phase 1 = linear-only. Phase 2 добавит 'nonlinear-frohlich' literal.
-MaterialModel = Literal['linear']
+# T129 conventions reused (auto-memory + spec): central-diff ΔI = max(1%
+# относительной амплитуды, 0.1 mA absolute floor для zero-bias probe).
+DELTA_I_FLOOR_A = 0.0001
+DELTA_I_REL = 0.01
+
+MaterialModel = Literal['linear', 'nonlinear-frohlich']
 _VALID_MATERIAL_MODELS: tuple[MaterialModel, ...] = get_args(MaterialModel)
 
 
@@ -79,8 +86,13 @@ class ElmerFemSolver:
         elmer_solver_bin: путь к ElmerSolver binary.
         mur_iron: linear relative permeability iron region. По умолчанию
             8000 (Nanoperm-class μ_initial). Phase 1 only path.
-        material_model: формулировка материала. Phase 1 — только
-            `'linear'`; Phase 2 добавит `'nonlinear-frohlich'`.
+        material_model: формулировка материала. `'linear'` (Phase 1) —
+            constant `μ_r` Iron; `'nonlinear-frohlich'` (Phase 2) —
+            tabulated H-B Curve от FrohlichBHCurve + Newton iteration +
+            DC-bias central-diff на 2-х nonlinear solve'ах.
+        num_bh_points: количество точек в Frohlich BH-таблице
+            (Phase 2; default 16; используется при `material_model=
+            'nonlinear-frohlich'`).
         work_dir_root: корень для временных work_dir. None — fresh
             `TemporaryDirectory` per call.
 
@@ -95,6 +107,7 @@ class ElmerFemSolver:
         elmer_solver_bin: str = 'ElmerSolver',
         mur_iron: float = DEFAULT_MUR_IRON,
         material_model: MaterialModel = 'linear',
+        num_bh_points: int = DEFAULT_NUM_POINTS,
         work_dir_root: Path | None = None,
     ) -> None:
         if material_model not in _VALID_MATERIAL_MODELS:
@@ -109,6 +122,7 @@ class ElmerFemSolver:
         self._elmer_solver = elmer_solver_bin
         self._mur_iron = mur_iron
         self._material_model: MaterialModel = material_model
+        self._num_bh_points = num_bh_points
         self._work_dir_root = work_dir_root
 
     @property
@@ -136,7 +150,15 @@ class ElmerFemSolver:
 
             n_primary = component.primary_winding.number_turns
             area_window = dims.window_w * dims.window_h
-            return self._solve_linear(
+            if self._material_model == 'linear':
+                return self._solve_linear(
+                    work_dir=work_dir,
+                    n_primary=n_primary,
+                    area_window=area_window,
+                    core_depth=dims.core_depth,
+                )
+            return self._solve_nonlinear_central_diff(
+                component=component,
                 work_dir=work_dir,
                 n_primary=n_primary,
                 area_window=area_window,
@@ -166,6 +188,94 @@ class ElmerFemSolver:
         int_a_primary = self._parse_body_int_a(scalars_path)
         l_p = n_primary * core_depth * int_a_primary / (area_window * DEFAULT_I_REF)
         return FemSolveOutcome(inductance_h=l_p, method='linear')
+
+    def _solve_nonlinear_central_diff(
+        self,
+        *,
+        component: MagneticComponent,
+        work_dir: Path,
+        n_primary: int,
+        area_window: float,
+        core_depth: float,
+    ) -> FemSolveOutcome:
+        """
+        2 nonlinear solve'а вокруг operating point; L_inc = (Φ₊−Φ₋)/ΔI.
+
+        Reuses T129 GetDP convention (auto-memory `feedback_fem_split_coil_dc_bias`,
+        spec Q1 revision 2): ΔI = max(0.01·|I_dc|, 0.0001 A), central-diff.
+        """
+        try:
+            mu_initial, b_sat = extract_frohlich_params(
+                self._pyom,
+                component.core.material_name,
+            )
+        except (LookupError, TypeError) as exc:
+            msg = (
+                f'Frohlich material params extraction failed для '
+                f'{component.core.material_name!r}: {exc}'
+            )
+            raise MagneticFieldSolverFailedError(msg) from exc
+        curve = FrohlichBHCurve.from_pyom_material(
+            mu_initial=mu_initial,
+            b_sat=b_sat,
+            num_points=self._num_bh_points,
+        )
+        hb_pairs = curve.h_b_pairs()
+
+        i_dc = component.operating_point.primary_dc_bias_a
+        delta_i = max(DELTA_I_REL * abs(i_dc), DELTA_I_FLOOR_A)
+        currents = (i_dc - 0.5 * delta_i, i_dc + 0.5 * delta_i)
+
+        fluxes = tuple(
+            self._run_nonlinear_probe(
+                work_dir=work_dir,
+                tag=tag,
+                hb_pairs=hb_pairs,
+                n_primary=n_primary,
+                i_value=i_value,
+                area_window=area_window,
+                core_depth=core_depth,
+            )
+            for tag, i_value in zip(('minus', 'plus'), currents, strict=True)
+        )
+        flux_minus, flux_plus = fluxes
+        l_inc = (flux_plus - flux_minus) / delta_i
+        return FemSolveOutcome(
+            inductance_h=l_inc,
+            method='nonlinear-frohlich',
+            peak_flux_density_t=None,
+        )
+
+    def _run_nonlinear_probe(
+        self,
+        *,
+        work_dir: Path,
+        tag: str,
+        hb_pairs: tuple[tuple[float, float], ...],
+        n_primary: int,
+        i_value: float,
+        area_window: float,
+        core_depth: float,
+    ) -> float:
+        """Один nonlinear solve в subdir, возвращает Ψ (full flux linkage)."""
+        sub_dir = work_dir / f'solve_{tag}'
+        sub_dir.mkdir()
+        # Symlink mesh-elmer/ в sub_dir (Mesh DB referenced как "." в .sif).
+        (sub_dir / 'mesh-elmer').symlink_to(work_dir / 'mesh-elmer')
+        sif_path = sub_dir / 'case.sif'
+        scalars_path = sub_dir / 'scalars.dat'
+        sif_path.write_text(
+            render_magnetostatic_sif_nonlinear(
+                h_b_pairs=hb_pairs,
+                n_primary=n_primary,
+                i_value=i_value,
+                area_window=area_window,
+            ),
+        )
+        self._run_elmer_solver(sif_path, sub_dir)
+        int_a_primary = self._parse_body_int_a(scalars_path)
+        # Flux linkage Ψ = N · depth · ∫_(Primary) A dS / A_window.
+        return n_primary * core_depth * int_a_primary / area_window
 
     def _compute_core_data(self, component: MagneticComponent) -> dict[str, Any]:
         core_fd = {
