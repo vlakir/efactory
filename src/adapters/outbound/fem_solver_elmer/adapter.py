@@ -108,13 +108,12 @@ _VALID_DIMENSIONALITIES: tuple[Dimensionality, ...] = get_args(Dimensionality)
 # 2026-05-21 в efactory:linux). Используются integration test'ами как
 # regression baselines (drift ±5%). PyOM ZHANG analytical reference = 6.96 H.
 EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_H = 19.65  # 2D single-coil + InfBC (+182%)
-# 3D linear с gaps (Phase 3d): Phase 3d defaults emit_e_core_geo_3d
-# with_gaps=True → 7 bodies (3 gaps добавляют reluctance, существенно
-# снижают L). Empirical 4.07 H = -41.5% к ZHANG (factor 1.7×; vs 2D
-# factor 3.4×). Не попадает в acceptance ±25% [5.22, 8.70], но
-# orders-of-magnitude improvement от 2D. Refinement via Coil mechanism
-# + mesh density — follow-up T-ID.
-EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_3D_H = 4.07
+# 3D linear с gaps + Phase 3d.2 mesh refinement (20μm gap / 5mm max):
+# 10K nodes / 51K tetra, ~14 s runtime. Lp = 6.04 H = -13.3% к ZHANG —
+# **acceptance ±25% [5.22, 8.70] achieved**, target ±10% [6.26, 7.65]
+# близок (off by 3.5%). vs Phase 3d.1 coarse mesh (453 nodes) которая
+# давала 4.07 H = -41.5% — refinement дал factor 1.48× improvement.
+EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_3D_H = 6.04
 
 
 class ElmerFemSolver:

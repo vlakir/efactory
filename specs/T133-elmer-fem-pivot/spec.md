@@ -1,6 +1,6 @@
 # Spec: Elmer FEM pivot — nonlinear B-H + DC-bias closure 242% gap (T133)
 
-**Статус:** Phase 3d complete (3D gapped E-core, factor 1.7× к ZHANG), Phase 3e — ADR + closing
+**Статус:** Phase 3d.2 complete — **acceptance ±25% к ZHANG achieved** (Lp=6.04H, -13.3%), Phase 3e — ADR + closing
 **Дата создания:** 2026-05-21
 **Связанные документы:**
 - ADR `2026-05-20 — T129 closure: analytical (PyOM ZHANG) — source of truth
@@ -790,6 +790,51 @@ ZHANG на pilot fixture** (vs factor 3.4× 2D baseline). Acceptance к
 ZHANG ±25% не closed, но real engineering improvement zafiksируется
 в ADR (Phase 3e). 4 pre-push gates зелёные (842 passed, 9 skipped,
 coverage 86.16%).
+
+### Phase 3d.2 — Mesh refinement → acceptance ±25% achieved (2026-05-21)
+
+**Approach:** Per Vladimir choice γ — попытка Coil mechanism + fallback на
+mesh refinement.
+
+**Coil mechanism probe (rejected):**
+- Stranded Coil + Master Bodies(2)=2,3 + Coil Closed=True ← reported
+  "Crappy potentials: No positive/negative current sources" — наш mesh
+  имеет disjoint coil bodies (left + right windows не connected
+  без bridges через top/bottom yokes). CoilSolver требует connected
+  3D loop для closed coil mechanism.
+- Stranded Coil + Open + Coil Start/End BCs (top faces of windows) —
+  solver completed, но Lp=0 (zero energy): CoilSolver pre-compute
+  succeeded но Whitney AV solver не consume coil current. Binding
+  syntax (Coil Use W Vector? Coil Solver Reference? per-Body Coil
+  Type?) requires Elmer Models Manual investigation вне Phase 3 scope.
+- **Verdict:** Coil mechanism для 3D OPT топологии требует либо mesh
+  redesign (bridges через yokes для closed loop), либо deep Elmer
+  syntax investigation. Both — substantial follow-up work; mesh
+  refinement даёт acceptance на меньшем effort.
+
+**Mesh refinement (accepted, working):**
+- `Mesh.MeshSizeMin`: 50 μm → 20 μm (LC_GAP × 0.4)
+- `Mesh.MeshSizeMax`: 30 mm → 5 mm (LC_WINDING × 3.3)
+- Mesh stats: 453 → 10013 nodes (22×), 1822 → 51169 tetra (28×)
+- Runtime: 0.5 s → 14 s (28× slower, OK для integration test)
+
+**Empirical Phase 3d.2 acceptance probe (OPT 6П14П SE):**
+
+| Phase | Mesh | Lp [H] | rel к ZHANG | Acceptance ±25% | Target ±10% |
+|-------|------|--------|-------------|-----------------|-------------|
+| 2D split-coil (T113) | 12K tri | 23.78 | +242% | ❌ | ❌ |
+| 3D ungapped (Phase 3c) | 9.6K tetra | 23.78 | +242% | ❌ | ❌ |
+| 3D gapped coarse (Phase 3d.1) | 1.8K tetra | 4.07 | -41.5% | ❌ | ❌ |
+| **3D gapped refined (Phase 3d.2)** | **51K tetra** | **6.04** | **-13.3%** | **✅** | ❌ (off 3.5%) |
+
+**Phase 3d.2 verdict:** **T133 main goal (acceptance ±25% к ZHANG)
+achieved.** Closure path для T133 — production-ready 3D Elmer FEM
+adapter, factor 1.15× от analytical reference на pilot fixture (vs
+factor 3.4× 2D baseline). Target ±10% — close, требует следующего
+mesh refinement step или Coil mechanism (follow-up T-ID).
+
+4 pre-push gates зелёные (842 passed, 9 skipped, coverage 86.16%).
+3D integration test runtime 19.5 s (single test).
 
 - **N6. Phase 0 pilot — единая branch, отдельный commit.** Per
   project rule «один PR — один коммит», Phase 0/1/2/3 коммитятся

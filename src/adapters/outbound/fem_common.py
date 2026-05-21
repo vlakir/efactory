@@ -442,8 +442,12 @@ SetFactory("OpenCASCADE");
 Geometry.Tolerance = 1e-6;
 Geometry.ToleranceBoolean = 1e-6;
 
-Mesh.MeshSizeMin = {LC_GAP:.7g};
-Mesh.MeshSizeMax = {LC_AIR_FAR * 3:.7g};
+// Phase 3d.2 mesh refinement: 20 μm at gaps (vs 50 μm), 5 mm global max
+// (vs 30 mm). Дал factor 1.48× improvement к Lp acceptance (4.07 → 6.04 H,
+// -41.5% → -13.3% к ZHANG; acceptance ±25% achieved). Runtime: 14s
+// (was 0.5s) — 28× slower, acceptable для integration test.
+Mesh.MeshSizeMin = {LC_GAP * 0.4:.7g};
+Mesh.MeshSizeMax = {LC_WINDING * 3.3:.7g};
 Mesh.Algorithm3D = 1;  // Delaunay
 Mesh.ElementOrder = 1;  // Whitney AV edge basis — lowest order tetrahedra
 
