@@ -51,6 +51,47 @@ def test_material_model_rejects_unknown_value() -> None:
         ElmerFemSolver(_FakePyOM(), material_model='magic-newton')  # type: ignore[arg-type]
 
 
+def test_default_dimensionality_is_2d() -> None:
+    """Default = 2d (back-compat — Phase 1+2 был только 2D)."""
+    solver = ElmerFemSolver(_FakePyOM())
+    assert solver.dimensionality == '2d'
+
+
+def test_dimensionality_accepts_3d() -> None:
+    """Phase 3c — 3d принимается с linear material."""
+    solver = ElmerFemSolver(_FakePyOM(), dimensionality='3d')
+    assert solver.dimensionality == '3d'
+
+
+def test_dimensionality_rejects_unknown_value() -> None:
+    with pytest.raises(ValueError, match='dimensionality'):
+        ElmerFemSolver(_FakePyOM(), dimensionality='4d')  # type: ignore[arg-type]
+
+
+def test_3d_nonlinear_combination_raises_not_implemented() -> None:
+    """3D nonlinear-frohlich не реализован в Phase 3c — Phase 3d/later."""
+    with pytest.raises(NotImplementedError, match='3D nonlinear-frohlich'):
+        ElmerFemSolver(
+            _FakePyOM(),
+            dimensionality='3d',
+            material_model='nonlinear-frohlich',
+        )
+
+
+def test_parse_field_energy_reads_last_float(tmp_path: Any) -> None:
+    """MagnetoDynamicsCalcFields auto-injects energy в last numeric column."""
+    scalars = tmp_path / 'scalars.dat'
+    # 3 columns: user var, eddy power, em field energy
+    scalars.write_text('   4.644854E+04   0.000000E+00   1.189200E+01\n')
+    val = ElmerFemSolver._parse_field_energy(scalars)  # noqa: SLF001
+    assert val == pytest.approx(11.892)
+
+
+def test_parse_field_energy_missing_file_raises(tmp_path: Any) -> None:
+    with pytest.raises(MagneticFieldSolverFailedError, match='не создал'):
+        ElmerFemSolver._parse_field_energy(tmp_path / 'missing.dat')  # noqa: SLF001
+
+
 def test_parse_body_int_a_reads_last_float_in_file(tmp_path: Any) -> None:
     """SaveScalars .dat — последний float в файле."""
     scalars = tmp_path / 'scalars.dat'

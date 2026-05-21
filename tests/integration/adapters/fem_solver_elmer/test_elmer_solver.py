@@ -25,6 +25,7 @@ import pytest
 
 from adapters.outbound.fem_solver_elmer import ElmerFemSolver
 from adapters.outbound.fem_solver_elmer.adapter import (
+    EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_3D_UNGAPPED_H,
     EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_H,
 )
 from adapters.outbound.magnetic_analytics_pyopenmagnetics import (
@@ -105,5 +106,28 @@ async def test_elmer_linear_pipeline_regression_to_empirical_baseline(
     assert outcome.peak_flux_density_t is None  # Phase 1 не вычисляет diagnostic
     assert outcome.inductance_h == pytest.approx(
         EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_H,
+        rel=LP_REGRESSION_TOLERANCE_REL,
+    )
+
+
+@_NEED_ELMER_TOOLCHAIN
+@pytest.mark.asyncio
+async def test_elmer_linear_3d_pipeline_regression_to_empirical_baseline(
+    pyom,  # noqa: ANN001
+) -> None:
+    """Elmer 3D linear Whitney AV + CalcFields регрессия к empirical baseline.
+
+    На OPT 6П14П SE (ungapped, Phase 3b mesh) с μ_r=8000 Nanoperm linear:
+    Lp ≈ 23.78 H через 2W/I² (T133 Phase 3c probe 2026-05-21). Тот же
+    порядок что 2D split-coil (T113 GetDP baseline) — but ungapped! Gaps
+    будут добавлены в Phase 3d с proper clipping, ожидаемо снизят L.
+    Regression baseline для catch Elmer/gmsh upgrade drift, mesh density
+    changes.
+    """
+    solver = ElmerFemSolver(pyom, dimensionality='3d')
+    outcome = await solver.solve(_opt_6p14p_se())
+    assert outcome.method == 'linear'
+    assert outcome.inductance_h == pytest.approx(
+        EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_3D_UNGAPPED_H,
         rel=LP_REGRESSION_TOLERANCE_REL,
     )

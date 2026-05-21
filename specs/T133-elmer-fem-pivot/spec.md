@@ -1,6 +1,6 @@
 # Spec: Elmer FEM pivot — nonlinear B-H + DC-bias closure 242% gap (T133)
 
-**Статус:** Phase 3b complete (3D ungapped mesh generator), Phase 3c — adapter mode
+**Статус:** Phase 3c complete (3D adapter mode + Whitney AV + CalcFields), Phase 3d — gaps + acceptance к ZHANG
 **Дата создания:** 2026-05-21
 **Связанные документы:**
 - ADR `2026-05-20 — T129 closure: analytical (PyOM ZHANG) — source of truth
@@ -697,6 +697,49 @@ acceptance — Phase 3d.
 7 unit tests в `tests/unit/adapters/outbound/test_fem_common.py`
 покрывают новый emitter (структура, OCC kernel, BooleanDifference,
 Physical entities, gaps absent в Phase 3b).
+
+### Phase 3c — 3D adapter mode (2026-05-21)
+
+Адаптер расширен с new constructor parameter `dimensionality:
+Literal['2d', '3d'] = '2d'` (back-compat default). Dispatch
+в `_solve_blocking`:
+- `('2d', 'linear')` → `_solve_linear` (existing T113 baseline path).
+- `('2d', 'nonlinear-frohlich')` → `_solve_nonlinear_central_diff`
+  (existing T129 path with known IEEE_UNDERFLOW limitation).
+- `('3d', 'linear')` → **`_solve_linear_3d`** (new): emit_e_core_geo_3d
+  + Whitney AV + CalcFields + SaveScalars → parse energy → Lp = 2W/I².
+- `('3d', 'nonlinear-frohlich')` → `NotImplementedError` (Phase 3d/
+  later — требует 3D H-B Curve + Newton + 3D mesh nonlinear convergence).
+
+**3D linear extraction mechanism (key Phase 3c finding):** Elmer
+`MagnetoDynamicsCalcFields` post-process solver auto-injects `res:
+electromagnetic field energy` column в SaveScalars output (no explicit
+Variable+Operator for energy нужен). Direct extraction `Lp = 2 W / I²`
+для linear case без manual flux linkage integration. Probe в container:
+- Variable 1 (user dummy: max abs Magnetic Field Strength) = col 1
+- res: eddy current power = col 2 (auto от CalcFields)
+- res: electromagnetic field energy = col 3 (auto от CalcFields)
+- Adapter parses last numeric column → energy in Joules.
+
+**Empirical baseline Elmer 3D linear ungapped OPT 6П14П SE:**
+- Mesh: 422 nodes, 1648 tetrahedra (Phase 3b).
+- Whitney AV + tree gauge + MUMPS: ~0.5 s runtime.
+- ElectroMagnetic Field Energy: 11.89 J → **Lp = 23.78 H** при I_ref=1 A.
+- Совпадает (within 0.01) с T113 GetDP split-coil + Dirichlet 2D baseline
+  23.78 H. Coincidence ИЛИ artifact of ungapped + 4-body simple mesh —
+  Phase 3d с gaps покажет реальное 3D число.
+
+Integration test `test_elmer_linear_3d_pipeline_regression_to_empirical_
+baseline` добавлен, регрессия ±5% к 23.78 H. 4-pre-push gates зелёные
+(841 passed, 9 skipped, coverage 86.10%).
+
+**Phase 3d следующая:** добавить gaps в emit_e_core_geo_3d (с proper
+BooleanIntersection clipping чтобы lateral gap boxes не extend за core),
+re-mesh, проверить gapped 3D Lp на pilot fixture — попадает ли в
+acceptance ±25% к PyOM ZHANG 6.96 H (ожидаемо да, поскольку gaps
+вернут реалистичную reluctance). Если попадает — T133 closure;
+если нет — ADR forward с альтернативами (Coil mechanism, finer mesh,
+3D Frohlich).
 
 - **N6. Phase 0 pilot — единая branch, отдельный commit.** Per
   project rule «один PR — один коммит», Phase 0/1/2/3 коммитятся

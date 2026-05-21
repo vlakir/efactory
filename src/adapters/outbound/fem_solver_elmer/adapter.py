@@ -70,10 +70,12 @@ from typing import TYPE_CHECKING, Any, Literal, get_args
 from adapters.outbound.fem_common import (
     ECoreDimensions,
     emit_e_core_geo,
+    emit_e_core_geo_3d,
     extract_frohlich_params,
 )
 from adapters.outbound.fem_solver_elmer.sif_template import (
     render_magnetostatic_sif_linear,
+    render_magnetostatic_sif_linear_3d,
     render_magnetostatic_sif_nonlinear,
 )
 from domain.material import DEFAULT_NUM_POINTS, FrohlichBHCurve
@@ -99,10 +101,15 @@ DELTA_I_REL = 0.01
 MaterialModel = Literal['linear', 'nonlinear-frohlich']
 _VALID_MATERIAL_MODELS: tuple[MaterialModel, ...] = get_args(MaterialModel)
 
-# Empirical baseline на OPT 6П14П SE (single-coil + Infinity BC, T133
-# Phase 3 acceptance probe 2026-05-21): linear mode даёт Lp ≈ 19.65 H.
-# Используется integration test'ом как regression baseline (drift ±5%).
-EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_H = 19.65
+Dimensionality = Literal['2d', '3d']
+_VALID_DIMENSIONALITIES: tuple[Dimensionality, ...] = get_args(Dimensionality)
+
+# Empirical baselines на OPT 6П14П SE (T133 Phase 3 acceptance probes
+# 2026-05-21 в efactory:linux). Используются integration test'ами как
+# regression baselines (drift ±5%).
+EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_H = 19.65  # 2D single-coil + InfBC
+# 3D ungapped E-core (Phase 3b mesh без gaps; Phase 3d добавит gaps):
+EMPIRICAL_LP_OPT_6P14P_SE_LINEAR_3D_UNGAPPED_H = 23.78
 
 
 class ElmerFemSolver:
@@ -138,6 +145,7 @@ class ElmerFemSolver:
         elmer_solver_bin: str = 'ElmerSolver',
         mur_iron: float = DEFAULT_MUR_IRON,
         material_model: MaterialModel = 'linear',
+        dimensionality: Dimensionality = '2d',
         num_bh_points: int = DEFAULT_NUM_POINTS,
         work_dir_root: Path | None = None,
     ) -> None:
@@ -147,18 +155,35 @@ class ElmerFemSolver:
                 f'{_VALID_MATERIAL_MODELS!r}, получено {material_model!r}'
             )
             raise ValueError(msg)
+        if dimensionality not in _VALID_DIMENSIONALITIES:
+            msg = (
+                f'dimensionality должен быть одним из '
+                f'{_VALID_DIMENSIONALITIES!r}, получено {dimensionality!r}'
+            )
+            raise ValueError(msg)
+        if dimensionality == '3d' and material_model == 'nonlinear-frohlich':
+            msg = (
+                '3D nonlinear-frohlich path не реализован в Phase 3c '
+                '(используйте 2D nonlinear-frohlich или 3D linear).'
+            )
+            raise NotImplementedError(msg)
         self._pyom = pyom_module
         self._gmsh = gmsh_bin
         self._elmer_grid = elmer_grid_bin
         self._elmer_solver = elmer_solver_bin
         self._mur_iron = mur_iron
         self._material_model: MaterialModel = material_model
+        self._dimensionality: Dimensionality = dimensionality
         self._num_bh_points = num_bh_points
         self._work_dir_root = work_dir_root
 
     @property
     def material_model(self) -> MaterialModel:
         return self._material_model
+
+    @property
+    def dimensionality(self) -> Dimensionality:
+        return self._dimensionality
 
     async def solve(self, component: MagneticComponent) -> FemSolveOutcome:
         """Async wrapper над blocking subprocess pipeline."""
@@ -175,12 +200,23 @@ class ElmerFemSolver:
             work_dir = Path(tmp)
             geo_path = work_dir / 'geometry.geo'
             msh_path = work_dir / 'geometry.msh'
-            geo_path.write_text(emit_e_core_geo(dims))
-            self._run_gmsh(geo_path, msh_path, work_dir)
+            if self._dimensionality == '2d':
+                geo_path.write_text(emit_e_core_geo(dims))
+                self._run_gmsh(geo_path, msh_path, work_dir, dim=2)
+            else:
+                geo_path.write_text(emit_e_core_geo_3d(dims))
+                self._run_gmsh(geo_path, msh_path, work_dir, dim=3)
             self._run_elmer_grid(msh_path, work_dir)
 
             n_primary = component.primary_winding.number_turns
             area_window = dims.window_w * dims.window_h
+            if self._dimensionality == '3d':
+                # Constructor enforces material_model == 'linear' для 3d.
+                return self._solve_linear_3d(
+                    work_dir=work_dir,
+                    n_primary=n_primary,
+                    area_window=area_window,
+                )
             if self._material_model == 'linear':
                 return self._solve_linear(
                     work_dir=work_dir,
@@ -218,6 +254,34 @@ class ElmerFemSolver:
         self._run_elmer_solver(sif_path, work_dir)
         int_a_primary = self._parse_body_int_a(scalars_path)
         l_p = n_primary * core_depth * int_a_primary / (area_window * DEFAULT_I_REF)
+        return FemSolveOutcome(inductance_h=l_p, method='linear')
+
+    def _solve_linear_3d(
+        self,
+        *,
+        work_dir: Path,
+        n_primary: int,
+        area_window: float,
+    ) -> FemSolveOutcome:
+        """
+        3D linear: Whitney AV + CalcFields → energy → Lp = 2·W/I².
+
+        Не использует core_depth (3D mesh already includes z-extent;
+        energy integral возвращает full 3D total energy в Joules).
+        """
+        sif_path = work_dir / 'case.sif'
+        scalars_path = work_dir / 'scalars.dat'
+        sif_path.write_text(
+            render_magnetostatic_sif_linear_3d(
+                mur_iron=self._mur_iron,
+                n_primary=n_primary,
+                i_ref=DEFAULT_I_REF,
+                area_window=area_window,
+            ),
+        )
+        self._run_elmer_solver(sif_path, work_dir)
+        em_energy_j = self._parse_field_energy(scalars_path)
+        l_p = 2.0 * em_energy_j / (DEFAULT_I_REF**2)
         return FemSolveOutcome(inductance_h=l_p, method='linear')
 
     def _solve_nonlinear_central_diff(
@@ -351,12 +415,13 @@ class ElmerFemSolver:
             )
             raise UnsupportedGeometryError(msg) from exc
 
-    def _run_gmsh(self, geo: Path, msh: Path, cwd: Path) -> None:
+    def _run_gmsh(self, geo: Path, msh: Path, cwd: Path, *, dim: int = 2) -> None:
+        """Run gmsh; `dim=2` для 2D-planar, `dim=3` для 3D extrude."""
         try:
             res = subprocess.run(
                 [
                     self._gmsh,
-                    '-2',
+                    f'-{dim}',
                     '-format',
                     'msh22',
                     str(geo),
@@ -449,6 +514,39 @@ class ElmerFemSolver:
             tail = merged[-500:]
             msg = f'ElmerSolver reported FATAL/ERROR (rc=0): {tail!r}'
             raise MagneticFieldSolverFailedError(msg)
+
+    @staticmethod
+    def _parse_field_energy(scalars_path: Path) -> float:
+        """
+        Parse `scalars.dat` от MagnetoDynamicsCalcFields.
+
+        `MagnetoDynamicsCalcFields` auto-injects `res: electromagnetic
+        field energy` как последнюю numeric column в SaveScalars output
+        (после user variables + auto `res: eddy current power`).
+        Для 3D template = column 3 (1 user var + 2 auto).
+
+        Returns:
+            Magnetic field energy в Joules (positive scalar).
+
+        """
+        if not scalars_path.exists():
+            msg = (
+                f'ElmerSolver не создал {scalars_path.name} — '
+                f'MagnetoDynamicsCalcFields или SaveScalars failed?'
+            )
+            raise MagneticFieldSolverFailedError(msg)
+        text = scalars_path.read_text()
+        for line in reversed(text.splitlines()):
+            tokens = line.split()
+            if not tokens:
+                continue
+            # Last numeric column = electromagnetic field energy (Joules).
+            try:
+                return float(tokens[-1])
+            except ValueError:
+                continue
+        msg = f'{scalars_path.name} не содержит float values: {text!r}'
+        raise MagneticFieldSolverFailedError(msg)
 
     @staticmethod
     def _parse_body_int_a(scalars_path: Path) -> float:

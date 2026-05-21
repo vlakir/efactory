@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from adapters.outbound.fem_solver_elmer.sif_template import (
     render_magnetostatic_sif_linear,
+    render_magnetostatic_sif_linear_3d,
     render_magnetostatic_sif_nonlinear,
 )
 
@@ -202,3 +203,60 @@ def test_nonlinear_sif_infinity_bc_preserved() -> None:
         area_window=2.74972e-4,
     )
     assert 'Infinity BC = Logical True' in sif
+
+
+# === 3D linear template (T133 Phase 3c) ===
+
+
+def test_3d_sif_uses_whitney_av_solver() -> None:
+    """3D requires WhitneyAVSolver (edge basis), not MagnetoDynamics2D."""
+    sif = render_magnetostatic_sif_linear_3d(
+        mur_iron=8000.0, n_primary=2500, i_ref=1.0, area_window=2.74972e-4,
+    )
+    assert 'Procedure = "MagnetoDynamics" "WhitneyAVSolver"' in sif
+
+
+def test_3d_sif_enables_tree_gauge_required_for_edge_basis() -> None:
+    """Whitney AV edge basis A не unique без gauge — обязательно для convergence."""
+    sif = render_magnetostatic_sif_linear_3d(
+        mur_iron=8000.0, n_primary=2500, i_ref=1.0, area_window=2.74972e-4,
+    )
+    assert 'Use Tree Gauge = Logical True' in sif
+
+
+def test_3d_sif_uses_mumps_direct_linear_solver() -> None:
+    """Phase 3a verified — MUMPS direct OK для small 3D mesh."""
+    sif = render_magnetostatic_sif_linear_3d(
+        mur_iron=8000.0, n_primary=2500, i_ref=1.0, area_window=2.74972e-4,
+    )
+    assert 'Linear System Direct Method = "MUMPS"' in sif
+
+
+def test_3d_sif_includes_calcfields_post_solver() -> None:
+    """CalcFields auto-injects electromagnetic field energy в SaveScalars."""
+    sif = render_magnetostatic_sif_linear_3d(
+        mur_iron=8000.0, n_primary=2500, i_ref=1.0, area_window=2.74972e-4,
+    )
+    assert 'MagnetoDynamicsCalcFields' in sif
+
+
+def test_3d_sif_has_4_bodies_ungapped_phase3b() -> None:
+    """Phase 3b mesh = 4 bodies (core/primary/secondary/air, без gaps)."""
+    sif = render_magnetostatic_sif_linear_3d(
+        mur_iron=8000.0, n_primary=2500, i_ref=1.0, area_window=2.74972e-4,
+    )
+    assert 'Body 1' in sif
+    assert 'Body 2' in sif
+    assert 'Body 3' in sif
+    assert 'Body 4' in sif
+    assert 'Body 5' not in sif  # no gaps в Phase 3b
+
+
+def test_3d_sif_current_density_uses_z_component() -> None:
+    """3D Body Force = vector (Jx, Jy, Jz); primary current = Jz only (Phase 3c)."""
+    sif = render_magnetostatic_sif_linear_3d(
+        mur_iron=8000.0, n_primary=2500, i_ref=1.0, area_window=2.74972e-4,
+    )
+    assert 'Current Density 1 = Real 0' in sif
+    assert 'Current Density 2 = Real 0' in sif
+    assert 'Current Density 3 = Real 9091' in sif  # 2500/2.74972e-4 ≈ 9.09e6
