@@ -635,71 +635,98 @@ error case'ов, которые в Stage E T113 видели).
 
 ---
 
-## Phase B closure — infrastructure-only (2026-05-21)
+## Phase B — PyOM `calculate_leakage_inductance` abandoned (2026-05-21)
 
-**Status:** все domain/port/adapter infrastructure готово (Phase B), но
-**runtime backend leakage недоступен** — PyOM `calculate_leakage_
-inductance` consistently возвращает `[CALCULATION_ERROR] Mesh generation
-failed: induced field data is empty` для любого fixture в текущей
-PyOM 1.3.10 setup. Pattern закрытия — copy T129 (Frohlich material +
-DC-bias load line) "infrastructure для downstream tasks".
+Phase B изначально намечалась как composite PyOM adapter (extend
+`PyOpenMagneticsAnalytics` методом `calculate_leakage_inductance`).
+После 4+ часов investigation + version sweep — PyOM mesh path признан
+непригодным; switched на pure-Python analytical (Phase C).
 
-**Что entered investigation (4+ часа Phase B):**
+**Investigation summary:**
 
-1. Probe PyOM API через `.pyi` stub + METADATA: подтверждены сигнатуры,
-   обнаружены `magnetic_autocomplete`, `mas_autocomplete`,
-   `process_inputs`, `simulate` как candidate orchestration helpers.
-2. Bobbin column null fix через `_normalize_bobbin_columns` — error
-   меняется с `INVALID_BOBBIN_DATA` на `Mesh generation failed`.
-3. `magnetic_autocomplete(magnetic, {})` перед leakage — autocomplete
-   стирает column patches; re-patch после autocomplete не помогает.
-4. `process_inputs(inputs)` добавляет `magneticFieldStrength` slot к
-   excitation, **но значение остаётся `None`** (process_inputs не
-   знает про magnetic geometry).
-5. `calculate_magnetic_field_strength_field(operating_point, magnetic)`
-   — separate FEM call, возвращает `{'data': 'Exception: bad optional
-   access'}` (std::optional unwrap на пустом). Circular dependency:
-   leakage нуждается в computed magneticFieldStrength, но public API
-   для compute падает на тех же inputs.
-6. Прогон всех accepted leakage models (`BinnsLawrenson` — единственный
-   валидный; `Roshen/Margueron/Petros/Energy` reject'ает schema).
-   Grid auto-scale on/off + precision up — без эффекта.
-7. **Полный official `simulate(inputs, magnetic, models)` pipeline** —
-   возвращает тот же `Mesh generation failed`. Подтверждает, что баг
-   не в нашем payload, а в PyOM C++ MKF layer.
-8. **Cross-material sweep (12 PyOM-catalog materials)**: 3C90, 3C94,
-   3C95, N87, N97, Kool Mu 60, XFlux 60, Hi-Flux 60, MPP 60, 3F3,
-   3F36, N49 — все 10 ferrite/powder материалов return тот же mesh
-   error, 2 (Kool Mu 60 / Hi-Flux 60) дополнительно reject'аются
-   `cannot use at() with string` JSON schema issue.
+1. Probe PyOM 1.3.10 leakage API: `calculate_leakage_inductance(magnetic,
+   freq, source_idx) -> dict` существует, return shape подтверждён.
+2. Bobbin column null fix (`_normalize_bobbin_columns`) — error меняется
+   с `INVALID_BOBBIN_DATA` на `Mesh generation failed: induced field data
+   is empty`.
+3. `magnetic_autocomplete` + `process_inputs` + проверка
+   `magneticFieldStrength` slot population — все добавочные шаги не
+   помогают. Circular dependency: `calculate_magnetic_field_strength_
+   field` сам падает `bad optional access`.
+4. **Cross-material sweep (12 PyOM materials):** 3C90/3C94/3C95/N87/N97/
+   Kool Mu 60/XFlux 60/Hi-Flux 60/MPP 60/3F3/3F36/N49 — все ferrite/
+   powder catalog материалы дают same mesh error.
+5. **PyOM version sweep (1.3.0 → 1.3.12, всё доступное cp313):**
+   all 1.3.x versions fail identically. Не regression, long-standing
+   bug; 1.2.x имеет другой API layout, downgrade ломает T113/T131.
+6. Official `simulate(inputs, magnetic, models)` pipeline возвращает
+   тот же mesh error — баг в PyOM C++ MKF layer, не в нашем payload.
 
-**Корневая причина:** PyOM MKF C++ engine (closed-source binary в wheel)
-не может построить mesh для valid coil/core/operating point payload.
-Возможные направления (требует upstream access):
-- MKF source review (https://github.com/OpenMagnetics/MKF) — какое
-  optional поле required для `induced field data`?
-- Open GitHub issue
-  (https://github.com/OpenMagnetics/PyOpenMagnetics/issues).
-- Try PyOM 1.4.x / 1.2.x — может быть version-specific regression.
-- Switch backend → Elmer FEM (T133 в BACKLOG, изначально planned для
-  field validation, теперь становится primary path для leakage).
+**Решение (Vladimir 2026-05-21):** switch на pure-Python analytical
+backend (Erickson sandwich formula); PyOM caterory database lookups
+сохраняются для geometry / wire resolution (это работающие APIs).
+Cleanup Phase B PyOM leakage helpers выполнен в финальном commit'е
+Phase C — `PyOpenMagneticsAnalytics` снова single-purpose
+`MagneticAnalytics` adapter.
 
-**Что Phase B доставила (готово к use cases без runtime backend):**
+**T135 BACKLOG entry:** "PyOM leakage backend root-cause / FEM
+cross-validation" — focus shifted с "найти working backend" на
+"validate analytical через FEM cross-check" (T133 Elmer pivot).
 
-| Артефакт | Файл | Тесты |
-|---|---|---|
-| 3 domain VO + section_layout field | `src/domain/magnetic.py` | 14 unit (test_magnetic.py) |
-| Port Protocol + 2 errors | `src/ports/outbound/leakage_inductance_analyzer.py` | — |
-| 3 adapter helpers | adapter.py module-level | 10 unit (test_helpers.py) |
-| Adapter method + _build_operating_point shared refactor | adapter.py instance | — |
-| Exception-as-data detection (wind + leakage paths) | adapter.py | manual probe |
-| Integration test (4 scenarios, skipif probe fails) | test_pyom_leakage.py | skips on host AND container |
+---
 
-**BACKLOG entry:** T13X — "PyOM leakage backend investigation (mesh
-failure root cause OR upgrade OR Elmer pivot)". См. BACKLOG.md.
+## Phase C — Analytical pivot, success ✅ (2026-05-21)
 
-**Phase C/D не запускаются** до решения backend issue ИЛИ переключения
-на Elmer (T133). Domain/port/adapter scaffolding T132 готов принять
-любой backend — это и есть infrastructure value Phase B.
+Pure-Python Erickson sandwich-transformer formula реализован в
+adapter `AnalyticalLeakage`. PyOM используется только для catalog
+database lookups (`calculate_core_data`, `find_wire_by_name`) — это
+catalog-only path без mesh trigger.
 
-**Spec status:** Analyzed → **Implemented (infrastructure-only)**.
+**Architecture:**
+
+| Файл | Назначение |
+|---|---|
+| `adapters/outbound/leakage_inductance_analytical/formula.py` | Pure-Python формула + helper `count_inter_winding_interfaces`. 0 deps. |
+| `adapters/outbound/leakage_inductance_analytical/geometry.py` | `CoreGeometry` VO + `resolve_core_geometry/wire_outer_diameter_m/estimate_winding_thickness_m` через PyOM catalog. |
+| `adapters/outbound/leakage_inductance_analytical/adapter.py` | `AnalyticalLeakage` class implementing port; DI: `pyom_module` + `MagneticAnalytics` Protocol (для L_self → coupling_factor). |
+| `application/analyze_interleaved_leakage.py` | Use case с fail-loud `section_layout is None`. |
+
+**Acceptance pilot — OPT_SE_5K_8 (Hammond 1627A-class):**
+- E 42/21/15 core, 3C95 material, 3500 primary / 140 secondary turns
+- `Round 0.224 / Round 0.5 - Grade 1` wires
+
+| Pattern | Lσ_secondary [mH] | k | HF-3dB @ 5kΩ load |
+|---|---|---|---|
+| P-S (2-sec) | 101.4 | 0.9959 | ~8 kHz |
+| P-S-P (3-sec) | 25.6 | 0.9990 | ~31 kHz |
+| **P-S-P-S-P (5-sec)** | **6.50** | **0.9997** | **~122 kHz** |
+
+5-section value 6.5 mH плотно в spec acceptance band `[0.1, 10] mH`;
+HF-3dB 122 kHz — hi-end consumer (Hashimoto / Plitron empirical 50-80
+kHz, наш fixture в верхнем эшелоне).
+
+**Monotonicity check (Spec Q7 primary gate):** Lσ(2-sec) > Lσ(3-sec) >
+Lσ(5-sec) с ratio precisely matching 1/N² theorem (Erickson §15):
+- σ_2/σ_3 = 101.4/25.6 = **3.96** (theory: 4.0 ✓)
+- σ_2/σ_5 = 101.4/6.5 = **15.6** (theory: 16.0 ✓)
+- Zero-insulation case (a=0): ratio = 1/16 exact ✓.
+
+**Test coverage:**
+- 16 unit tests на formula (`test_formula.py`).
+- 11 unit tests на geometry helpers (`test_geometry.py`).
+- 8 unit tests на adapter с FakePyOM stub (`test_adapter.py`).
+- 3 unit tests на use case (`test_analyze_interleaved_leakage.py`).
+- 4 acceptance tests (`test_interleaved_leakage_monotonicity.py`).
+
+**Known limitations (acceptable per spec):**
+- Точность analytical sandwich ±20-30% (Erickson §15 idealizes uniform
+  current distribution, no skin/proximity). На audio frequencies
+  (1-30 kHz) ОПТ-обмотки толстые → low-freq path valid.
+- MLT computed как `2·(column_w+column_d) + π·(window_w/2)` —
+  approximation; не учитывает actual winding radial offset.
+- Winding thickness estimated через `ceil(turns / floor(b_w/wire_OD)) *
+  wire_OD` без inter-layer insulation factor.
+- **FEM cross-validation для precision improvement** — отнесено в
+  T135 (Elmer FEM pivot, T133 dependency).
+
+**Spec status:** Analyzed → **Implemented (analytical backend live).**

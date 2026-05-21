@@ -104,47 +104,50 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   Не зависит от: T131 (T131 уже закрыт, ADR в `DECISIONS.md` +
   docstring обогащения адресуют immediate dev-process persistence).
 
-- **T135** — [2026-05-21, заведено в Phase B T132] **PyOM leakage
-  backend — root cause / upgrade / Elmer pivot для closure T132.**
+- **T135** — [2026-05-21, заведено в Phase B T132] **FEM cross-
+  validation analytical leakage Lσ (T132 Phase C primary backend).**
 
-  **Контекст.** T132 Phase A/B доставили полную domain + port + adapter
-  infrastructure для interleaved Lσ расчёта (см. closure-секцию
-  `specs/T132-interleaved-leakage/spec.md`). Runtime backend
-  заблокирован: PyOM 1.3.10 `calculate_leakage_inductance` consistently
-  возвращает `[CALCULATION_ERROR] Mesh generation failed: induced
-  field data is empty` для любого fixture (12 materials probed,
-  включая standard ferrites 3C95/N87, через официальный
-  `simulate(inputs, magnetic, models)` pipeline). Circular dependency:
-  leakage требует computed `magneticFieldStrength` в excitation, но
-  public API для compute (`calculate_magnetic_field_strength_field`)
-  сам возвращает `bad optional access`.
+  **Контекст.** T132 закрыт с pure-Python analytical backend
+  (Erickson sandwich-transformer formula); acceptance gates passing
+  на pilot fixture OPT_SE_5K_8: Lσ(5-section) = 6.5 mH (в spec band
+  [0.1, 10] mH), monotonicity 1/N² ratio exact. PyOM
+  `calculate_leakage_inductance` исключён из pipeline после
+  investigation (1.3.0→1.3.12 version sweep: long-standing
+  `[CALCULATION_ERROR] Mesh generation failed`, не version-specific).
+  Analytical точность ±20-30% — приемлемо для T132 spec, но не
+  hi-precision. FEM cross-check валидирует analytical formula на
+  pilot fixture'ах с known FEM-truth.
 
-  **Acceptance** (любой из трёх путей):
-  - **(a) Root cause + fix.** Воспроизвести в minimal repro
-    upstream MKF C++ source (https://github.com/OpenMagnetics/MKF)
-    или открыть PyOM GitHub issue
-    (https://github.com/OpenMagnetics/PyOpenMagnetics/issues),
-    дождаться patch / обхода. Adapter T132 принимает результат
-    без изменения domain/port.
-  - **(b) Version sweep.** Попробовать PyOM 1.4.x / 1.2.x — может
-    быть version-specific regression в 1.3.10. Меняем pin в
-    `pyproject.toml`, smoke pilot.
-  - **(c) Elmer pivot (T133 расширяется).** Реализовать leakage
-    backend через Elmer FEM cross-section solver — same hexagonal
-    port `LeakageInductanceAnalyzer` от T132, новый adapter
-    `ElmerLeakageSolver`. T133 spec уже намечен для Elmer FEM
-    pivot — расширить scope чтобы включить leakage.
+  **Acceptance** (один из путей):
+  - **(a) PyOM upstream issue resolved.** Воспроизвести minimal
+    repro для https://github.com/OpenMagnetics/PyOpenMagnetics/issues,
+    дождаться patch / workaround. Если рабочий — добавить
+    `PyOmFemLeakage` adapter параллельно analytical, cross-check
+    в acceptance test.
+  - **(b) Elmer FEM pivot (T133 расширяется).** Реализовать leakage
+    backend через Elmer cross-section solver (short-circuit
+    secondary, energy integral) → новый adapter `ElmerLeakage`
+    тот же port. Cross-check vs analytical на pilot; если в
+    пределах ±25-30% — Erickson formula valid, иначе tighten.
+  - **(c) GetDP+Gmsh leakage extension (T113 stack reuse).** Уже
+    интегрированный FEM стек, расширить `.pro` template на leakage
+    (short-circuit + energy integral). Lower effort чем Elmer
+    pivot; same hexagonal port.
 
-  **Acceptance pilot (после backend fix):** monotonicity test
-  Lσ(P-S) > Lσ(P-S-P) > Lσ(P-S-P-S-P) на E 42/15 OPT, absolute
-  range [0.1, 10] mH для 5-section — physics-based gate из T132
-  Spec §Q7/Q8.
+  **Acceptance pilot (любой FEM backend):** на OPT_SE_5K_8 pilot
+  (E 42/15, 3500/140 turns, P-S-P-S-P 5-section), FEM Lσ должен
+  match analytical 6.5 mH в пределах ±25% (т.е. FEM ∈ [4.9, 8.1] mH).
+  Если outside — open analytical formula review, потенциально
+  tighten formula refinements (proper per-section thickness, Dowell
+  AC effects, etc.).
 
-  **Не зависит от:** T132 Phase A/B уже merged как infrastructure;
-  domain/port не меняются, только adapter swap'ается.
+  **Не зависит от:** T132 Phase A/B/C уже merged (analytical
+  primary backend + acceptance gates passing). Domain/port не
+  меняются — только новый adapter добавляется параллельно.
 
-  **Зависит от:** investigation MKF C++ ИЛИ T133 Elmer pivot
-  ready.
+  **Зависит от:** T133 Elmer pivot ready (preferred path) ИЛИ GetDP
+  template extension (T113 stack). T135 — quality improvement,
+  не блокирует existing T132 use case.
 
 
 ### Tech Debt (отложено)
