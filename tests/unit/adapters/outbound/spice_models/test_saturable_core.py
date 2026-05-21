@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from adapters.outbound.fem_solver_getdp.material import FrohlichBHCurve
+from domain.material import FrohlichBHCurve
 from adapters.outbound.spice_models.saturable_core import (
     generate_saturable_transformer_subckt,
 )

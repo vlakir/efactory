@@ -44,7 +44,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from adapters.outbound.fem_solver_getdp.material import FrohlichBHCurve
 from adapters.outbound.kicad_cli.schematic_exporter import (
     KicadCliSchematicExporter,
 )
@@ -52,9 +51,15 @@ from adapters.outbound.magnetic_analytics_pyopenmagnetics import (
     PyOpenMagneticsAnalytics,
     load_pyopenmagnetics,
 )
+from adapters.outbound.ngspice.netlist_substitution import (
+    NgspiceNetlistEditor,
+)
 from adapters.outbound.ngspice.simulator import NgspiceSimulator
 from adapters.outbound.platform_native.platform_layer import (
     NativePlatformLayer,
+)
+from adapters.outbound.spice_models.saturable_core import (
+    XSpiceSaturableSubcktGenerator,
 )
 from adapters.outbound.subprocess_apps.app_manager import (
     SubprocessAppManager,
@@ -70,10 +75,14 @@ from domain.magnetic import (
     OperatingPoint,
     Winding,
 )
+from domain.material import FrohlichBHCurve
 from domain.thd import ThdSweepSpec
 from ports.outbound.magnetic_analytics import (
     MagneticAnalyticsUnavailableError,
 )
+
+_SUBCKT_GENERATOR = XSpiceSaturableSubcktGenerator()
+_NETLIST_EDITOR = NgspiceNetlistEditor()
 
 if TYPE_CHECKING:
     pass
@@ -325,6 +334,8 @@ async def _calibrate_voltage_per_root_power(
         base_netlist=base_netlist,
         spec=probe_spec,
         simulator=simulator,
+        subckt_generator=_SUBCKT_GENERATOR,
+        netlist_editor=_NETLIST_EDITOR,
         workdir=probe_workdir,
         timeout_per_cell_seconds=30.0,
     )
@@ -389,6 +400,8 @@ async def test_se_amp_6p14p_saturable_thd_pilot(tmp_path: Path) -> None:
         base_netlist=prepared,
         spec=spec,
         simulator=simulator,
+        subckt_generator=_SUBCKT_GENERATOR,
+        netlist_editor=_NETLIST_EDITOR,
         workdir=tmp_path / 'sweep',
         timeout_per_cell_seconds=30.0,
     )

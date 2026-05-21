@@ -65,13 +65,6 @@ import math
 from time import monotonic
 from typing import TYPE_CHECKING
 
-from adapters.outbound.ngspice.netlist_substitution import (
-    set_sin_source_amplitude,
-    substitute_subckt_library,
-)
-from adapters.outbound.spice_models.saturable_core import (
-    generate_saturable_transformer_subckt,
-)
 from domain.magnetic import IsolationSide
 from domain.simulation import FourierAnalysis, TranAnalysis
 from domain.thd import ThdMeasurementPoint, ThdSpectrum
@@ -83,6 +76,10 @@ if TYPE_CHECKING:
     from domain.magnetic import Winding
     from domain.simulation import HarmonicSample
     from domain.thd import ThdSweepSpec
+    from ports.outbound.netlist_editor import NetlistEditor
+    from ports.outbound.saturable_subckt_generator import (
+        SaturableSubcktGenerator,
+    )
     from ports.outbound.simulator import Simulator
 
 
@@ -95,6 +92,8 @@ async def analyze_distortion_spectrum(
     base_netlist: Path,
     spec: ThdSweepSpec,
     simulator: Simulator,
+    subckt_generator: SaturableSubcktGenerator,
+    netlist_editor: NetlistEditor,
     workdir: Path,
     timeout_per_cell_seconds: float = _DEFAULT_TIMEOUT_PER_CELL_SECONDS,
 ) -> ThdSpectrum:
@@ -110,6 +109,10 @@ async def analyze_distortion_spectrum(
         spec: ThdSweepSpec — компонент + B-H curve + sweep matrix +
             netlist-связка + calibration constant.
         simulator: outbound port (NgspiceSimulator).
+        subckt_generator: outbound port — генератор saturable subckt
+            (default impl: `XSpiceSaturableSubcktGenerator`).
+        netlist_editor: outbound port — text manipulation netlist'а
+            (default impl: `NgspiceNetlistEditor`).
         workdir: куда писать cell netlist'ы (one per (freq, power) cell).
         timeout_per_cell_seconds: timeout per cell.
 
@@ -123,8 +126,8 @@ async def analyze_distortion_spectrum(
     await asyncio.to_thread(workdir.mkdir, parents=True, exist_ok=True)
     base_text = await asyncio.to_thread(base_netlist.read_text)
 
-    saturable_text = _generate_saturable(spec)
-    substituted_text = substitute_subckt_library(
+    saturable_text = _generate_saturable(spec, subckt_generator)
+    substituted_text = netlist_editor.substitute_subckt_library(
         base_text,
         spec.target_subckt_name,
         saturable_text,
@@ -140,6 +143,7 @@ async def analyze_distortion_spectrum(
                 target_power_w=target_power_w,
                 spec=spec,
                 simulator=simulator,
+                netlist_editor=netlist_editor,
                 workdir=workdir,
                 timeout_seconds=timeout_per_cell_seconds,
             )
@@ -153,11 +157,14 @@ async def analyze_distortion_spectrum(
     )
 
 
-def _generate_saturable(spec: ThdSweepSpec) -> str:
+def _generate_saturable(
+    spec: ThdSweepSpec,
+    subckt_generator: SaturableSubcktGenerator,
+) -> str:
     """Сгенерировать saturable subckt-текст из ThdSweepSpec."""
     primary = spec.component.primary_winding
     secondary = _find_secondary(spec.component.windings)
-    return generate_saturable_transformer_subckt(
+    return subckt_generator.generate(
         subckt_name=spec.target_subckt_name,
         n_primary=primary.number_turns,
         n_secondary=secondary.number_turns,
@@ -187,11 +194,12 @@ async def _measure_cell(
     target_power_w: float,
     spec: ThdSweepSpec,
     simulator: Simulator,
+    netlist_editor: NetlistEditor,
     workdir: Path,
     timeout_seconds: float,
 ) -> ThdMeasurementPoint:
     amplitude_peak = spec.voltage_per_root_power * math.sqrt(target_power_w)
-    cell_text = set_sin_source_amplitude(
+    cell_text = netlist_editor.set_sin_source_amplitude(
         substituted_text,
         source_ref=spec.input_source_ref,
         amplitude_peak=amplitude_peak,

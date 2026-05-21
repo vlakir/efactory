@@ -19,8 +19,8 @@ from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from adapters.outbound.fem_solver_getdp.material import FrohlichBHCurve
 from domain.magnetic import MagneticComponent
+from domain.material import FrohlichBHCurve
 from domain.simulation import HarmonicSample
 
 _FROZEN = ConfigDict(frozen=True, extra='forbid', arbitrary_types_allowed=True)

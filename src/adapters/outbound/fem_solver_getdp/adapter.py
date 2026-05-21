@@ -37,13 +37,13 @@ from adapters.outbound.fem_solver_getdp.geometry import (
     ECoreDimensions,
     emit_e_core_geo,
 )
-from adapters.outbound.fem_solver_getdp.material import (
-    DEFAULT_NUM_POINTS,
-    FrohlichBHCurve,
-)
 from adapters.outbound.fem_solver_getdp.pro_template import (
     render_magnetostatic_pro,
     render_magnetostatic_pro_nonlinear,
+)
+from domain.material import (
+    DEFAULT_NUM_POINTS,
+    FrohlichBHCurve,
 )
 from ports.outbound.magnetic_field_solver import (
     FemSolveOutcome,

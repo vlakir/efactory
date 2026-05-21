@@ -180,4 +180,48 @@ def _g(value: float) -> str:
     return f'{value:.9g}'
 
 
-__all__ = ['set_sin_source_amplitude', 'substitute_subckt_library']
+class NgspiceNetlistEditor:
+    """
+    `NetlistEditor` port implementation поверх ngspice text conventions
+    (T131 Phase E architecture cleanup).
+
+    Тонкая обёртка над module-level `substitute_subckt_library` /
+    `set_sin_source_amplitude` для conformance с
+    `ports.outbound.netlist_editor.NetlistEditor` Protocol.
+    """
+
+    def substitute_subckt_library(
+        self,
+        netlist_text: str,
+        target_subckt_name: str,
+        new_subckt_text: str,
+    ) -> str:
+        return substitute_subckt_library(
+            netlist_text,
+            target_subckt_name,
+            new_subckt_text,
+        )
+
+    def set_sin_source_amplitude(
+        self,
+        netlist_text: str,
+        *,
+        source_ref: str,
+        amplitude_peak: float,
+        frequency_hz: float,
+        offset: float = 0.0,
+    ) -> str:
+        return set_sin_source_amplitude(
+            netlist_text,
+            source_ref=source_ref,
+            amplitude_peak=amplitude_peak,
+            frequency_hz=frequency_hz,
+            offset=offset,
+        )
+
+
+__all__ = [
+    'NgspiceNetlistEditor',
+    'set_sin_source_amplitude',
+    'substitute_subckt_library',
+]

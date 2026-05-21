@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from adapters.outbound.fem_solver_getdp.material import (
+from domain.material import (
     MU_0,
     FrohlichBHCurve,
 )

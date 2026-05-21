@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from adapters.outbound.fem_solver_getdp.material import FrohlichBHCurve
+from adapters.outbound.ngspice.netlist_substitution import (
+    NgspiceNetlistEditor,
+)
+from adapters.outbound.spice_models.saturable_core import (
+    XSpiceSaturableSubcktGenerator,
+)
 from application.analyze_distortion_spectrum import analyze_distortion_spectrum
 from domain.magnetic import (
     Core,
@@ -17,6 +22,7 @@ from domain.magnetic import (
     OperatingPoint,
     Winding,
 )
+from domain.material import FrohlichBHCurve
 from domain.simulation import (
     FourierResult,
     HarmonicSample,
@@ -27,6 +33,10 @@ from ports.outbound.simulator import SimulationFailedError
 
 if TYPE_CHECKING:
     from domain.simulation import AnalysisSpec
+
+
+_SUBCKT_GENERATOR = XSpiceSaturableSubcktGenerator()
+_NETLIST_EDITOR = NgspiceNetlistEditor()
 
 
 def _make_component() -> MagneticComponent:
@@ -186,6 +196,8 @@ async def test_use_case_calls_simulator_per_matrix_cell(tmp_path: Path) -> None:
         base_netlist=base,
         spec=spec,
         simulator=sim,
+        subckt_generator=_SUBCKT_GENERATOR,
+        netlist_editor=_NETLIST_EDITOR,
         workdir=workdir,
     )
 
@@ -211,6 +223,8 @@ async def test_use_case_computes_measured_power_from_fundamental(
         base_netlist=base,
         spec=spec,
         simulator=sim,
+        subckt_generator=_SUBCKT_GENERATOR,
+        netlist_editor=_NETLIST_EDITOR,
         workdir=workdir,
     )
 
@@ -238,6 +252,8 @@ async def test_use_case_dominant_harmonic_selected_from_n_ge_two(
         base_netlist=base,
         spec=spec,
         simulator=sim,
+        subckt_generator=_SUBCKT_GENERATOR,
+        netlist_editor=_NETLIST_EDITOR,
         workdir=workdir,
     )
     assert spectrum.points[0].dominant_harmonic_n == 2
@@ -263,6 +279,8 @@ async def test_use_case_dominant_harmonic_third_when_largest(
         base_netlist=base,
         spec=spec,
         simulator=sim,
+        subckt_generator=_SUBCKT_GENERATOR,
+        netlist_editor=_NETLIST_EDITOR,
         workdir=workdir,
     )
     assert spectrum.points[0].dominant_harmonic_n == 3
@@ -285,6 +303,8 @@ async def test_use_case_voltage_calibration_uses_root_power_constant(
         base_netlist=base,
         spec=spec,
         simulator=sim,
+        subckt_generator=_SUBCKT_GENERATOR,
+        netlist_editor=_NETLIST_EDITOR,
         workdir=workdir,
     )
 
@@ -311,6 +331,8 @@ async def test_use_case_writes_one_netlist_per_cell(tmp_path: Path) -> None:
         base_netlist=base,
         spec=spec,
         simulator=sim,
+        subckt_generator=_SUBCKT_GENERATOR,
+        netlist_editor=_NETLIST_EDITOR,
         workdir=workdir,
     )
 
@@ -331,6 +353,8 @@ async def test_use_case_raises_on_simulator_failure(tmp_path: Path) -> None:
             base_netlist=base,
             spec=spec,
             simulator=sim,
+            subckt_generator=_SUBCKT_GENERATOR,
+            netlist_editor=_NETLIST_EDITOR,
             workdir=workdir,
         )
 
@@ -350,6 +374,8 @@ async def test_use_case_raises_when_fourier_result_missing(tmp_path: Path) -> No
             base_netlist=base,
             spec=spec,
             simulator=sim,
+            subckt_generator=_SUBCKT_GENERATOR,
+            netlist_editor=_NETLIST_EDITOR,
             workdir=workdir,
         )
 
@@ -376,6 +402,8 @@ async def test_use_case_raises_when_target_subckt_not_in_netlist(
             base_netlist=base,
             spec=spec,
             simulator=sim,
+            subckt_generator=_SUBCKT_GENERATOR,
+            netlist_editor=_NETLIST_EDITOR,
             workdir=workdir,
         )
 
@@ -401,6 +429,8 @@ async def test_use_case_raises_when_source_ref_missing(tmp_path: Path) -> None:
             base_netlist=base,
             spec=spec,
             simulator=sim,
+            subckt_generator=_SUBCKT_GENERATOR,
+            netlist_editor=_NETLIST_EDITOR,
             workdir=workdir,
         )
 
@@ -427,6 +457,8 @@ async def test_use_case_tran_parameters_derived_from_frequency(
         base_netlist=base,
         spec=spec,
         simulator=sim,
+        subckt_generator=_SUBCKT_GENERATOR,
+        netlist_editor=_NETLIST_EDITOR,
         workdir=workdir,
     )
 
@@ -456,6 +488,8 @@ async def test_use_case_propagates_custom_timeout(tmp_path: Path) -> None:
         base_netlist=base,
         spec=spec,
         simulator=sim,
+        subckt_generator=_SUBCKT_GENERATOR,
+        netlist_editor=_NETLIST_EDITOR,
         workdir=workdir,
         timeout_per_cell_seconds=10.0,
     )

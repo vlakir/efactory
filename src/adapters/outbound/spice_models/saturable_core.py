@@ -67,7 +67,42 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from adapters.outbound.fem_solver_getdp.material import FrohlichBHCurve
+    from domain.material import FrohlichBHCurve
+
+
+class XSpiceSaturableSubcktGenerator:
+    """
+    `SaturableSubcktGenerator` port implementation на базе XSPICE
+    gyrator-capacitor approach (Hamill 1993).
+
+    Тонкая обёртка над module-level `generate_saturable_transformer_subckt`
+    для conformance с `ports.outbound.saturable_subckt_generator.
+    SaturableSubcktGenerator` Protocol.
+    """
+
+    def generate(
+        self,
+        *,
+        subckt_name: str,
+        n_primary: int,
+        n_secondary: int,
+        a_core_m2: float,
+        l_path_m: float,
+        r_primary_ohm: float,
+        r_secondary_ohm: float,
+        bh_curve: FrohlichBHCurve,
+    ) -> str:
+        return generate_saturable_transformer_subckt(
+            subckt_name=subckt_name,
+            n_primary=n_primary,
+            n_secondary=n_secondary,
+            a_core_m2=a_core_m2,
+            l_path_m=l_path_m,
+            r_primary_ohm=r_primary_ohm,
+            r_secondary_ohm=r_secondary_ohm,
+            bh_curve=bh_curve,
+        )
+
 
 # Smoothing параметры XSPICE core element'а.
 # input_domain=0.01 fraction=true → 1% от input span получает
@@ -237,4 +272,7 @@ a_core (mc1 mc2) magcore_{name}
 """
 
 
-__all__ = ['generate_saturable_transformer_subckt']
+__all__ = [
+    'XSpiceSaturableSubcktGenerator',
+    'generate_saturable_transformer_subckt',
+]

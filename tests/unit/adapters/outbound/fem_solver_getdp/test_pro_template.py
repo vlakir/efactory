@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from adapters.outbound.fem_solver_getdp.material import FrohlichBHCurve
+from domain.material import FrohlichBHCurve
 from adapters.outbound.fem_solver_getdp.pro_template import (
     NL_MAX_ITER,
     NL_RELAXATION,

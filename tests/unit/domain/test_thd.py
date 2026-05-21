@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from adapters.outbound.fem_solver_getdp.material import FrohlichBHCurve
+from domain.material import FrohlichBHCurve
 from domain.magnetic import Core, IsolationSide, MagneticComponent, OperatingPoint, Winding
 from domain.simulation import HarmonicSample
 from domain.thd import ThdMeasurementPoint, ThdSpectrum, ThdSweepSpec

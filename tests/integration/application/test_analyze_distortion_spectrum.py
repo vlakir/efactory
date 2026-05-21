@@ -16,11 +16,17 @@ from pathlib import Path
 
 import pytest
 
-from adapters.outbound.fem_solver_getdp.material import FrohlichBHCurve
+from adapters.outbound.ngspice.netlist_substitution import (
+    NgspiceNetlistEditor,
+)
 from adapters.outbound.ngspice.simulator import NgspiceSimulator
 from adapters.outbound.platform_native.platform_layer import NativePlatformLayer
+from adapters.outbound.spice_models.saturable_core import (
+    XSpiceSaturableSubcktGenerator,
+)
 from adapters.outbound.subprocess_apps.app_manager import SubprocessAppManager
 from application.analyze_distortion_spectrum import analyze_distortion_spectrum
+from domain.material import FrohlichBHCurve
 from domain.magnetic import (
     Core,
     IsolationSide,
@@ -105,6 +111,8 @@ async def test_analyze_distortion_spectrum_smoke_on_synth_amp(
         base_netlist=base,
         spec=spec,
         simulator=simulator,
+        subckt_generator=XSpiceSaturableSubcktGenerator(),
+        netlist_editor=NgspiceNetlistEditor(),
         workdir=workdir,
         timeout_per_cell_seconds=30.0,
     )
