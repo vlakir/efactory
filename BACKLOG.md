@@ -83,14 +83,61 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      создаёт похожий THD-acceptance gate — должен включать
      saturation contribution diagnostic.
 
+  **Контрольный пример (regression target из T132).** Каждый из этих
+  3 уроков должен быть представлен в KB после implementation:
+
+  1. **«PyOM `calculate_leakage_inductance` mesh broken на всех
+     1.3.0→1.3.12 versions — использовать pure-Python Erickson
+     sandwich formula instead».** Источник: Phase B investigation
+     2026-05-21 (4+ часа). Любой call к
+     `pyom.calculate_leakage_inductance(magnetic, freq, idx)` после
+     `pyom.wind(...)` consistently возвращает `[CALCULATION_ERROR]
+     Mesh generation failed: induced field data is empty` — и через
+     official `simulate(inputs, magnetic, models)` pipeline тоже.
+     Cross-material sweep (12 PyOM materials), version sweep, и
+     `magnetic_autocomplete` / `process_inputs` orchestration — не
+     помогают. ⇒ Если agent попросят посчитать leakage inductance
+     OPT — должен НЕ пытаться PyOM mesh-path, а использовать
+     existing adapter `adapters.outbound.leakage_inductance_analytical.
+     AnalyticalLeakage` (Erickson formula + PyOM catalog для
+     geometry).
+
+  2. **«Interleaving reduction: Lσ ∝ 1/N², где N = число inter-
+     winding interfaces в pattern (P-S → N=1, P-S-P → N=2,
+     P-S-P-S-P → N=4)».** Источник: Erickson & Maksimović §15.5 +
+     Hurley & Wölfle §4.6, реализовано в `formula.py` Phase C
+     2026-05-21. Standard sandwich-transformer leakage с
+     interleaving reduction theorem. Verified exact для zero-
+     insulation case на pilot (σ_2/σ_3 = 4.0, σ_2/σ_5 = 16.0).
+     ⇒ Если agent спросят «как уменьшить HF-rolloff аудио OPT» —
+     должен предложить interleaved sandwich layout, и оценить
+     эффект через N² factor; для symmetric 5-section vs P-S
+     layout reduction = 16×.
+
+  3. **«PyOM bobbin processedDescription.columnWidth/columnDepth
+     = null / 5e-315 uninitialized memory garbage; patch needed для
+     любого FEM-touching path».** Источник: Phase B probe 2026-05-21.
+     `Bobbin E42/15` из `pyom.get_bobbins()` имеет
+     `columnWidth = None` и `columnDepth ≈ 5.45569116e-315` — bug в
+     PyOM C++ catalog initializer. PyOM `calculate_leakage_inductance`
+     bails out с `INVALID_BOBBIN_DATA` без patches; mesh API
+     дополнительно требует full bobbin geometry. Patch: `columnWidth
+     ← bobbin.functionalDescription.windingWindows[0].width`,
+     `columnDepth ← core.processedDescription.depth`. ⇒ Если agent
+     попытается ещё один PyOM FEM-touching path (например,
+     `calculate_magnetic_field_strength_field`, `plot_field_map`) —
+     должен auto-apply этот patch. Альтернатива: использовать только
+     PyOM catalog-only APIs (`find_*_by_name`, `calculate_core_data`),
+     которые не trigger mesh validation.
+
   **Acceptance.**
   - Spec формата KB (chunk schema, indexing strategy, retrieval API).
   - Skeleton implementation (read + write API минимум).
   - Initial-seed loader (bootstrap-script: parse curated content
     из репо при первом запуске efactory CLI agent).
-  - Acceptance test: задаются 3 регрессионных query из T131 control
-    example выше, KB возвращает релевантные chunks с правильным
-    ranking.
+  - Acceptance test: задаются **6 регрессионных query** из T131 +
+    T132 control examples выше (по 3 от каждой задачи), KB
+    возвращает релевантные chunks с правильным ranking.
   - **Не входит**: полный seeding текущих знаний (отдельная задача
     после KB skeleton готов); production-quality vector DB tuning.
 
