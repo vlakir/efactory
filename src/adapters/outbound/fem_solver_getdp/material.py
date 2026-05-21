@@ -99,6 +99,10 @@ class FrohlichBHCurve:
             pairs.append((b, h / b))
         return tuple(pairs)
 
+    def h_b_pairs(self) -> tuple[tuple[float, float], ...]:
+        """(H, B) пары для ngspice PWL (T131 — companion к nu_of_b_table)."""
+        return tuple(zip(self.h_values, self.b_values, strict=True))
+
     def as_getdp_list_literal(self) -> str:
         """Рендер `{B0, nu0, B1, nu1, ...}` для GetDP `InterpolationLinear`."""
         flat: list[str] = []

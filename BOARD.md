@@ -61,6 +61,12 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T131** — SPICE saturable transformer + THD distortion analysis
+  use case. Reuse T129 Phase A `FrohlichBHCurve`. Pilot — SE-amp
+  6П14П, THD @ 1W vs published reference ±2 dB. Spec:
+  `specs/T131-saturable-thd/spec.md` (Draft, фаза Clarify).
+  Ветка: `T131-saturable-thd` (создаётся при переходе к implement).
+
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем

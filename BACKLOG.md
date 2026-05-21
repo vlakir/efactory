@@ -217,26 +217,10 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- T129 переехала в BOARD.md → Doing 2026-05-20 после Clarify+Analyze.
      Спека: specs/T129-nonlinear-fem-dc-bias/spec.md. -->
 
-- **T131** — [2026-05-20, заведено в Phase C T129] **SPICE saturable
-  transformer model + THD distortion analysis use case.** Закрывает
-  detailed harmonic distortion analysis для любого tube amplifier
-  design (universal, не niche): vacuum tube nonlinearity уже моделируется
-  (T106/T107), а **OPT core saturation / hysteresis distortion** — нет.
-  Currently OPT моделируется как linear ideal transformer (`K1 L1 L2
-  0.99`).
-  Содержание:
-  - Generator `src/adapters/outbound/spice_models/saturable_core.py`:
-    input = `MagneticComponent` + `FrohlichBHCurve` (reuse T129 Phase A),
-    output = ngspice `.subckt` saturable transformer (B-source с table
-    lookup от Frohlich, или `.model CORE` level=1).
-  - Use case `simulate_distortion_spectrum(component, schematic)`:
-    inject saturable subckt в KiCad schematic, run transient SPICE,
-    FFT → THD per frequency / power level.
-  - Pilot acceptance: SE-amp 6П14П демо с saturable OPT → THD @ 1W
-    matches published reference (Stereophile / Audio Note class A
-    measurements ±2 dB на 1 kHz).
-  Reuses **полностью** T129 Phase A `FrohlichBHCurve`. Scope ~2-3
-  дня. Не зависит от FEM topology blocker'а — чисто SPICE-path.
+<!-- T131 переехала в BOARD.md → Doing 2026-05-21 после Vladimir выбрал
+     "T131 SPICE saturable + THD" следующей content-задачей. Spec —
+     specs/T131-saturable-thd/spec.md (Draft, в Clarify-фазе). -->
+
 - **T132** — [2026-05-20, заведено в Phase C T129] **Interleaved
   OPT leakage inductance — PyOM-only analytical path.** Top-tier
   audio OPT использует sandwich-секционную намотку (P-S-P, 5-section,
