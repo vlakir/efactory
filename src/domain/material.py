@@ -1,5 +1,13 @@
 """
-Frohlich-Kennelly nonlinear B-H material model (T129 Phase A).
+Frohlich-Kennelly nonlinear B-H material model (T129 Phase A, moved
+to domain в T131 Phase E refactor).
+
+Domain VO: cross-adapter материальная модель. Изначально жила в
+`adapters/outbound/fem_solver_getdp/material.py` (T129 single-use),
+переведена в domain layer в T131 Phase E когда стало consumer'ов
+больше одного: GetDP FEM (ν(B) reluctivity table), ngspice saturable
+transformer subckt (H-B array через XSPICE `core` element),
+THD use case (FrohlichBHCurve как часть ThdSweepSpec).
 
 Генерирует tabulated B-H кривую из 2 PyOM material параметров
 (μ_initial, B_sat) для подачи в GetDP `InterpolationLinear` как
@@ -98,6 +106,10 @@ class FrohlichBHCurve:
         for b, h in zip(self.b_values[1:], self.h_values[1:], strict=True):
             pairs.append((b, h / b))
         return tuple(pairs)
+
+    def h_b_pairs(self) -> tuple[tuple[float, float], ...]:
+        """(H, B) пары для ngspice PWL (T131 — companion к nu_of_b_table)."""
+        return tuple(zip(self.h_values, self.b_values, strict=True))
 
     def as_getdp_list_literal(self) -> str:
         """Рендер `{B0, nu0, B1, nu1, ...}` для GetDP `InterpolationLinear`."""

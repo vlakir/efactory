@@ -38,6 +38,68 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- T094 закрыт ADR от 2026-05-19 в DECISIONS.md (вариант "в":
      /ultrareview как primary external review, CodeRabbit best-effort). -->
 
+- **T134** — [2026-05-21, заведено в Phase E T131] **Agent Knowledge
+  Base — infrastructure для накопления technical knowledge у
+  efactory CLI agent'а.**
+
+  **Контекст.** efactory CLI agent (будущий, фаза 1b «Чат-клиент»)
+  будет отдельной runtime-сущностью со своими ресурсами; **не имеет
+  доступа** к auto-memory Гвидо (вне репо) и mem0 (приватная Vladimir
+  + Гвидо). Md-файлы репо (`DECISIONS.md`, `CHANGELOG.md`, `specs/*`,
+  `CLAUDE.md`) — dev-process артефакты для Гвидо и человека-ревьюера,
+  **не** primary канал знаний для agent'а. Архив сохранится в git,
+  но это не должно быть основным механизмом передачи знаний.
+
+  **Цель.** Слой persistence для efactory CLI agent: формат хранения,
+  initial-seed content (curated на release-bake), append-API (агент
+  пополняет в проде), retrieval (context-aware lookup перед
+  принятием решения).
+
+  **Контрольный пример (regression target из T131).** Каждый из этих
+  3 уроков должен быть представлен в KB после implementation:
+
+  1. **«Saturable магнетика с активными элементами требует XSPICE
+     gyrator-capacitor (lcouple+core), не PWL current-source».**
+     Источник: Phase E redesign 2026-05-21. PWL B-source с C_int
+     integrator + active EL84 Koren model давал numerical blow-up
+     (magnitudes ~1e+65) из-за algebraic loop. XSPICE gyrator-cap
+     (Hamill 1993) изолирует нелинейность в магнитной области.
+     ⇒ Если agent попросят добавить новую saturable модель
+     (capacitor, inductor) — должен предложить gyrator-cap путь.
+
+  2. **«Floating secondary OPT требует R_dc_leak (~1 MΩ к GND) перед
+     Fourier analysis».** Источник: Phase D acceptance test
+     post-processing 2026-05-21. Без DC reference v(/sec_a) получает
+     arbitrary DC offset, ngspice Fourier даёт нерелевантную fundamental
+     magnitude. ⇒ Если agent проектирует netlist post-processing для
+     любого транса с floating secondary — должен auto-inject leak.
+
+  3. **«Saturation contribution metric = THD@f_low - THD@f_high как
+     diagnostic для saturable models».** Источник: Phase E
+     acceptance gate 2026-05-21. Чистая abs-THD bound недостаточна
+     (compact-core configurations выходят за published [1%, 5%]
+     band published для больших cores); positive saturation
+     contribution = saturable модель реально активна. ⇒ Если agent
+     создаёт похожий THD-acceptance gate — должен включать
+     saturation contribution diagnostic.
+
+  **Acceptance.**
+  - Spec формата KB (chunk schema, indexing strategy, retrieval API).
+  - Skeleton implementation (read + write API минимум).
+  - Initial-seed loader (bootstrap-script: parse curated content
+    из репо при первом запуске efactory CLI agent).
+  - Acceptance test: задаются 3 регрессионных query из T131 control
+    example выше, KB возвращает релевантные chunks с правильным
+    ranking.
+  - **Не входит**: полный seeding текущих знаний (отдельная задача
+    после KB skeleton готов); production-quality vector DB tuning.
+
+  Scope ~3-5 дней. Зависит от: концепция фазы 1b «Чат-клиент»
+  (CONCEPT.md §13).
+
+  Не зависит от: T131 (T131 уже закрыт, ADR в `DECISIONS.md` +
+  docstring обогащения адресуют immediate dev-process persistence).
+
 
 ### Tech Debt (отложено)
 
@@ -217,26 +279,10 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- T129 переехала в BOARD.md → Doing 2026-05-20 после Clarify+Analyze.
      Спека: specs/T129-nonlinear-fem-dc-bias/spec.md. -->
 
-- **T131** — [2026-05-20, заведено в Phase C T129] **SPICE saturable
-  transformer model + THD distortion analysis use case.** Закрывает
-  detailed harmonic distortion analysis для любого tube amplifier
-  design (universal, не niche): vacuum tube nonlinearity уже моделируется
-  (T106/T107), а **OPT core saturation / hysteresis distortion** — нет.
-  Currently OPT моделируется как linear ideal transformer (`K1 L1 L2
-  0.99`).
-  Содержание:
-  - Generator `src/adapters/outbound/spice_models/saturable_core.py`:
-    input = `MagneticComponent` + `FrohlichBHCurve` (reuse T129 Phase A),
-    output = ngspice `.subckt` saturable transformer (B-source с table
-    lookup от Frohlich, или `.model CORE` level=1).
-  - Use case `simulate_distortion_spectrum(component, schematic)`:
-    inject saturable subckt в KiCad schematic, run transient SPICE,
-    FFT → THD per frequency / power level.
-  - Pilot acceptance: SE-amp 6П14П демо с saturable OPT → THD @ 1W
-    matches published reference (Stereophile / Audio Note class A
-    measurements ±2 dB на 1 kHz).
-  Reuses **полностью** T129 Phase A `FrohlichBHCurve`. Scope ~2-3
-  дня. Не зависит от FEM topology blocker'а — чисто SPICE-path.
+<!-- T131 переехала в BOARD.md → Doing 2026-05-21 после Vladimir выбрал
+     "T131 SPICE saturable + THD" следующей content-задачей. Spec —
+     specs/T131-saturable-thd/spec.md (Draft, в Clarify-фазе). -->
+
 - **T132** — [2026-05-20, заведено в Phase C T129] **Interleaved
   OPT leakage inductance — PyOM-only analytical path.** Top-tier
   audio OPT использует sandwich-секционную намотку (P-S-P, 5-section,

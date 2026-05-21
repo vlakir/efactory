@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from adapters.outbound.fem_solver_getdp.material import (
+from domain.material import (
     MU_0,
     FrohlichBHCurve,
 )
@@ -119,6 +119,58 @@ def test_nu_b_table_yields_reciprocal_chord_slope() -> None:
     ):
         assert b == b_val
         assert nu == pytest.approx(h_val / b_val, rel=1e-12)
+
+
+def test_h_b_pairs_length_matches_curve_points() -> None:
+    """`h_b_pairs()` возвращает столько пар, сколько точек в curve (T131)."""
+    curve = FrohlichBHCurve.from_pyom_material(
+        mu_initial=8000.0,
+        b_sat=1.2,
+        num_points=12,
+    )
+    pairs = curve.h_b_pairs()
+    assert len(pairs) == 12
+    assert len(pairs) == len(curve.b_values)
+
+
+def test_h_b_pairs_first_at_origin() -> None:
+    """`h_b_pairs()` начинается с (0, 0) — origin point (T131)."""
+    curve = FrohlichBHCurve.from_pyom_material(mu_initial=8000.0, b_sat=1.2)
+    pairs = curve.h_b_pairs()
+    h0, b0 = pairs[0]
+    assert h0 == pytest.approx(0.0, abs=1e-12)
+    assert b0 == pytest.approx(0.0, abs=1e-12)
+
+
+def test_h_b_pairs_strictly_monotonic_in_h_and_b() -> None:
+    """Обе компоненты возрастают строго монотонно (T131)."""
+    curve = FrohlichBHCurve.from_pyom_material(mu_initial=8000.0, b_sat=1.2)
+    pairs = curve.h_b_pairs()
+    for (h_prev, b_prev), (h_nxt, b_nxt) in zip(pairs[:-1], pairs[1:], strict=True):
+        assert h_nxt > h_prev
+        assert b_nxt > b_prev
+
+
+def test_h_b_pairs_last_point_near_b_sat() -> None:
+    """Last pair B-компонента ≈ 0.99·B_sat (как и сама b_values[-1]) (T131)."""
+    b_sat = 1.2
+    curve = FrohlichBHCurve.from_pyom_material(mu_initial=8000.0, b_sat=b_sat)
+    _, b_last = curve.h_b_pairs()[-1]
+    assert b_last == pytest.approx(0.99 * b_sat, rel=1e-9)
+
+
+def test_h_b_pairs_companion_to_b_h_arrays() -> None:
+    """Pairs элементы — это (h_values[i], b_values[i]) (T131)."""
+    curve = FrohlichBHCurve.from_pyom_material(mu_initial=8000.0, b_sat=1.2)
+    pairs = curve.h_b_pairs()
+    for (h, b), h_arr, b_arr in zip(
+        pairs,
+        curve.h_values,
+        curve.b_values,
+        strict=True,
+    ):
+        assert h == h_arr
+        assert b == b_arr
 
 
 def test_getdp_list_literal_format_pairs_interleaved() -> None:

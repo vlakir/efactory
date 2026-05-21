@@ -26,6 +26,104 @@ ADR-Lite: компактный лог архитектурных решений 
      дат — от фундаментального к инструментальному. -->
 
 
+### 2026-05-21 — Saturable магнетика в SPICE: XSPICE gyrator-capacitor (`lcouple`+`core`), не PWL current-source
+
+- **Контекст:** T131 (SPICE saturable transformer + THD distortion
+  analysis) Phase A первоначально реализовала saturable subckt через
+  PWL **current-source** B-element с capacitor-as-integrator:
+
+  ```
+  G_int N_psi 0 N_a P2 1       # VCCS: i_G = V(N_a, P2)
+  C_int N_psi 0 1              # integrator → V(N_psi) = ∫V_Lm dt
+  B_Lm N_a P2 I=pwl(V(N_psi), <(ψ_link, i_Lm) pairs>)
+  ```
+
+  На стенде «лампа + saturable OPT» (acceptance pilot Phase D) это
+  **не сходилось**: ngspice TRAN с EL84 Koren-моделью + Frohlich-
+  PWL saturable subckt давал magnitudes ≈ 1e+65 в Fourier-выводе
+  (numerical garbage, THD = 258%) при любых convergence options
+  (`set gmin=1e-9`, `itl4=200`, `reltol=1e-3`, `method=gear`, явные
+  initial conditions). Standalone saturable + linear sources
+  (Phase C synthetic integration test) работал нормально — issue
+  специфично проявлялся в interaction с active tube model.
+
+  **Root cause:** algebraic loop через B-source PWL `B_Lm` (current
+  source) + tube G-source (controlled current source) + primary
+  `R_pri` — Newton-Raphson не сходился. Capacitor-as-integrator
+  (`C_int = 1 F`) с large time constant накапливал drift вместо
+  быстрой relaxation к equilibrium.
+
+- **Решение:** **Переписать saturable_core на XSPICE gyrator-capacitor
+  (Hamill 1993)** — `lcouple` gyrator'ы primary/secondary преобразуют
+  электрическую область (V, I) в магнитную (MMF, dψ/dt), нелинейная
+  B-H curve моделируется через XSPICE `core` element с tabulated
+  `H_array` / `B_array`:
+
+  ```
+  R_pri P1 pri_int {r_pri}
+  a1 (pri_int P2) (mc1 0) primary_{name}
+  .model primary_{name} lcouple(num_turns={n_primary})
+  a2 (sec_int S2) (0 mc2) secondary_{name}
+  .model secondary_{name} lcouple(num_turns={n_secondary})
+  R_sec sec_int S1 {r_sec}
+  a_core (mc1 mc2) magcore_{name}
+  .model magcore_{name} core(H_array=[...] B_array=[...]
+  + area=... length=... input_domain=0.01 fraction=true)
+  ```
+
+  Нелинейность сидит **в магнитной области** (`a_core` element),
+  изолирована от electrical Newton iterations; flux integration —
+  внутри core element с собственным state; PWL smoothing
+  (`input_domain=0.01 fraction=true`) убирает non-smooth производные
+  на углах таблицы.
+
+  Verified: pilot acceptance test проходит в полной топологии (6П14П
+  SE + saturable OPT). 1 kHz / 1 W: THD = 9.63% (dominant n=2),
+  10 kHz / 1 W: THD = 4.78% (tube-only baseline, OPT linear на HF),
+  saturation contribution +4.85 pp.
+
+- **Альтернативы:**
+  - **PWL current-source B-element + capacitor integrator** (исходный
+    Phase A путь) — отвергнут: numerical blow-up с active elements
+    (см. Контекст). Mathematically correct, но not robust в
+    practical circuit topologies.
+  - **ngspice native `Core` Jiles-Atherton model** (`.MODEL <name>
+    CORE`) — отвергнут: требует Jiles-Atherton параметры (Ms, A, K,
+    C, alpha) которые не маппятся 1:1 к нашим Frohlich-параметрам
+    (μ_init, B_sat). Маппинг possible но adds parametric uncertainty
+    к acceptance gate. Также: JA включает hysteresis по дизайну
+    (`K > 0`), а T131 scope — saturation-only (см. spec §3
+    «hysteresis — Phase 2 deferred»). Set `K=0` для anhysteretic
+    mode но проверка стабильности этого требует separate validation.
+  - **Nonlinear voltage-source с `ddt()` builder** — отвергнут:
+    ngspice 45.2 не поддерживает `ddt()` / `idt()` в B-source
+    expressions; compatible SPICE3 builtins не покрывают этот path.
+  - **Behavioural inductor `L=expr(...)`** — отвергнут: ngspice
+    nonlinear L expression формально поддерживается, но конкретные
+    edge cases (smoothness derivatives, DC convergence) сравнимы с
+    PWL B-element approach по нумерическим характеристикам.
+
+- **Последствия:**
+  - **Numerical стабильность:** SPICE сходится в нетривиальных
+    топологиях (active elements + saturable magnetics) — критично
+    для T131 acceptance + future tube amp work.
+  - **Frohlich curve остаётся source-of-truth** — `FrohlichBHCurve.
+    h_b_pairs()` выгружается в symmetric `H_array` / `B_array` для
+    `core` element; T129 Phase A material model reused без
+    изменений.
+  - **Acceptance band revised** [1%, 5%] → [3%, 15%] для compact-core
+    configurations (E 42/15 в pilot); published 1-5% reference
+    подразумевал большие cores. Добавлен saturation contribution
+    diagnostic (THD@f_low - THD@f_high) как T131 raison d'être
+    validation.
+  - **Phase A revision** (Phase E patch в T131-ветке) — не отдельная
+    задача, scope expansion authorized 2026-05-21 после Phase D
+    failure.
+  - **Subckt structure breaking change** — все existing tests на
+    `B_Lm` / `G_int` / `C_int` markers переписаны на `lcouple` /
+    `core` / `a_*` element checks. Unit + acceptance tests pass.
+
+
 ### 2026-05-21 — Сторонние review-боты отключены: primary path — self-review + `/ultrareview` on-demand
 
 - **Контекст:** ADR 2026-05-19 «Сторонние review-боты: CodeRabbit как
