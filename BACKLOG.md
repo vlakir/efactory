@@ -94,8 +94,12 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   - **Не входит**: полный seeding текущих знаний (отдельная задача
     после KB skeleton готов); production-quality vector DB tuning.
 
-  Scope ~3-5 дней. Зависит от: концепция фазы 1b «Чат-клиент»
-  (CONCEPT.md §13).
+  Scope ~3-5 дней. **Blocked by Phase 1b «Чат-клиент»** — KB
+  спецификация зависит от characteristics самого agent'а (framework,
+  retrieval strategy, context window, interaction API). До появления
+  agent'а KB — premature investment без consumer'а. Знания на этапе
+  разработки efactory собираются в .md-файлы репо + auto-memory
+  Гвидо; T134 их **мигрирует в agent KB** когда agent появится.
 
   Не зависит от: T131 (T131 уже закрыт, ADR в `DECISIONS.md` +
   docstring обогащения адресуют immediate dev-process persistence).
