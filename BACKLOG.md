@@ -383,36 +383,11 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      Spec — specs/T132-interleaved-leakage/spec.md (Draft, в Clarify-
      фазе). -->
 
-- **T133** — [2026-05-20, заведено в Phase C T129] **Elmer FEM pivot —
-  переход на Elmer для nonlinear B-H + DC bias FEM cross-check.**
-  T129 Phase B показал: GetDP 2D-planar с split-coil topology
-  блокирован для DC bias modeling — Frohlich curve не engaging
-  (L_nl/L_lin ≈ 0.997 на pilot после ultrareview bug_001 fix; T113
-  baseline gap 242% сохраняется без изменений, Primary acceptance
-  ±10% недостижим в текущей topology — изначальная заявка «70% gap»
-  была artefact flux linkage formula error, retracted в revision 3
-  spec/ADR). Path forward — **Elmer FEM pivot** (вариант 3b / α из
-  T129 Phase C discussion):
-  - ADR override 2026-05-20 «GetDP над Elmer» — пересмотр на
-    «Elmer для nonlinear, GetDP остаётся для linear/geometry».
-  - Elmer 2D-axisymmetric или 2D-planar с native `H-B Curve` keyword
-    + Newton iteration (out-of-the-box nonlinear support, не
-    требует custom Picard).
-  - Pilot infrastructure из T113 Phase 1 Stage D (`scripts/pilot/
-    elmer/`) переиспользуется; `feedback_elmer_savescalars_quirks`
-    auto-memory покрывает 4 pitfall'а.
-  - New adapter `src/adapters/outbound/fem_solver_elmer/` + integration
-    test pilot achieves ±10% к PyOM ZHANG на OPT 6П14П SE DC-biased.
-  - Reuses T129 Phase A `FrohlichBHCurve` как input format для Elmer
-    H-B table.
-  Альтернативы (3a — GetDP topology rework через shell transformation
-  / circuit coupling / 3D; 3c — AGROS Suite) рассмотрены и отвергнуты
-  в пользу 3b: Elmer уже частично исследован + native nonlinear
-  support лучше than custom Picard на GetDP. Scope ~1-2 недели.
-  Image +300 MB (apt elmerfem-csc уже доступен в Ubuntu 24.04 universe).
-  Триггер: появление реального client case с требованием ±10% FEM
-  precision (top-tier interleaved OPT 5+ section, или high-precision
-  power transformer design).
+<!-- T133 переведена в BOARD.md → Doing 2026-05-21 после T132 closure.
+     Spec — specs/T133-elmer-fem-pivot/spec.md (Clarified, готова к
+     Analyze). Топология — single-coil + Kelvin shell; acceptance
+     ±25% (target ±10%) к PyOM ZHANG; phasing Phase 0 pilot →
+     Phase 1 adapter linear → Phase 2 nonlinear → Phase 3 closing. -->
 
 - **T127** — [2026-05-20, заведено по ADR 2026-05-20] **Cross-
   validation FEM-solver'ов: Elmer ↔ GetDP на дополнительных

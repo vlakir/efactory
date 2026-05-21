@@ -61,6 +61,17 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T133** — Elmer FEM pivot — переход на Elmer для nonlinear B-H +
+  DC bias FEM cross-check; цель закрыть T113 baseline 242% gap к
+  acceptance ±25% (target ±10%) к PyOM ZHANG на pilot fixture
+  OPT 6П14П SE. Топология — single-coil + outer Kelvin shell
+  transformation (proper open-domain flux closure). Spec —
+  `specs/T133-elmer-fem-pivot/spec.md` (Clarified, готова к Analyze).
+  Фазы: Phase 0 pilot probe (Elmer H-B Curve + Newton + Kelvin shell
+  smoke) → Phase 1 main Dockerfile + adapter scaffolding (linear) →
+  Phase 2 nonlinear mode + central-diff DC bias → Phase 3 acceptance
+  + ADR override + closing.
+
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
