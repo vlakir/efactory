@@ -130,13 +130,70 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      PyOM catalog-only APIs (`find_*_by_name`, `calculate_core_data`),
      которые не trigger mesh validation.
 
+  **Контрольный пример (regression target из T133).** Каждый из этих
+  3 уроков должен быть представлен в KB после implementation:
+
+  1. **«2D-planar FEM на E-core inherent factor ~3× от ZHANG; для
+     closure нужен 3D mesh».** Источник: T133 Phase 3 empirical
+     (2026-05-21). Все 2D-planar варианты (split-coil + Dirichlet,
+     single-coil + Infinity BC, linear или nonlinear Frohlich) дают
+     +182-242% к PyOM ZHANG analytical на pilot fixture OPT 6П14П SE.
+     Это **physics, не bug**: ZHANG reluctance model assumes fully
+     closed magnetic circuit, 2D-planar inherently captures 3D
+     out-of-plane leakage и fringing effects. 3D mesh с gaps закрыл
+     gap до -13.3% (Lp = 6.04 H, acceptance ±25% к ZHANG 6.96 H).
+     ⇒ Если agent попросят FEM cross-check к ZHANG-style analytical
+     для E-core / EI / EE OPT — должен сразу планировать 3D mesh
+     (`emit_e_core_geo_3d` + `dimensionality='3d'`), пропустить 2D
+     iteration. Для axisymmetric topology (toroidal, pot) 2D-planar
+     OK; для leakage-only (T132/T135) 2D также достаточен.
+
+  2. **«Elmer 3D Whitney AV + MUMPS direct ceiling ~10K nodes на
+     4 GB RAM dev-host; iterative path заблокирован в default
+     elmerfem-csc PPA».** Источник: T133 Phase 3d.2 (2026-05-21).
+     39K tetra → segfault rc=139 + system crash. MUMPS direct
+     O(N²·BW) memory blow-up на edge basis. Iterative alternatives
+     не работают в PPA build: `Preconditioning = BoomerAMG` не
+     сходится для edge basis (designed для node Laplacian),
+     `Preconditioning = "ams"` (Auxiliary Maxwell Space — proper
+     для edge Maxwell) reported `Unknown preconditioner type: ams,
+     feature disabled` (Hypre AMS не вкомпилирован в PPA).
+     ⇒ Если agent создаёт Elmer 3D mesh для full E-core OPT:
+     **default MUMPS direct с mesh sizing 20μm/5mm** (Phase 3d.2
+     proven baseline, 10K nodes, ~14 s). Mesh > 15K nodes требует
+     либо Elmer rebuild с AMS (отдельная задача), либо больше RAM,
+     либо адаптивный mesh refinement (Distance + Threshold fields)
+     для concentration nodes только near gaps. **НЕ пытаться mesh
+     > 20K без verified iterative path** — система Vladimir-а
+     перезагружалась.
+
+  3. **«Elmer Stranded Coil mechanism требует connected 3D loop;
+     для OPT primary через два disjoint windows нужны mesh bridges
+     через top/bottom yokes».** Источник: T133 Phase 3d.2 Coil
+     probe (2026-05-21). Закрытый coil (`Coil Closed = Logical True`)
+     с `Master Bodies(2) = 2 3` (left + right window volumes) даёт
+     `CoilSolver: Crappy potentials: No positive/negative current
+     sources` — windows не connected без yoke bridges, current loop
+     не замкнут. Open coil + `Coil Start` / `Coil End` BCs пропускает
+     current через CoilSolver, но Whitney AV не consume coil current
+     без proper Component-binding syntax (Component-level `Coil Type`
+     / `Number of Turns` reported как `Unused keywords`; binding
+     requires Elmer Models Manual investigation).
+     ⇒ Если agent моделирует OPT primary winding на center leg в 3D
+     Elmer: **либо** добавить mesh bridges через top + bottom yokes
+     (closed 3D loop, preferred — physically correct), **либо**
+     использовать simple Body Force `Current Density 3 = N·I/A`
+     vector (works для acceptance ±25%, но div(J) implicitly
+     violated; T133 Phase 3d.2 baseline). Coil mechanism с proper
+     binding — open follow-up T-ID.
+
   **Acceptance.**
   - Spec формата KB (chunk schema, indexing strategy, retrieval API).
   - Skeleton implementation (read + write API минимум).
   - Initial-seed loader (bootstrap-script: parse curated content
     из репо при первом запуске efactory CLI agent).
-  - Acceptance test: задаются **6 регрессионных query** из T131 +
-    T132 control examples выше (по 3 от каждой задачи), KB
+  - Acceptance test: задаются **9 регрессионных query** из T131 +
+    T132 + T133 control examples выше (по 3 от каждой задачи), KB
     возвращает релевантные chunks с правильным ranking.
   - **Не входит**: полный seeding текущих знаний (отдельная задача
     после KB skeleton готов); production-quality vector DB tuning.
@@ -195,6 +252,120 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   **Зависит от:** T133 Elmer pivot ready (preferred path) ИЛИ GetDP
   template extension (T113 stack). T135 — quality improvement,
   не блокирует existing T132 use case.
+
+- **T136** — [2026-05-21, заведено в Phase 3e T133] **Elmer rebuild
+  с AMS preconditioner — target ±10% к ZHANG closure.**
+
+  **Контекст.** T133 Phase 3d.2 закрылся на acceptance ±25% (Lp=6.04H,
+  -13.3% к ZHANG). Target ±10% [6.26, 7.65 H] не достигнут (off by
+  3.5%). Mesh refinement к 39K nodes → MUMPS direct OOM/system crash;
+  iterative alternatives (BoomerAMG / ILU) не сходятся для Whitney AV
+  edge basis. **AMS preconditioner** (Hypre Auxiliary Maxwell Space,
+  designed for edge basis curl-curl Maxwell) reported `feature
+  disabled` в default `elmerfem-csc` PPA build.
+
+  **Acceptance.**
+  - Build Elmer с AMS preconditioner enabled (Hypre rebuild with
+    `--enable-ams` или equivalent, потом Elmer link against custom
+    Hypre).
+  - Custom efactory:linux image variant `efactory:linux-elmer-ams`
+    OR replace default elmerfem-csc PPA с custom build.
+  - Mesh refinement к 50K+ nodes на pilot OPT 6П14П SE через
+    iterative + AMS: Lp ∈ [6.26, 7.65] H = ±10% к ZHANG achieved.
+  - Integration test обновлён на tighter baseline (±5% drift).
+
+  **Альтернатива:** server-class machine с большим RAM (32+ GB)
+  позволил бы MUMPS direct на 50K nodes без iterative path.
+
+  Scope ~3-5 дней (Hypre/Elmer build + AMS configuration tuning).
+  Триггер: реальный client case требующий ±10% precision.
+
+- **T137** — [2026-05-21, заведено в Phase 3e T133] **3D Elmer Coil
+  mechanism с mesh bridges через yokes — alternative path к ±10%.**
+
+  **Контекст.** T133 Phase 3d.2 Coil mechanism probe (Stranded coil
+  + CoilSolver) выявил: для OPT primary через два disjoint windows
+  (left + right) closed coil не сходится ("Crappy potentials"),
+  open coil + Start/End BCs пропускает CoilSolver но Whitney AV
+  не consume coil current. Body Force vector path работает но
+  div(J) implicitly violated (асимметричная current distribution
+  — возможный источник residual -13.3% gap к ZHANG).
+
+  **Подход.**
+  - Расширить `emit_e_core_geo_3d` mesh: add `coil_bridge_top` и
+    `coil_bridge_bottom` Volume boxes — extend primary winding
+    region через top/bottom yokes (вокруг center leg), создавая
+    closed 3D loop.
+  - .sif: Component с `Coil Type = "stranded"` + `Coil Closed =
+    True` + `Master Bodies(4) = 2 3 [bridge_top] [bridge_bottom]`.
+  - CoilSolver pre-compute proper closed-loop current vector.
+  - WhitneyAV Solver: verify `Coil Use W Vector` binding works
+    (Phase 3d.2 reported keyword Unused; need Elmer Models Manual).
+
+  **Acceptance.**
+  - 3D mesh с bridge volumes generates cleanly (OCC boolean
+    sequential).
+  - CoilSolver converges на closed loop, не "Crappy potentials".
+  - Whitney AV consumes coil current vector, Lp вычисляется.
+  - Acceptance к ZHANG ±10% [6.26, 7.65 H] на OPT 6П14П SE.
+
+  Scope ~2-4 дня (mesh redesign + Coil keyword investigation).
+  Альтернатива к T136 (Elmer rebuild).
+
+- **T138** — [2026-05-21, заведено в Phase 3e T133] **PyOM
+  `lateral_x` semantics investigation + ECoreDimensions fix.**
+
+  **Контекст.** T133 Phase 3b/3d empirical: для OPT 6П14П SE
+  (E 42/21/15) PyOM `processedDescription.columns[1].coordinates[0]`
+  = ±18.088 mm, `width` = 9.075 mm. Это даёт outer lateral leg
+  edge x = 22.626 mm > core half-width 21.075 mm — geometrically
+  impossible. Phase 3d использует geometrically-derived bounds
+  из `core_w - center_w - 2·window_w` (lateral width = 6.025 mm,
+  не PyOM-reported 9.075 mm).
+
+  Гипотезы:
+  - PyOM column.width — это full leg + bobbin flange, не iron.
+  - PyOM column.coordinates — center с different reference frame.
+  - PyOM data inconsistency для конкретного shape E 42/21/15.
+
+  **Acceptance.**
+  - Investigate PyOM data structure через minimal probe (calculate_
+    core_data для E 42/21/15 + другие shapes, сравнить с datasheet
+    geometry).
+  - Fix `ECoreDimensions.from_pyom_core`: либо correct interpretation
+    (e.g., `lateral_w = column.width − 2·bobbin_thickness`), либо
+    fall back на geometrically-derived bounds explicitly.
+  - Tests cover the fix.
+
+  Scope ~1-2 дня. Влияет на T133 3D mesh accuracy, потенциально
+  закрывает часть остатка к ±10% target.
+
+- **T139** — [2026-05-21, заведено в Phase 3e T133] **3D Elmer
+  nonlinear-frohlich path (H-B Curve + Newton в 3D Whitney AV).**
+
+  **Контекст.** T133 Phase 3c integration: `material_model =
+  'nonlinear-frohlich'` + `dimensionality = '3d'` → `NotImplementedError`.
+  3D nonlinear path требует:
+  - 3D Whitney AV solver с `H-B Curve = Variable Coupled iter; Real
+    cubic; ... End` (verified в 2D Phase 0; need 3D-specific
+    keyword `H-B Curve Variable` per strings probe).
+  - Newton iteration на 3D edge basis — потенциально convergence
+    issues аналогично T133 Phase 2 2D nonlinear (IEEE_UNDERFLOW
+    на низком DC bias).
+  - DC-bias central-diff reuse (T129 / T133 Phase 2 logic).
+
+  **Acceptance.**
+  - 3D nonlinear .sif template + adapter `_solve_nonlinear_3d`
+    method.
+  - Integration test на OPT 6П14П SE: nonlinear-frohlich-3d даёт
+    finite L_inc, сравним с linear-3d baseline 6.04 H.
+  - Если IEEE_UNDERFLOW повторяется — `feedback_fem_2d_nonlinear_
+    instability` уже фиксирует known limit; consider Picard
+    relaxation, smaller ΔI floor, или 3D-specific tuning.
+
+  Scope ~3-5 дней. Triggers: real client case requiring
+  saturation-aware 3D FEM inductance (e.g., flyback choke с
+  high DC bias).
 
 
 ### Tech Debt (отложено)
@@ -383,36 +554,11 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      Spec — specs/T132-interleaved-leakage/spec.md (Draft, в Clarify-
      фазе). -->
 
-- **T133** — [2026-05-20, заведено в Phase C T129] **Elmer FEM pivot —
-  переход на Elmer для nonlinear B-H + DC bias FEM cross-check.**
-  T129 Phase B показал: GetDP 2D-planar с split-coil topology
-  блокирован для DC bias modeling — Frohlich curve не engaging
-  (L_nl/L_lin ≈ 0.997 на pilot после ultrareview bug_001 fix; T113
-  baseline gap 242% сохраняется без изменений, Primary acceptance
-  ±10% недостижим в текущей topology — изначальная заявка «70% gap»
-  была artefact flux linkage formula error, retracted в revision 3
-  spec/ADR). Path forward — **Elmer FEM pivot** (вариант 3b / α из
-  T129 Phase C discussion):
-  - ADR override 2026-05-20 «GetDP над Elmer» — пересмотр на
-    «Elmer для nonlinear, GetDP остаётся для linear/geometry».
-  - Elmer 2D-axisymmetric или 2D-planar с native `H-B Curve` keyword
-    + Newton iteration (out-of-the-box nonlinear support, не
-    требует custom Picard).
-  - Pilot infrastructure из T113 Phase 1 Stage D (`scripts/pilot/
-    elmer/`) переиспользуется; `feedback_elmer_savescalars_quirks`
-    auto-memory покрывает 4 pitfall'а.
-  - New adapter `src/adapters/outbound/fem_solver_elmer/` + integration
-    test pilot achieves ±10% к PyOM ZHANG на OPT 6П14П SE DC-biased.
-  - Reuses T129 Phase A `FrohlichBHCurve` как input format для Elmer
-    H-B table.
-  Альтернативы (3a — GetDP topology rework через shell transformation
-  / circuit coupling / 3D; 3c — AGROS Suite) рассмотрены и отвергнуты
-  в пользу 3b: Elmer уже частично исследован + native nonlinear
-  support лучше than custom Picard на GetDP. Scope ~1-2 недели.
-  Image +300 MB (apt elmerfem-csc уже доступен в Ubuntu 24.04 universe).
-  Триггер: появление реального client case с требованием ±10% FEM
-  precision (top-tier interleaved OPT 5+ section, или high-precision
-  power transformer design).
+<!-- T133 переведена в BOARD.md → Doing 2026-05-21 после T132 closure.
+     Spec — specs/T133-elmer-fem-pivot/spec.md (Clarified, готова к
+     Analyze). Топология — single-coil + Kelvin shell; acceptance
+     ±25% (target ±10%) к PyOM ZHANG; phasing Phase 0 pilot →
+     Phase 1 adapter linear → Phase 2 nonlinear → Phase 3 closing. -->
 
 - **T127** — [2026-05-20, заведено по ADR 2026-05-20] **Cross-
   validation FEM-solver'ов: Elmer ↔ GetDP на дополнительных
