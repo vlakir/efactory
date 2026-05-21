@@ -104,6 +104,48 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   Не зависит от: T131 (T131 уже закрыт, ADR в `DECISIONS.md` +
   docstring обогащения адресуют immediate dev-process persistence).
 
+- **T135** — [2026-05-21, заведено в Phase B T132] **PyOM leakage
+  backend — root cause / upgrade / Elmer pivot для closure T132.**
+
+  **Контекст.** T132 Phase A/B доставили полную domain + port + adapter
+  infrastructure для interleaved Lσ расчёта (см. closure-секцию
+  `specs/T132-interleaved-leakage/spec.md`). Runtime backend
+  заблокирован: PyOM 1.3.10 `calculate_leakage_inductance` consistently
+  возвращает `[CALCULATION_ERROR] Mesh generation failed: induced
+  field data is empty` для любого fixture (12 materials probed,
+  включая standard ferrites 3C95/N87, через официальный
+  `simulate(inputs, magnetic, models)` pipeline). Circular dependency:
+  leakage требует computed `magneticFieldStrength` в excitation, но
+  public API для compute (`calculate_magnetic_field_strength_field`)
+  сам возвращает `bad optional access`.
+
+  **Acceptance** (любой из трёх путей):
+  - **(a) Root cause + fix.** Воспроизвести в minimal repro
+    upstream MKF C++ source (https://github.com/OpenMagnetics/MKF)
+    или открыть PyOM GitHub issue
+    (https://github.com/OpenMagnetics/PyOpenMagnetics/issues),
+    дождаться patch / обхода. Adapter T132 принимает результат
+    без изменения domain/port.
+  - **(b) Version sweep.** Попробовать PyOM 1.4.x / 1.2.x — может
+    быть version-specific regression в 1.3.10. Меняем pin в
+    `pyproject.toml`, smoke pilot.
+  - **(c) Elmer pivot (T133 расширяется).** Реализовать leakage
+    backend через Elmer FEM cross-section solver — same hexagonal
+    port `LeakageInductanceAnalyzer` от T132, новый adapter
+    `ElmerLeakageSolver`. T133 spec уже намечен для Elmer FEM
+    pivot — расширить scope чтобы включить leakage.
+
+  **Acceptance pilot (после backend fix):** monotonicity test
+  Lσ(P-S) > Lσ(P-S-P) > Lσ(P-S-P-S-P) на E 42/15 OPT, absolute
+  range [0.1, 10] mH для 5-section — physics-based gate из T132
+  Spec §Q7/Q8.
+
+  **Не зависит от:** T132 Phase A/B уже merged как infrastructure;
+  domain/port не меняются, только adapter swap'ается.
+
+  **Зависит от:** investigation MKF C++ ИЛИ T133 Elmer pivot
+  ready.
+
 
 ### Tech Debt (отложено)
 

@@ -564,3 +564,142 @@ estimate 1-2 дня).
 
 **Spec status:** Clarified → **Analyzed** (готов к Plan-фазе и/или
 implementation).
+
+---
+
+## Phase B PyOM probe results (2026-05-21)
+
+Probe-script `probe_phase_b.py` запущен внутри `efactory:linux`. Полные
+факты для adapter implementation:
+
+**Сигнатуры (из docstring'ов; `inspect.signature` на pybind11 не работает):**
+
+- `wind(coil_json, repetitions, proportion_per_winding_json, pattern_json,
+  margin_pairs_json) -> json`
+- `wind_by_sections(coil_json, repetitions, proportion, pattern,
+  insulation_thickness) -> json` (section-only, не нужен для Lσ).
+- `calculate_leakage_inductance(magnetic_json, frequency, source_index) ->
+  json` — 3-arg сигнатура подтверждена.
+
+**Return shape `calculate_leakage_inductance`:**
+
+```python
+{
+    'leakageInductancePerWinding': [
+        {'nominal': 0.0, 'unit': None, ...},        # entry 0: source winding (self = 0)
+        {'nominal': 0.0001672, 'unit': None, ...},  # entry 1: target winding
+        # ... один entry per winding
+    ],
+    'methodUsed': 'Energy',
+    'origin': 'simulation',
+}
+```
+
+Source entry (по `source_index`) — self-leakage 0.0 (информационно).
+Остальные entries — Lσ от source к каждому target обмотке.
+
+**Bobbin null gotcha (Analyze §A2 confirmed):**
+
+- `Bobbin E42/15` из `get_bobbins()` имеет `processedDescription.columnWidth
+  = None` и `columnDepth ≈ 5.45e-315` (uninitialized memory).
+- `pyom.wind` принимает bobbin **без** patches (не валидирует columns).
+- `pyom.calculate_leakage_inductance` тоже не падает на raw bobbin
+  на happy path (probe выполнил patches заранее — нужно verify
+  без patches в Phase B implementation; pattern: всегда patch для
+  defensive coding).
+- Patched values: `columnWidth = windingWindow.width` (E 42/15: 0.0074 m),
+  `columnDepth = 0.015` (E 42/15 stack length, hardcoded — TODO extract
+  via `core_full.processedDescription`).
+
+**Exception-as-data (Analyze §W1):**
+
+На happy path не воспроизводится — PyOM возвращает proper dict.
+Detector оставляем precautionary (для bad-geometry / unfit-wire
+error case'ов, которые в Stage E T113 видели).
+
+**`wind` margin_pairs:**
+
+`[[0.001, 0.001]]` (1 mm left/right margin) — verified рабочее значение.
+
+**Phase B implementation impact:**
+
+- `_translate_pattern_to_indices(layout, windings) -> list[int]` —
+  natural map name → component.windings position.
+- `_normalize_bobbin_columns(bobbin, core_full)` — always-apply
+  defensive patch для PyOM bobbin перед leakage call.
+- `_build_operating_point(component)` — extract из existing
+  `_calculate_blocking`, переиспользовать в leakage path.
+- `calculate_leakage_inductance(component, source_winding)` —
+  выбирает source_index (по имени → position), вызывает PyOM,
+  парсит `leakageInductancePerWinding` → `LeakageInductanceResult`.
+
+---
+
+## Phase B closure — infrastructure-only (2026-05-21)
+
+**Status:** все domain/port/adapter infrastructure готово (Phase B), но
+**runtime backend leakage недоступен** — PyOM `calculate_leakage_
+inductance` consistently возвращает `[CALCULATION_ERROR] Mesh generation
+failed: induced field data is empty` для любого fixture в текущей
+PyOM 1.3.10 setup. Pattern закрытия — copy T129 (Frohlich material +
+DC-bias load line) "infrastructure для downstream tasks".
+
+**Что entered investigation (4+ часа Phase B):**
+
+1. Probe PyOM API через `.pyi` stub + METADATA: подтверждены сигнатуры,
+   обнаружены `magnetic_autocomplete`, `mas_autocomplete`,
+   `process_inputs`, `simulate` как candidate orchestration helpers.
+2. Bobbin column null fix через `_normalize_bobbin_columns` — error
+   меняется с `INVALID_BOBBIN_DATA` на `Mesh generation failed`.
+3. `magnetic_autocomplete(magnetic, {})` перед leakage — autocomplete
+   стирает column patches; re-patch после autocomplete не помогает.
+4. `process_inputs(inputs)` добавляет `magneticFieldStrength` slot к
+   excitation, **но значение остаётся `None`** (process_inputs не
+   знает про magnetic geometry).
+5. `calculate_magnetic_field_strength_field(operating_point, magnetic)`
+   — separate FEM call, возвращает `{'data': 'Exception: bad optional
+   access'}` (std::optional unwrap на пустом). Circular dependency:
+   leakage нуждается в computed magneticFieldStrength, но public API
+   для compute падает на тех же inputs.
+6. Прогон всех accepted leakage models (`BinnsLawrenson` — единственный
+   валидный; `Roshen/Margueron/Petros/Energy` reject'ает schema).
+   Grid auto-scale on/off + precision up — без эффекта.
+7. **Полный official `simulate(inputs, magnetic, models)` pipeline** —
+   возвращает тот же `Mesh generation failed`. Подтверждает, что баг
+   не в нашем payload, а в PyOM C++ MKF layer.
+8. **Cross-material sweep (12 PyOM-catalog materials)**: 3C90, 3C94,
+   3C95, N87, N97, Kool Mu 60, XFlux 60, Hi-Flux 60, MPP 60, 3F3,
+   3F36, N49 — все 10 ferrite/powder материалов return тот же mesh
+   error, 2 (Kool Mu 60 / Hi-Flux 60) дополнительно reject'аются
+   `cannot use at() with string` JSON schema issue.
+
+**Корневая причина:** PyOM MKF C++ engine (closed-source binary в wheel)
+не может построить mesh для valid coil/core/operating point payload.
+Возможные направления (требует upstream access):
+- MKF source review (https://github.com/OpenMagnetics/MKF) — какое
+  optional поле required для `induced field data`?
+- Open GitHub issue
+  (https://github.com/OpenMagnetics/PyOpenMagnetics/issues).
+- Try PyOM 1.4.x / 1.2.x — может быть version-specific regression.
+- Switch backend → Elmer FEM (T133 в BACKLOG, изначально planned для
+  field validation, теперь становится primary path для leakage).
+
+**Что Phase B доставила (готово к use cases без runtime backend):**
+
+| Артефакт | Файл | Тесты |
+|---|---|---|
+| 3 domain VO + section_layout field | `src/domain/magnetic.py` | 14 unit (test_magnetic.py) |
+| Port Protocol + 2 errors | `src/ports/outbound/leakage_inductance_analyzer.py` | — |
+| 3 adapter helpers | adapter.py module-level | 10 unit (test_helpers.py) |
+| Adapter method + _build_operating_point shared refactor | adapter.py instance | — |
+| Exception-as-data detection (wind + leakage paths) | adapter.py | manual probe |
+| Integration test (4 scenarios, skipif probe fails) | test_pyom_leakage.py | skips on host AND container |
+
+**BACKLOG entry:** T13X — "PyOM leakage backend investigation (mesh
+failure root cause OR upgrade OR Elmer pivot)". См. BACKLOG.md.
+
+**Phase C/D не запускаются** до решения backend issue ИЛИ переключения
+на Elmer (T133). Domain/port/adapter scaffolding T132 готов принять
+любой backend — это и есть infrastructure value Phase B.
+
+**Spec status:** Analyzed → **Implemented (infrastructure-only)**.
