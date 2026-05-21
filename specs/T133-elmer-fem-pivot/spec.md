@@ -1,6 +1,6 @@
 # Spec: Elmer FEM pivot — nonlinear B-H + DC-bias closure 242% gap (T133)
 
-**Статус:** Phase 3 in progress — **3D pivot β** (2D-planar gap inherent, см. §8)
+**Статус:** Phase 3b complete (3D ungapped mesh generator), Phase 3c — adapter mode
 **Дата создания:** 2026-05-21
 **Связанные документы:**
 - ADR `2026-05-20 — T129 closure: analytical (PyOM ZHANG) — source of truth
@@ -667,6 +667,36 @@ findings — после фазы 3a).
 **Phase 3a verdict:** **3D path viable** для Elmer 26.2. Core capabilities
 (mesh, solver, gauge, Coil, H-B Curve) присутствуют. Phase 3b/3c —
 интеграция в efactory adapter.
+
+### Phase 3b — 3D mesh generator (2026-05-21)
+
+`emit_e_core_geo_3d(dims, air_extent_factor_xy=3.0, air_extent_factor_z=2.0)`
+добавлен в `fem_common.py`. OpenCASCADE kernel + 2 sequential
+`BooleanDifference` operations (iron = core ∖ windings; air = outer
+box ∖ {iron, windings}). Outer boundary surfaces identified via 6
+thin-slab `Surface In BoundingBox` queries (one per face).
+
+**Phase 3b упрощение — gaps опущены.** PyOM `lateral_x + half_lat_w`
+= 22.6 mm для OPT 6П14П SE > core `half_width` = 21.1 mm — lateral
+gap boxes extend ЗА boundary core. OCC `BooleanDifference` падает
+с `Invalid boundary mesh (overlapping facets)` error. 2D pilot
+работал потому что 2D Plane Surfaces могут overlap visually без
+геометрических конфликтов; 3D OCC требует strict containment.
+
+3 gaps будут добавлены в Phase 3c с proper clipping
+(`BooleanIntersection` gap box с core box перед `BooleanDifference`).
+Phase 3b smoke — verify mesh + Whitney AV pipeline; numeric closure
+acceptance — Phase 3d.
+
+**Empirical mesh stats** на OPT 6П14П SE (ungapped):
+- gmsh 3D OCC: 422 nodes, 1648 tetrahedra, 532 boundary triangles
+- ElmerGrid 14 2 -autoclean → 4 bodies, 1 boundary.
+- Mesh density LC_CORE=1.5mm / LC_AIR_FAR×3=30mm — coarse, sufficient
+  для Phase 3b smoke. Phase 3c-d могут tighten для numeric precision.
+
+7 unit tests в `tests/unit/adapters/outbound/test_fem_common.py`
+покрывают новый emitter (структура, OCC kernel, BooleanDifference,
+Physical entities, gaps absent в Phase 3b).
 
 - **N6. Phase 0 pilot — единая branch, отдельный commit.** Per
   project rule «один PR — один коммит», Phase 0/1/2/3 коммитятся

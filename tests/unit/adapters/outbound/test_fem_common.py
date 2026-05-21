@@ -10,6 +10,7 @@ import pytest
 from adapters.outbound.fem_common import (
     ECoreDimensions,
     emit_e_core_geo,
+    emit_e_core_geo_3d,
     extract_frohlich_params,
     read_initial_permeability,
     read_saturation_flux_density,
@@ -53,6 +54,53 @@ def test_emit_e_core_geo_header_mentions_core_depth_scaling() -> None:
     geo = emit_e_core_geo(dims)
     # Header comment должен содержать depth (для проверки 2D→3D scaling)
     assert f'{dims.core_depth:.5g}' in geo
+
+
+# === emit_e_core_geo_3d (T133 Phase 3b) ===
+
+
+def test_emit_e_core_geo_3d_uses_opencascade_kernel() -> None:
+    """3D E-core requires OCC kernel for boolean operations (BooleanDifference)."""
+    geo = emit_e_core_geo_3d(_opt_6p14p_dims())
+    assert 'SetFactory("OpenCASCADE")' in geo
+
+
+def test_emit_e_core_geo_3d_contains_4_physical_volumes() -> None:
+    """Phase 3b ungapped E-core — 4 volumes: core, primary, secondary, air."""
+    geo = emit_e_core_geo_3d(_opt_6p14p_dims())
+    for name in ('core', 'primary', 'secondary', 'air'):
+        assert f'Physical Volume("{name}"' in geo
+
+
+def test_emit_e_core_geo_3d_contains_outer_physical_surface() -> None:
+    """Outer surfaces для Infinity BC / Dirichlet (BC type — в .sif)."""
+    geo = emit_e_core_geo_3d(_opt_6p14p_dims())
+    assert 'Physical Surface("outer"' in geo
+
+
+def test_emit_e_core_geo_3d_uses_boolean_difference() -> None:
+    """OCC BooleanDifference вырезает windings из core и iron+windings из air."""
+    geo = emit_e_core_geo_3d(_opt_6p14p_dims())
+    # 2 actual operations + 1 comment mention = 3 total.
+    assert 'iron_with_holes[] = BooleanDifference' in geo
+    assert 'air_volume[] = BooleanDifference' in geo
+
+
+def test_emit_e_core_geo_3d_omits_gaps_phase3b() -> None:
+    """Phase 3b упрощение — gaps опущены (lateral coords extend за core)."""
+    geo = emit_e_core_geo_3d(_opt_6p14p_dims())
+    assert 'gap_center' not in geo
+    assert 'gap_left' not in geo
+    assert 'gap_right' not in geo
+
+
+def test_emit_e_core_geo_3d_z_extent_includes_air_padding() -> None:
+    """Outer air box extends in z by air_extent_factor_z × core_depth before/after."""
+    dims = _opt_6p14p_dims()
+    geo = emit_e_core_geo_3d(dims, air_extent_factor_z=2.0)
+    # z_pad = 2 × 0.01495 = 0.0299; z_min = -0.0299, z_max = 0.04485
+    assert '-0.0299' in geo
+    assert '0.04485' in geo
 
 
 def test_e_core_dimensions_from_pyom_processed_core() -> None:

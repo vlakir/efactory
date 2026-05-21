@@ -260,6 +260,172 @@ def emit_e_core_geo(dims: ECoreDimensions) -> str:
     return '\n'.join(out) + '\n'
 
 
+def emit_e_core_geo_3d(
+    dims: ECoreDimensions,
+    *,
+    air_extent_factor_xy: float = 3.0,
+    air_extent_factor_z: float = 2.0,
+) -> str:
+    """
+    Build .geo string для 3D E-core OPT (T133 Phase 3b — pivot from 2D-planar).
+
+    Использует OpenCASCADE kernel для clean boolean operations. Topology
+    — 7 Physical Volumes (core, primary, secondary, 3 gaps, air) +
+    1 Physical Surface "outer" (для Infinity BC или Dirichlet в .sif).
+    Z-axis = core depth direction (out of front-view plane).
+
+    Pipeline:
+    1. Box(1) = iron core outer block (full size).
+    2. Box(2-3) = winding windows (through-holes from front to back faces).
+    3. Box(4) = outer air box (encloses everything).
+    4. BooleanDifference: iron = Box(1) ∖ {Box(2-3)}, keeping the windings.
+    5. BooleanDifference: air = Box(4) ∖ {iron, primary, secondary}.
+    6. Physical Volume tags для Body assignment в .sif.
+    7. Outer surfaces identified via 6 thin-slab `Surface In BoundingBox`
+       queries (one per face of outer air box).
+
+    **Phase 3b упрощение:** gaps временно опущены (без них = "ungapped
+    E-core"). PyOM lateral_x + half_lat_w = 22.6 mm > core half-width
+    21.1 mm для OPT 6П14П SE — lateral gap boxes выходят за пределы
+    core, OCC BooleanDifference создаёт degenerate geometry (overlapping
+    facets error). 3 gaps будут добавлены в Phase 3c с proper clipping
+    (intersect gap box с core box перед subtraction). Acceptance impact:
+    ungapped E-core имеет higher L (gap reluctance отсутствует) — Phase
+    3b smoke test для mesh + Whitney AV pipeline, не для numeric
+    closure 242% gap. Numeric acceptance — Phase 3d с restored gaps.
+
+    Args:
+        dims: E-core geometry (same VO как 2D emit_e_core_geo).
+        air_extent_factor_xy: outer box extent in xy direction
+            (factor × max(core_w, core_h)). Default 3 — same as 2D
+            `AIR_BOX_PADDING`.
+        air_extent_factor_z: outer box z-padding before/after core depth
+            (factor × core_depth). Default 2 — sufficient для magnetic
+            decay в air above/below core.
+
+    Notes:
+        Mesh density tuned для 3D (tetrahedra grow faster than triangles):
+        LC_CORE .. LC_AIR_FAR×3.
+
+    """
+    cw = dims.core_w
+    ch = dims.core_h
+    half_cw = cw / 2.0
+    half_ch = ch / 2.0
+    cent_w = dims.center_w
+    half_cent_w = cent_w / 2.0
+    win_w = dims.window_w
+    win_h = dims.window_h
+    half_win_h = win_h / 2.0
+    depth = dims.core_depth
+
+    air_x = max(cw, ch) * air_extent_factor_xy / 2.0
+    air_z_pad = depth * air_extent_factor_z
+
+    win_left_x = -(half_cent_w + win_w)
+    win_right_x = +half_cent_w
+
+    # Slab thickness для outer-face queries — order LC_AIR_FAR (10 mm).
+    slab = LC_AIR_FAR
+
+    # Outer-face slab thickness — should encompass mesh element size at boundary.
+    eps_xy = slab / 2.0
+    eps_z = slab / 2.0
+    z_min = -air_z_pad
+    z_max = depth + air_z_pad
+
+    air_x_2 = 2 * air_x
+    z_span = z_max - z_min
+    return f"""// 3D E-core OPT — emit_e_core_geo_3d
+// Core depth (z-axis extent): {depth:.5g} m
+// Outer air box: ±{air_x:.5g} m xy, [{z_min:.5g}, {z_max:.5g}] m z
+//
+// 4 Physical Volumes (1=core, 2=primary, 3=secondary, 4=air) +
+// 1 Physical Surface 100=outer (для Infinity BC или Dirichlet в .sif).
+//
+// **Phase 3b упрощение:** gaps опущены — PyOM lateral coords для
+// OPT 6П14П SE extend за core boundary, OCC BooleanDifference fails
+// с overlapping facets. Gaps будут добавлены в Phase 3c с proper
+// clipping. Numeric acceptance — Phase 3d.
+SetFactory("OpenCASCADE");
+
+Geometry.Tolerance = 1e-6;
+Geometry.ToleranceBoolean = 1e-6;
+
+Mesh.MeshSizeMin = {LC_CORE:.7g};
+Mesh.MeshSizeMax = {LC_AIR_FAR * 3:.7g};
+Mesh.Algorithm3D = 1;  // Delaunay
+Mesh.ElementOrder = 1;  // Whitney AV edge basis — lowest order tetrahedra
+
+// === Box primitives (OCC: x0, y0, z0, dx, dy, dz) ===
+// Tag 1: iron core outer block (will be cut by windings)
+Box(1) = {{ {-half_cw:.7g}, {-half_ch:.7g}, 0,
+           {cw:.7g}, {ch:.7g}, {depth:.7g} }};
+
+// Tag 2: primary winding window (left)
+Box(2) = {{ {win_left_x:.7g}, {-half_win_h:.7g}, 0,
+           {win_w:.7g}, {win_h:.7g}, {depth:.7g} }};
+// Tag 3: secondary winding window (right)
+Box(3) = {{ {win_right_x:.7g}, {-half_win_h:.7g}, 0,
+           {win_w:.7g}, {win_h:.7g}, {depth:.7g} }};
+
+// Tag 4: outer air box (encloses everything)
+Box(4) = {{ {-air_x:.7g}, {-air_x:.7g}, {z_min:.7g},
+           {air_x_2:.7g}, {air_x_2:.7g}, {z_span:.7g} }};
+
+// === Boolean operations ===
+// Step 1: iron = Box(1) ∖ {{windings}}, KEEPING the windings as separate volumes.
+iron_with_holes[] = BooleanDifference{{Volume{{1}}; Delete;}}{{Volume{{2, 3}};}};
+
+// Step 2: air = Box(4) ∖ {{iron + windings}}, keeping everything inside.
+air_volume[] = BooleanDifference{{Volume{{4}}; Delete;}}
+                                {{Volume{{iron_with_holes[0], 2, 3}};}};
+
+// === Physical Volume tags ===
+// Numeric tags 1..4 для deterministic Body numbering в .sif (после
+// ElmerGrid -autoclean Physical tags сохраняются как Body 1..4).
+Physical Volume("core", 1) = {{iron_with_holes[0]}};
+Physical Volume("primary", 2) = {{2}};
+Physical Volume("secondary", 3) = {{3}};
+Physical Volume("air", 4) = {{air_volume[0]}};
+
+// === Outer boundary surfaces — 6 thin-slab queries ===
+// `Surface In BoundingBox{{xmin, ymin, zmin, xmax, ymax, zmax}}` — gmsh
+// OCC-aware конструкция, возвращает surface tags fully внутри box.
+// Каждый slab охватывает одну outer face (с margin slab/2 в нормаль).
+face_bottom() = Surface In BoundingBox{{
+    {-air_x - 1:.7g}, {-air_x - 1:.7g}, {z_min - 1:.7g},
+    {air_x + 1:.7g}, {air_x + 1:.7g}, {z_min + eps_z:.7g}
+}};
+face_top() = Surface In BoundingBox{{
+    {-air_x - 1:.7g}, {-air_x - 1:.7g}, {z_max - eps_z:.7g},
+    {air_x + 1:.7g}, {air_x + 1:.7g}, {z_max + 1:.7g}
+}};
+face_xmin() = Surface In BoundingBox{{
+    {-air_x - 1:.7g}, {-air_x - 1:.7g}, {z_min - 1:.7g},
+    {-air_x + eps_xy:.7g}, {air_x + 1:.7g}, {z_max + 1:.7g}
+}};
+face_xmax() = Surface In BoundingBox{{
+    {air_x - eps_xy:.7g}, {-air_x - 1:.7g}, {z_min - 1:.7g},
+    {air_x + 1:.7g}, {air_x + 1:.7g}, {z_max + 1:.7g}
+}};
+face_ymin() = Surface In BoundingBox{{
+    {-air_x - 1:.7g}, {-air_x - 1:.7g}, {z_min - 1:.7g},
+    {air_x + 1:.7g}, {-air_x + eps_xy:.7g}, {z_max + 1:.7g}
+}};
+face_ymax() = Surface In BoundingBox{{
+    {-air_x - 1:.7g}, {air_x - eps_xy:.7g}, {z_min - 1:.7g},
+    {air_x + 1:.7g}, {air_x + 1:.7g}, {z_max + 1:.7g}
+}};
+
+Physical Surface("outer", 100) = {{
+    face_bottom(), face_top(),
+    face_xmin(), face_xmax(),
+    face_ymin(), face_ymax()
+}};
+"""
+
+
 def _first_entry(
     raw: object,
     field_path: str,
