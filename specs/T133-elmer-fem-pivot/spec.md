@@ -1,6 +1,6 @@
 # Spec: Elmer FEM pivot — nonlinear B-H + DC-bias closure 242% gap (T133)
 
-**Статус:** Phase 0 complete (Critical questions resolved, готова к Phase 1)
+**Статус:** Phase 1 complete (adapter scaffolding linear mode, готова к Phase 2)
 **Дата создания:** 2026-05-21
 **Связанные документы:**
 - ADR `2026-05-20 — T129 closure: analytical (PyOM ZHANG) — source of truth
@@ -415,29 +415,20 @@ transformer) = T127 BACKLOG, отдельный T-ID. Scope discipline:
   variable binding) не нужен для 2D — Elmer auto-couples через
   `Variable Coupled iter`.
 
-- **C3. `ECoreDimensions` cross-adapter import — hex-architecture
-  question.** Spec §5 предполагает reuse `ECoreDimensions` из
-  `fem_solver_getdp/geometry.py` в Elmer adapter. Прямой import
-  adapter → adapter — нарушение hex-discipline (adapters независимы
-  от друг друга, общаются только через domain/ports). **Mitigation
-  options:**
-  - **(a)** Выделить `ECoreDimensions` в новый shared module
-    `src/adapters/outbound/_fem_geometry_common/` (acceptable: adapter
-    family с common helpers, явно prefixed `_`). Минус: вводит
-    inter-adapter coupling в build, осложняет independent refactor.
-  - **(b)** Переместить `ECoreDimensions` в domain (`src/domain/
-    magnetic.py` или новый `core_geometry.py`). Минус: VO привязан к
-    PyOM data extraction (`from_pyom_core` classmethod) — domain
-    становится PyOM-aware (хотя только через staticmethod factory,
-    domain payload — pure floats).
-  - **(c)** Duplicate copy в Elmer adapter. Минус: DRY violation,
-    drift risk.
-  - **Решение принимается в Phase 1** (когда adapter scaffolding
-    начинается); spec не pre-commits. Vladimir может pre-decide
-    если есть strong preference. По умолчанию predisposition к **(a)**
-    — pure-geometric VO без `from_pyom_core` (его перенести в
-    callsite extraction), либо **(b)** если PyOM-aware factory
-    остаётся как static method, payload pure.
+- **~~C3.~~ ✅ RESOLVED in Phase 1 (2026-05-21).** Выбран вариант
+  **(a)** — выделение в shared adapter module
+  `src/adapters/outbound/fem_common.py` (без `_` prefix —
+  единообразно с другими adapter modules). Содержит:
+  `ECoreDimensions` + `emit_e_core_geo` + `_GeoBuilder` + LC
+  constants (геометрия), `read_initial_permeability` /
+  `read_saturation_flux_density` / `extract_frohlich_params` /
+  `_first_entry` (PyOM material data extraction). Оба adapter'а
+  (`fem_solver_getdp`, `fem_solver_elmer`) импортируют из этого
+  модуля. `fem_solver_getdp/geometry.py` удалён, его tests
+  перенесены в `tests/unit/adapters/outbound/test_fem_common.py`.
+  `_extract_frohlich_params` метод адаптера выпилен (логика теперь
+  в `extract_frohlich_params(pyom_module, name)` функции). Pre-push
+  4 gates зелёные после refactor (816 tests passed, coverage 86.77%).
 
 ### Warning
 

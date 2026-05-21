@@ -59,12 +59,14 @@ RUN apt-get update \
       passwd \
       software-properties-common \
  && add-apt-repository -y ppa:kicad/kicad-10.0-releases \
+ && add-apt-repository -y ppa:elmer-csc-ubuntu/elmer-csc-ppa \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
       kicad \
       ngspice \
       getdp \
       gmsh \
+      elmerfem-csc \
       dbus-x11 \
       libcanberra-gtk3-module \
       libgl1 \
