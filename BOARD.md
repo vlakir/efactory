@@ -66,6 +66,46 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
 
+- **T132** — [closed 2026-05-21, PR #65] **Interleaved OPT leakage
+  inductance — pure-Python analytical backend, acceptance gates
+  passing.** Phase A→B→C закрыт; PyOM `calculate_leakage_inductance`
+  оказался непригодным (mesh broken across все 1.3.0→1.3.12 versions),
+  switched на Erickson sandwich-transformer formula. Pilot acceptance
+  на OPT_SE_5K_8 fixture (E 42/15, 3500/140 turns, P-S-P-S-P 5-section):
+  Lσ = **6.50 mH** в spec band `[0.1, 10] mH`, k = 0.9997, HF-3dB @
+  5kΩ ≈ 122 kHz (hi-end consumer range). Monotonicity 1/N² theorem
+  verified exact для zero-insulation case.
+  - **Phase A**: `WindingSection` + `InterleavingPattern` +
+    `LeakageInductanceResult` + `MagneticComponent.section_layout`
+    с cross-field validator (14 unit tests); новый port
+    `LeakageInductanceAnalyzer` Protocol + 2 errors (SRP per
+    Protocol, separate from `MagneticAnalytics`).
+  - **Phase B (abandoned)**: пробовали `PyOpenMagneticsAnalytics`
+    composite extension через `pyom.wind` + `calculate_leakage_
+    inductance`. 4+ часа investigation: `magnetic_autocomplete` +
+    bobbin column patches + `process_inputs` + full `simulate()`
+    pipeline + cross-material sweep (12 materials) + version sweep
+    (1.3.0→1.3.12, all fail identically) — PyOM MKF C++ mesh layer
+    consistently возвращает `Mesh generation failed: induced field
+    data is empty`. Circular dependency в public API. Switched
+    к Phase C.
+  - **Phase C — success**: `AnalyticalLeakage` adapter
+    (`adapters/outbound/leakage_inductance_analytical/`): pure-Python
+    Erickson formula + PyOM-catalog geometry resolution (только
+    lookup-API, без mesh). DI: `pyom_module` + `MagneticAnalytics`
+    Protocol (для L_self → coupling_factor). 35 unit tests
+    (formula/geometry/adapter); use case `analyze_interleaved_
+    leakage` с 3 unit tests; **4 acceptance tests** — monotonicity
+    + absolute range + coupling strength + N²-ratio sanity.
+  - **Follow-up**: T135 в BACKLOG — "FEM cross-validation of analytical
+    leakage" (Elmer pivot T133 ИЛИ GetDP extension); analytical
+    ±20-30% точность приемлема per T132 spec, но FEM cross-check
+    подтвердит formula valid на pilot fixture'ах.
+  - **Investigation reference**: PyOM `calculate_leakage_inductance`
+    upstream — long-standing mesh bug (not version-specific); minimal
+    reproducer ready, но open GitHub issue deferred (Erickson
+    analytical solves T132 use case без upstream dependency).
+
 - **T131** — [closed 2026-05-21, PR #63] **SPICE saturable transformer
   + THD distortion analysis use case — fully working pilot.**
   5 phase-commits (squash в один при merge):

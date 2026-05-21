@@ -83,14 +83,61 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      создаёт похожий THD-acceptance gate — должен включать
      saturation contribution diagnostic.
 
+  **Контрольный пример (regression target из T132).** Каждый из этих
+  3 уроков должен быть представлен в KB после implementation:
+
+  1. **«PyOM `calculate_leakage_inductance` mesh broken на всех
+     1.3.0→1.3.12 versions — использовать pure-Python Erickson
+     sandwich formula instead».** Источник: Phase B investigation
+     2026-05-21 (4+ часа). Любой call к
+     `pyom.calculate_leakage_inductance(magnetic, freq, idx)` после
+     `pyom.wind(...)` consistently возвращает `[CALCULATION_ERROR]
+     Mesh generation failed: induced field data is empty` — и через
+     official `simulate(inputs, magnetic, models)` pipeline тоже.
+     Cross-material sweep (12 PyOM materials), version sweep, и
+     `magnetic_autocomplete` / `process_inputs` orchestration — не
+     помогают. ⇒ Если agent попросят посчитать leakage inductance
+     OPT — должен НЕ пытаться PyOM mesh-path, а использовать
+     existing adapter `adapters.outbound.leakage_inductance_analytical.
+     AnalyticalLeakage` (Erickson formula + PyOM catalog для
+     geometry).
+
+  2. **«Interleaving reduction: Lσ ∝ 1/N², где N = число inter-
+     winding interfaces в pattern (P-S → N=1, P-S-P → N=2,
+     P-S-P-S-P → N=4)».** Источник: Erickson & Maksimović §15.5 +
+     Hurley & Wölfle §4.6, реализовано в `formula.py` Phase C
+     2026-05-21. Standard sandwich-transformer leakage с
+     interleaving reduction theorem. Verified exact для zero-
+     insulation case на pilot (σ_2/σ_3 = 4.0, σ_2/σ_5 = 16.0).
+     ⇒ Если agent спросят «как уменьшить HF-rolloff аудио OPT» —
+     должен предложить interleaved sandwich layout, и оценить
+     эффект через N² factor; для symmetric 5-section vs P-S
+     layout reduction = 16×.
+
+  3. **«PyOM bobbin processedDescription.columnWidth/columnDepth
+     = null / 5e-315 uninitialized memory garbage; patch needed для
+     любого FEM-touching path».** Источник: Phase B probe 2026-05-21.
+     `Bobbin E42/15` из `pyom.get_bobbins()` имеет
+     `columnWidth = None` и `columnDepth ≈ 5.45569116e-315` — bug в
+     PyOM C++ catalog initializer. PyOM `calculate_leakage_inductance`
+     bails out с `INVALID_BOBBIN_DATA` без patches; mesh API
+     дополнительно требует full bobbin geometry. Patch: `columnWidth
+     ← bobbin.functionalDescription.windingWindows[0].width`,
+     `columnDepth ← core.processedDescription.depth`. ⇒ Если agent
+     попытается ещё один PyOM FEM-touching path (например,
+     `calculate_magnetic_field_strength_field`, `plot_field_map`) —
+     должен auto-apply этот patch. Альтернатива: использовать только
+     PyOM catalog-only APIs (`find_*_by_name`, `calculate_core_data`),
+     которые не trigger mesh validation.
+
   **Acceptance.**
   - Spec формата KB (chunk schema, indexing strategy, retrieval API).
   - Skeleton implementation (read + write API минимум).
   - Initial-seed loader (bootstrap-script: parse curated content
     из репо при первом запуске efactory CLI agent).
-  - Acceptance test: задаются 3 регрессионных query из T131 control
-    example выше, KB возвращает релевантные chunks с правильным
-    ranking.
+  - Acceptance test: задаются **6 регрессионных query** из T131 +
+    T132 control examples выше (по 3 от каждой задачи), KB
+    возвращает релевантные chunks с правильным ranking.
   - **Не входит**: полный seeding текущих знаний (отдельная задача
     после KB skeleton готов); production-quality vector DB tuning.
 
@@ -103,6 +150,51 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
   Не зависит от: T131 (T131 уже закрыт, ADR в `DECISIONS.md` +
   docstring обогащения адресуют immediate dev-process persistence).
+
+- **T135** — [2026-05-21, заведено в Phase B T132] **FEM cross-
+  validation analytical leakage Lσ (T132 Phase C primary backend).**
+
+  **Контекст.** T132 закрыт с pure-Python analytical backend
+  (Erickson sandwich-transformer formula); acceptance gates passing
+  на pilot fixture OPT_SE_5K_8: Lσ(5-section) = 6.5 mH (в spec band
+  [0.1, 10] mH), monotonicity 1/N² ratio exact. PyOM
+  `calculate_leakage_inductance` исключён из pipeline после
+  investigation (1.3.0→1.3.12 version sweep: long-standing
+  `[CALCULATION_ERROR] Mesh generation failed`, не version-specific).
+  Analytical точность ±20-30% — приемлемо для T132 spec, но не
+  hi-precision. FEM cross-check валидирует analytical formula на
+  pilot fixture'ах с known FEM-truth.
+
+  **Acceptance** (один из путей):
+  - **(a) PyOM upstream issue resolved.** Воспроизвести minimal
+    repro для https://github.com/OpenMagnetics/PyOpenMagnetics/issues,
+    дождаться patch / workaround. Если рабочий — добавить
+    `PyOmFemLeakage` adapter параллельно analytical, cross-check
+    в acceptance test.
+  - **(b) Elmer FEM pivot (T133 расширяется).** Реализовать leakage
+    backend через Elmer cross-section solver (short-circuit
+    secondary, energy integral) → новый adapter `ElmerLeakage`
+    тот же port. Cross-check vs analytical на pilot; если в
+    пределах ±25-30% — Erickson formula valid, иначе tighten.
+  - **(c) GetDP+Gmsh leakage extension (T113 stack reuse).** Уже
+    интегрированный FEM стек, расширить `.pro` template на leakage
+    (short-circuit + energy integral). Lower effort чем Elmer
+    pivot; same hexagonal port.
+
+  **Acceptance pilot (любой FEM backend):** на OPT_SE_5K_8 pilot
+  (E 42/15, 3500/140 turns, P-S-P-S-P 5-section), FEM Lσ должен
+  match analytical 6.5 mH в пределах ±25% (т.е. FEM ∈ [4.9, 8.1] mH).
+  Если outside — open analytical formula review, потенциально
+  tighten formula refinements (proper per-section thickness, Dowell
+  AC effects, etc.).
+
+  **Не зависит от:** T132 Phase A/B/C уже merged (analytical
+  primary backend + acceptance gates passing). Domain/port не
+  меняются — только новый adapter добавляется параллельно.
+
+  **Зависит от:** T133 Elmer pivot ready (preferred path) ИЛИ GetDP
+  template extension (T113 stack). T135 — quality improvement,
+  не блокирует existing T132 use case.
 
 
 ### Tech Debt (отложено)
@@ -287,23 +379,10 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      "T131 SPICE saturable + THD" следующей content-задачей. Spec —
      specs/T131-saturable-thd/spec.md (Draft, в Clarify-фазе). -->
 
-- **T132** — [2026-05-20, заведено в Phase C T129] **Interleaved
-  OPT leakage inductance — PyOM-only analytical path.** Top-tier
-  audio OPT использует sandwich-секционную намотку (P-S-P, 5-section,
-  ...) для минимизации Lσ (HF-rolloff). PyOM `calculate_leakage_
-  inductance` поддерживает multi-section через bobbin schema, но
-  efactory сейчас не enrich'ает MAS schema с layer order.
-  Содержание:
-  - Domain VO: `Bobbin.section_layout: tuple[WindingSection, ...]` —
-    sandwich порядок и параметры (insulation thickness, layer count).
-  - PyOM payload mapping: собрать `windingWindow.sections` correctly.
-  - Test fixture с known reference — например, published Plitron /
-    Sowter / Hashimoto datasheet OPT.
-  Покрывает 60-80% interleaved cases. Для 5+ section с FEM cross-
-  check — T133.
-  Не зависит от FEM blocker'а. Scope ~1-2 дня. **Зависит от T131
-  только как ordering preference** (THD universal value vs interleaved
-  niche).
+<!-- T132 переведена в BOARD.md → Doing 2026-05-21 после T131 closure.
+     Spec — specs/T132-interleaved-leakage/spec.md (Draft, в Clarify-
+     фазе). -->
+
 - **T133** — [2026-05-20, заведено в Phase C T129] **Elmer FEM pivot —
   переход на Elmer для nonlinear B-H + DC bias FEM cross-check.**
   T129 Phase B показал: GetDP 2D-planar с split-coil topology

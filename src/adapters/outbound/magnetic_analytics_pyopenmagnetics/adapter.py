@@ -2,14 +2,19 @@
 PyOpenMagnetics analytical inductance adapter (T113 Phase 2B).
 
 Реализует `MagneticAnalytics` outbound port: вычисляет primary
-self-inductance через PyOM `calculate_inductance_from_number_turns_and_gapping`.
-Это host-safe analytical путь (без `design_*` / `calculate_advised_*` —
-последние выжирают > 6 GB RAM, см. `feedback_pyopenmagnetics_advisor_oom`
-в auto-memory).
+self-inductance через PyOM `calculate_inductance_from_number_turns_and_
+gapping`. Host-safe analytical путь (без `design_*` / `calculate_
+advised_*` — последние выжирают > 6 GB RAM, см.
+`feedback_pyopenmagnetics_advisor_oom`).
 
-PyOM package не имеет `__init__.py` (см. AGENTS.md §2) — нужно importlib
-boilerplate для загрузки .so binding. Loader реализован в
-`load_pyopenmagnetics()` (вызывается один раз в `composition`).
+PyOM `calculate_leakage_inductance` не используется из-за mesh-backend
+bug (T132 Phase B investigation; long-standing across 1.3.x);
+leakage в efactory считается через analytical-формулу в adapter
+`AnalyticalLeakage` (T132 Phase C).
+
+PyOM package не имеет `__init__.py` — нужно importlib boilerplate для
+загрузки .so binding; `load_pyopenmagnetics()` вызывается один раз в
+`composition`.
 
 5 reluctance моделей доступны в PyOM (ZHANG / MUEHLETHALER /
 BALAKRISHNAN / STENGLEIN / EFFECTIVE_AREA); адаптер использует ZHANG
@@ -46,7 +51,9 @@ def load_pyopenmagnetics() -> Any:  # noqa: ANN401  - PyOM module is dynamic .so
     Загрузить PyOpenMagnetics через importlib (no __init__.py — AGENTS.md §2).
 
     Бросает `MagneticAnalyticsUnavailableError`, если wheel не установлен
-    или binary .so не найден в venv.
+    или binary .so не найден в venv. (Тот же error type для обоих port'ов
+    — leakage port имеет alias `LeakageInductanceAnalyzerUnavailableError`,
+    raise происходит до class instantiation.)
     """
     try:
         pkg_path_str = __import__('PyOpenMagnetics').__path__[0]
@@ -122,7 +129,7 @@ class PyOpenMagneticsAnalytics:
         msg = f'PyOM bobbin {name!r} не найден в catalog'
         raise MagneticAnalyticsFailedError(msg)
 
-    def _calculate_blocking(self, component: MagneticComponent) -> float:
+    def _build_core_full(self, component: MagneticComponent) -> dict[str, Any]:
         core_fd = {
             'functionalDescription': {
                 'type': 'two-piece set',
@@ -138,7 +145,7 @@ class PyOpenMagneticsAnalytics:
             },
         }
         try:
-            core_full = self._pyom.calculate_core_data(
+            return self._pyom.calculate_core_data(
                 core_fd,
                 True,  # noqa: FBT003  - PyOM C++ binding не принимает kwargs
             )
@@ -150,21 +157,16 @@ class PyOpenMagneticsAnalytics:
             )
             raise MagneticAnalyticsFailedError(msg) from exc
 
-        if component.core.bobbin_name is None:
-            msg = (
-                f'PyOM analytical требует bobbin для shape='
-                f'{component.core.shape_name!r}; задайте Core.bobbin_name '
-                f'(каталог: pyom.get_bobbins())'
-            )
-            raise MagneticAnalyticsFailedError(msg)
-        bobbin = self._find_bobbin(component.core.bobbin_name)
-        coil = {
-            'functionalDescription': [
-                _build_winding_dict(w) for w in component.windings
-            ],
-            'bobbin': bobbin,
-        }
+    def _build_operating_point(
+        self,
+        component: MagneticComponent,
+    ) -> dict[str, Any]:
+        """
+        Построить PyOM `operatingPoint` JSON с одним waveform на все обмотки.
 
+        Excitation копируется на каждую обмотку — PyOM требует
+        `excitationsPerWinding` длины len(windings).
+        """
         op = component.operating_point
         primary_voltage = _sine_waveform(
             op.frequency_hz,
@@ -183,11 +185,32 @@ class PyOpenMagneticsAnalytics:
             }
             for _ in component.windings
         ]
-        operating_point = {
+        return {
             'name': op.name,
             'conditions': {'ambientTemperature': op.ambient_temperature_c},
             'excitationsPerWinding': excitations,
         }
+
+    def _require_bobbin(self, component: MagneticComponent) -> dict[str, Any]:
+        if component.core.bobbin_name is None:
+            msg = (
+                f'PyOM analytical требует bobbin для shape='
+                f'{component.core.shape_name!r}; задайте Core.bobbin_name '
+                f'(каталог: pyom.get_bobbins())'
+            )
+            raise MagneticAnalyticsFailedError(msg)
+        return self._find_bobbin(component.core.bobbin_name)
+
+    def _calculate_blocking(self, component: MagneticComponent) -> float:
+        core_full = self._build_core_full(component)
+        bobbin = self._require_bobbin(component)
+        coil = {
+            'functionalDescription': [
+                _build_winding_dict(w) for w in component.windings
+            ],
+            'bobbin': bobbin,
+        }
+        operating_point = self._build_operating_point(component)
 
         try:
             lp = self._pyom.calculate_inductance_from_number_turns_and_gapping(
