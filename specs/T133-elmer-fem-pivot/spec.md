@@ -1,6 +1,6 @@
 # Spec: Elmer FEM pivot — nonlinear B-H + DC-bias closure 242% gap (T133)
 
-**Статус:** Phase 3d.2 complete — **acceptance ±25% к ZHANG achieved** (Lp=6.04H, -13.3%), Phase 3e — ADR + closing
+**Статус:** Done (Phase 3e closed 2026-05-21, ADR + BACKLOG follow-ups, T136-T139)
 **Дата создания:** 2026-05-21
 **Связанные документы:**
 - ADR `2026-05-20 — T129 closure: analytical (PyOM ZHANG) — source of truth

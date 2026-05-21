@@ -26,6 +26,121 @@ ADR-Lite: компактный лог архитектурных решений 
      дат — от фундаментального к инструментальному. -->
 
 
+### 2026-05-21 — T133 closure: 3D Elmer FEM ACHIEVED acceptance ±25% к PyOM ZHANG (Lp=6.04H, -13.3%); 2D inherent gap +180-240% confirmed physics-bound
+
+- **Контекст.** T133 (Elmer FEM pivot) trigger — T113 Phase 1 pilot
+  baseline 242% gap к PyOM ZHANG analytical (6.96 H) на pilot OPT 6П14П
+  SE: GetDP 2D split-coil + Dirichlet → 23.78 H (+242%). T129 attempted
+  closure через nonlinear Frohlich + DC-bias central-diff в GetDP 2D —
+  failed (Lp ≈ L_linear, Frohlich curve not engaging в 2D split-coil
+  + open-domain). Vladimir выбрал Elmer pivot (variant 3b/α из T129
+  Phase C ADR 2026-05-20).
+
+  T133 проходила 5 фаз (Phase 0/1/2 — 2D Elmer infrastructure, Phase 3a/b/c/d
+  — 3D pivot β после empirical 2D ceiling), 9 commits на ветке
+  T133-elmer-fem-pivot.
+
+- **Empirical journey (acceptance к ZHANG 6.96 H):**
+
+  | Phase | Backend | Topology / mesh | Lp [H] | rel diff | Acc ±25% |
+  |-------|---------|-----------------|--------|----------|----------|
+  | T113 baseline | GetDP 2D | split-coil + Dirichlet | 23.78 | +242% | ❌ |
+  | T133 Phase 1 | Elmer 2D | single-coil + Infinity BC | 19.65 | +182% | ❌ |
+  | T133 Phase 3c | Elmer 3D | ungapped, 9.6K tetra | 23.78 | +242% | ❌ |
+  | T133 Phase 3d.1 | Elmer 3D | gapped coarse, 1.8K tetra | 4.07 | -41.5% | ❌ |
+  | **T133 Phase 3d.2** | **Elmer 3D** | **gapped refined, 51K tetra** | **6.04** | **-13.3%** | **✅** |
+
+  Factor 19× improvement в точности от 2D baseline (3.42× → 1.15×).
+
+- **Решение (Phase 3e closing):**
+
+  1. **T133 closed на Phase 3d.2 acceptance ±25%.** Production-ready
+     3D Elmer FEM adapter (`fem_solver_elmer`, `dimensionality='3d'`):
+     - `emit_e_core_geo_3d(dims, with_gaps=True)` — OCC kernel, 7
+       Physical Volumes (core + 2 windings + 3 gaps + air),
+       geometrically-derived lateral leg bounds (PyOM `lateral_x`
+       inconsistency для E 42/21/15 — fix в T138).
+     - Whitney AV solver + Tree gauge + MUMPS direct linear (4 GB
+       RAM ceiling ~10K nodes).
+     - MagnetoDynamicsCalcFields auto-injects "electromagnetic field
+       energy" в SaveScalars — direct Lp = 2W/I² extraction.
+     - Mesh sizing: 20 μm gap min, 5 mm global max → 10K nodes,
+       14 s integration runtime.
+
+  2. **Target ±10% [6.26, 7.65 H] не достигнут** (off by 3.5%).
+     Closure заблокирован в текущей среде:
+     - Mesh refinement к 39K nodes → MUMPS direct OOM, system crash.
+     - Iterative path в Elmer 26.2 elmerfem-csc PPA: BoomerAMG
+       не сходится для edge basis (designed для node-Laplacian),
+       Auxiliary Maxwell Space (AMS) preconditioner не вкомпилирован
+       (`Unknown preconditioner type: ams, feature disabled`).
+     - Coil mechanism (proper 3D current loop) требует mesh bridges
+       через top/bottom yokes для closed loop — отдельная задача.
+
+  3. **Follow-up T-IDs:**
+     - **T136** — Elmer rebuild с AMS preconditioner (или server-class
+       RAM) для finer mesh + iterative path → target ±10%.
+     - **T137** — Coil mechanism с mesh bridges через yokes
+       (alternative к T136, physically-correct OPT primary).
+     - **T138** — PyOM `lateral_x` data semantics investigation,
+       ECoreDimensions.from_pyom_core correction.
+     - **T139** — 3D Elmer nonlinear-frohlich path (H-B Curve в 3D
+       Whitney AV + Newton).
+
+- **Альтернативы рассмотрены:**
+
+  - **GetDP topology rework (shell transformation / circuit coupling)
+    — T133 alpha-path, отвергнут в Phase 0:** Elmer уже частично
+    исследован в T113 Phase 1 cross-validation, native nonlinear
+    support лучше чем custom Picard на GetDP.
+  - **2D-axisymmetric для E-core — невозможно:** E-core не radially
+    symmetric. 2D-axisymmetric остаётся valid для toroidal/pot cores
+    (separate emit_* function не сделана).
+  - **2D-planar pivot между topologies (split-coil vs single-coil) +
+    BC (Dirichlet vs Infinity BC) — empirically failed:** все 2D
+    варианты дают +180-240%, никакая 2D combination не закрывает
+    factor-3 inherent gap. Physics (ZHANG assumes closed circuit,
+    2D-planar inherently 3D-leak).
+  - **Coil mechanism в 3D Phase 3d.2 — заблокирован:** disjoint
+    coil bodies (left + right windows без yoke bridges) → CoilSolver
+    "Crappy potentials". Push в T137 mesh redesign.
+  - **Iterative + BoomerAMG / ILU / AMS для finer mesh:** non-convergence
+    (edge basis problem) или not compiled (AMS). T136 для proper fix.
+
+- **Последствия:**
+
+  - **T133 main goal achieved:** 3D Elmer FEM adapter production-ready
+    с acceptance ±25% к PyOM ZHANG на pilot fixture. Это **factor 19×
+    improvement** к T113 baseline gap (3.42× → 1.15×). Real engineering
+    win для FEM cross-check workflow.
+  - **2D Phase 1+2 infrastructure preserved** как полезная для
+    axisymmetric (T-ID future), leakage (T132/T135), cross-validation
+    backend. Auto-memory `feedback_fem_2d_inherent_gap_to_zhang`
+    фиксирует physics constraint для будущего agent.
+  - **Image не растёт** (elmerfem-csc PPA уже в Dockerfile с
+    T133 Phase 1; +680 MB к 6.65 GB → 7.99 GB зафиксирован).
+  - **Integration runtime hit:** 3D linear ~14 s (vs 2D linear ~1 s,
+    GetDP ~3 s). Acceptable, no `pytest.mark.slow` нужен.
+  - **Auto-memory updates:**
+    - `feedback_elmer_2d_keyword_pitfalls` (Phase 0)
+    - `feedback_fem_2d_inherent_gap_to_zhang` (Phase 3 empirical)
+    - `feedback_elmer_3d_solver_memory_limits` (Phase 3d.2 OOM +
+      iterative limitations)
+  - **9 commits на ветке T133-elmer-fem-pivot squash в один при
+    merge** (правило «один PR — один коммит»).
+  - **Замена ADR 2026-05-20** «T129 closure: analytical (PyOM ZHANG)
+    — source of truth для incremental L; FEM cross-check откладывается
+    на T133 (Elmer)» — теперь T133 closed, ADR honored.
+
+- **Файлы:**
+  - `src/adapters/outbound/fem_common.py` (ECoreDimensions, emit_e_
+    core_geo_3d, PyOM helpers).
+  - `src/adapters/outbound/fem_solver_elmer/` (adapter, sif_template).
+  - `Dockerfile` (+elmerfem-csc PPA).
+  - `specs/T133-elmer-fem-pivot/spec.md` (5-phase journey).
+  - `scripts/pilot/elmer/probe*` (Phase 0 + 3a probe artifacts).
+
+
 ### 2026-05-21 — Interleaved OPT leakage: pure-Python Erickson formula, PyOM mesh path abandoned
 
 - **Контекст:** T132 (Interleaved OPT leakage inductance) изначально
