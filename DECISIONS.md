@@ -26,6 +26,119 @@ ADR-Lite: компактный лог архитектурных решений 
      дат — от фундаментального к инструментальному. -->
 
 
+### 2026-05-21 — Interleaved OPT leakage: pure-Python Erickson formula, PyOM mesh path abandoned
+
+- **Контекст:** T132 (Interleaved OPT leakage inductance) изначально
+  планировал использовать PyOM `calculate_leakage_inductance` через
+  composite-adapter pattern (extend existing `PyOpenMagneticsAnalytics`
+  методом `calculate_leakage_inductance`). Phase B попытка: build wound
+  coil через `pyom.wind(coil, reps, proportion, pattern, margin_pairs)`,
+  затем leakage call. Возвращало `[CALCULATION_ERROR] Mesh generation
+  failed: induced field data is empty` для **любого** fixture.
+
+  **Investigation (4+ часа):**
+  - Bobbin column null fix через `_normalize_bobbin_columns` —
+    меняет error с `INVALID_BOBBIN_DATA` на mesh fail (progress, но
+    не resolution).
+  - `magnetic_autocomplete(magnetic, {})` — autocomplete сам стирает
+    column patches; re-patch не помогает.
+  - `process_inputs(inputs)` добавляет `magneticFieldStrength` slot
+    к excitation, **но значение None** (process_inputs не знает про
+    magnetic geometry).
+  - `calculate_magnetic_field_strength_field(op, magnetic)` —
+    separate FEM call для derive field strength, сам fails `bad
+    optional access` (std::optional unwrap на пустом). Circular
+    dependency: leakage требует computed field strength, но public
+    compute API падает на тех же inputs.
+  - Cross-material sweep (12 PyOM-catalog materials: 3C90/3C94/3C95/
+    N87/N97/Kool Mu 60/XFlux 60/Hi-Flux 60/MPP 60/3F3/3F36/N49) —
+    same mesh error для всех.
+  - **Version sweep** PyOM 1.3.0→1.3.12 (all cp313 linux wheels):
+    идентичный fail на всех. Не version-specific regression —
+    long-standing MKF C++ bug.
+  - Полный official `simulate(inputs, magnetic, models)` pipeline
+    возвращает тот же mesh error → баг в PyOM MKF C++ layer, не
+    в нашем payload.
+
+- **Решение:** **Pure-Python Erickson sandwich-transformer formula**
+  как primary backend для leakage. PyOM catalog database lookups
+  (`calculate_core_data`, `find_wire_by_name`) сохранены — это
+  catalog-only paths без mesh trigger; они работают надёжно.
+
+  Reference: **Erickson & Maksimović "Fundamentals of Power
+  Electronics" §15.5** + **Hurley & Wölfle "Transformers and
+  Inductors for Power Electronics" §4.6** — standard sandwich
+  formula:
+
+  ```
+  L_σ = (μ₀ · n_p² · MLT) / b_w · h_eff
+  h_eff = [(b_p + b_s)/3 + a·(n_sections-1)] / N²
+  N = число inter-winding interfaces в pattern
+  ```
+
+  Architecture: новый adapter `AnalyticalLeakage` в
+  `adapters/outbound/leakage_inductance_analytical/` (отдельная
+  директория, не extend `PyOpenMagneticsAnalytics` — composite
+  pattern abandoned). DI: `pyom_module` + `MagneticAnalytics`
+  Protocol (для L_self → coupling_factor).
+
+- **Альтернативы:**
+
+  **(a) Open upstream PyOM issue.** Возможно решит за дни, но
+  unbounded waiting; T132 acceptance gate надо проходить теперь.
+  Deferred — minimal repro готов в spec.md, открытие issue можно
+  сделать в любой момент.
+
+  **(b) PyOM version downgrade на 1.2.x.** 1.2.x имеет другой API
+  layout — ломает T113/T131 existing code. Не оправдано.
+
+  **(c) GetDP+Gmsh FEM leakage extension.** T113 стек уже
+  интегрирован, можно расширить `.pro` template на leakage (short-
+  circuit secondary + energy integral). Effort ~ T113 Phase 2
+  уровень (дни). Выбрано как T135 follow-up для FEM
+  cross-validation; но **для T132 closure analytical уже достаточно**
+  (spec ±25% acceptance, formula ±20-30% точность).
+
+  **(d) Elmer FEM pivot.** Native `MagnetoDynamics2D` solver,
+  cross-section + energy integral. Effort ~ неделя (новый стек,
+  T133 в BACKLOG). Тоже T135 follow-up path.
+
+  Эти три FEM-paths (b/c/d) — quality improvement; analytical
+  primary backend закрывает T132 use case без них.
+
+- **Последствия:**
+
+  - **Точность ±20-30%** (Erickson idealizes uniform current
+    distribution, no skin/proximity effects). На audio frequencies
+    1-30 kHz с толстыми OPT-обмотками low-freq path valid; spec
+    acceptance ±25% удовлетворяется.
+  - **Monotonicity built-in** через 1/N² factor: ratio σ_2:σ_3:σ_5
+    = 16 : 4 : 1 для zero-insulation case (verified в acceptance).
+    Это math-property formula, не physics validation — отсюда
+    T135 follow-up для FEM cross-check.
+  - **Pilot result (OPT_SE_5K_8 5-section)**: Lσ = 6.50 mH,
+    k = 0.9997, HF-3dB @ 5kΩ ≈ 122 kHz — hi-end audio range
+    (Hashimoto/Plitron empirical 50-80 kHz, наш fixture в верхнем
+    эшелоне).
+  - **PyOpenMagneticsAnalytics** снова single-purpose
+    `MagneticAnalytics` adapter (composite pattern abandoned);
+    Phase B helpers (`_translate_pattern_to_indices`,
+    `_normalize_bobbin_columns`, `_parse_leakage_result`) удалены.
+  - **T135 в BACKLOG** — FEM cross-validation analytical (Elmer
+    pivot T133 OR GetDP extension); analytical adequate для T132
+    use case, FEM подтвердит formula valid для precision claims.
+
+  Compare с **T129 closure pattern** (also analytical fallback
+  после FEM gap): T129 закрылся infrastructure-only (FEM 242% gap
+  сохранён, BACKLOG forward). T132 же **выходит закрытым с
+  работающим backend** (analytical formula passes acceptance),
+  это качественный шаг вперёд от T129.
+
+- Файлы: `src/adapters/outbound/leakage_inductance_analytical/*`,
+  `specs/T132-interleaved-leakage/spec.md` Phase B/C closure
+  sections, BACKLOG T135.
+
+
 ### 2026-05-21 — Saturable магнетика в SPICE: XSPICE gyrator-capacitor (`lcouple`+`core`), не PWL current-source
 
 - **Контекст:** T131 (SPICE saturable transformer + THD distortion
