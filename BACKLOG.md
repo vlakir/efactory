@@ -202,38 +202,89 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      все null) — B-H синтезируется аналитически. Разделено на
      T129 (synthetic Frohlich material model, infrastructure)
      + T130 (DC-bias load line, реально закроет gap). T128 ID
-     не переиспользуется. -->
+     не переиспользуется.
 
-- **T130** — [2026-05-20, выделено из T128 при investigation 2026-05-20]
-  **DC-bias load-line модель в FEM для incremental Lp на operating
-  point.** Pilot 242% gap (FEM linear 23.78 H vs PyOM ZHANG 6.96 H)
-  вызван **не только** материальной нелинейностью, но и тем, что
-  PyOM учитывает operating point (50 mA DC bias × 2500 витков
-  даёт H_dc ≈ 1289 A/m в iron, выше PyOM H_sat=200 A/m — core в
-  saturation regime). FEM же считает small-signal Lp без DC bias.
-  Содержание: solve nonlinear magnetostatic steady-state с
-  combined DC + AC excitation на primary; линеаризовать вокруг
-  operating point; вычислить incremental Lp = ∂Φ/∂I. Требует
-  base T129 (nonlinear material). Acceptance: integration test
-  `test_analytical_plus_fem_pilot_regression` становится
-  "agreement within ±10%".
-- **T129** — [2026-05-20, выделено из T128 при investigation 2026-05-20]
-  **Synthetic Frohlich-Kennelly B-H curve из PyOM material data +
-  GetDP nonlinear formulation.** PyOM 1.3.10 не экспонирует
-  `bhCycle` ни для одного из 409 materials (probe 2026-05-20) —
-  доступны только `permeability.initial`, `saturation` (одна точка:
-  H_sat=200, B_sat=1.2 T для Nanoperm 8000), `coerciveForce`.
-  Содержание: synthesize Frohlich-Kennelly curve `B(H) = μ_0 μ_init H
-  / (1 + μ_0 μ_init H / B_sat)` из этих параметров (10-20 точек);
-  расширить `pro_template.py` с GetDP fixed-point IterativeLoop
-  (Picard метод — проще Newton-Raphson, не требует JacNL term);
-  параметр `material_model: Literal["linear","nonlinear-frohlich"]`
-  в `GetDpFemSolver`. Сам по себе **не закроет 242% gap** —
-  без DC-bias load line (T130) FEM с nonlinear материалом всё равно
-  small-signal, iron не входит в saturation. Acceptance: nonlinear
-  pipeline runs end-to-end, выдаёт Lp; unit test на Frohlich
-  curve generator; integration test (skipif gmsh/getdp) runs
-  пайплайн без падения. Полноценное закрытие gap — T130.
+     2026-05-20 wave 2 (Clarify-фаза T129): T130 поглощена T129.
+     Задачи признаны атомарными — acceptance ±10% gap closure
+     требует обоих изменений одновременно (nonlinear material
+     без load-line даёт chord L, не incremental; load-line без
+     nonlinear material бессмыслен — μ константа). Split был
+     полезен на investigation phase (T128) для прозрачности
+     анализа корня gap, но в имплементации это одна спека / одна
+     реализация / один PR. Methodology: "по возможности укрупняем
+     PR". T130 ID не переиспользуется. -->
+
+<!-- T129 переехала в BOARD.md → Doing 2026-05-20 после Clarify+Analyze.
+     Спека: specs/T129-nonlinear-fem-dc-bias/spec.md. -->
+
+- **T131** — [2026-05-20, заведено в Phase C T129] **SPICE saturable
+  transformer model + THD distortion analysis use case.** Закрывает
+  detailed harmonic distortion analysis для любого tube amplifier
+  design (universal, не niche): vacuum tube nonlinearity уже моделируется
+  (T106/T107), а **OPT core saturation / hysteresis distortion** — нет.
+  Currently OPT моделируется как linear ideal transformer (`K1 L1 L2
+  0.99`).
+  Содержание:
+  - Generator `src/adapters/outbound/spice_models/saturable_core.py`:
+    input = `MagneticComponent` + `FrohlichBHCurve` (reuse T129 Phase A),
+    output = ngspice `.subckt` saturable transformer (B-source с table
+    lookup от Frohlich, или `.model CORE` level=1).
+  - Use case `simulate_distortion_spectrum(component, schematic)`:
+    inject saturable subckt в KiCad schematic, run transient SPICE,
+    FFT → THD per frequency / power level.
+  - Pilot acceptance: SE-amp 6П14П демо с saturable OPT → THD @ 1W
+    matches published reference (Stereophile / Audio Note class A
+    measurements ±2 dB на 1 kHz).
+  Reuses **полностью** T129 Phase A `FrohlichBHCurve`. Scope ~2-3
+  дня. Не зависит от FEM topology blocker'а — чисто SPICE-path.
+- **T132** — [2026-05-20, заведено в Phase C T129] **Interleaved
+  OPT leakage inductance — PyOM-only analytical path.** Top-tier
+  audio OPT использует sandwich-секционную намотку (P-S-P, 5-section,
+  ...) для минимизации Lσ (HF-rolloff). PyOM `calculate_leakage_
+  inductance` поддерживает multi-section через bobbin schema, но
+  efactory сейчас не enrich'ает MAS schema с layer order.
+  Содержание:
+  - Domain VO: `Bobbin.section_layout: tuple[WindingSection, ...]` —
+    sandwich порядок и параметры (insulation thickness, layer count).
+  - PyOM payload mapping: собрать `windingWindow.sections` correctly.
+  - Test fixture с known reference — например, published Plitron /
+    Sowter / Hashimoto datasheet OPT.
+  Покрывает 60-80% interleaved cases. Для 5+ section с FEM cross-
+  check — T133.
+  Не зависит от FEM blocker'а. Scope ~1-2 дня. **Зависит от T131
+  только как ordering preference** (THD universal value vs interleaved
+  niche).
+- **T133** — [2026-05-20, заведено в Phase C T129] **Elmer FEM pivot —
+  переход на Elmer для nonlinear B-H + DC bias FEM cross-check.**
+  T129 Phase B показал: GetDP 2D-planar с split-coil topology
+  блокирован для DC bias modeling — Frohlich curve не engaging
+  (L_nl/L_lin ≈ 0.997 на pilot после ultrareview bug_001 fix; T113
+  baseline gap 242% сохраняется без изменений, Primary acceptance
+  ±10% недостижим в текущей topology — изначальная заявка «70% gap»
+  была artefact flux linkage formula error, retracted в revision 3
+  spec/ADR). Path forward — **Elmer FEM pivot** (вариант 3b / α из
+  T129 Phase C discussion):
+  - ADR override 2026-05-20 «GetDP над Elmer» — пересмотр на
+    «Elmer для nonlinear, GetDP остаётся для linear/geometry».
+  - Elmer 2D-axisymmetric или 2D-planar с native `H-B Curve` keyword
+    + Newton iteration (out-of-the-box nonlinear support, не
+    требует custom Picard).
+  - Pilot infrastructure из T113 Phase 1 Stage D (`scripts/pilot/
+    elmer/`) переиспользуется; `feedback_elmer_savescalars_quirks`
+    auto-memory покрывает 4 pitfall'а.
+  - New adapter `src/adapters/outbound/fem_solver_elmer/` + integration
+    test pilot achieves ±10% к PyOM ZHANG на OPT 6П14П SE DC-biased.
+  - Reuses T129 Phase A `FrohlichBHCurve` как input format для Elmer
+    H-B table.
+  Альтернативы (3a — GetDP topology rework через shell transformation
+  / circuit coupling / 3D; 3c — AGROS Suite) рассмотрены и отвергнуты
+  в пользу 3b: Elmer уже частично исследован + native nonlinear
+  support лучше than custom Picard на GetDP. Scope ~1-2 недели.
+  Image +300 MB (apt elmerfem-csc уже доступен в Ubuntu 24.04 universe).
+  Триггер: появление реального client case с требованием ±10% FEM
+  precision (top-tier interleaved OPT 5+ section, или high-precision
+  power transformer design).
+
 - **T127** — [2026-05-20, заведено по ADR 2026-05-20] **Cross-
   validation FEM-solver'ов: Elmer ↔ GetDP на дополнительных
   fixtures (50 Hz power transformer, опционально другие).** T113

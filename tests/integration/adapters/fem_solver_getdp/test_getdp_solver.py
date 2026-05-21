@@ -81,7 +81,11 @@ def _opt_6p14p_se() -> MagneticComponent:
 @_NEED_GMSH_AND_GETDP
 @pytest.mark.asyncio
 async def test_getdp_adapter_matches_pilot_baseline(pyom) -> None:  # noqa: ANN001
-    """End-to-end pipeline Lp совпадает с pilot 23.7816 H ±5%."""
+    """End-to-end linear pipeline Lp совпадает с pilot 23.7816 H ±5%."""
     solver = GetDpFemSolver(pyom)
-    lp = await solver.solve_inductance(_opt_6p14p_se())
-    assert lp == pytest.approx(PILOT_GETDP_LP_H, rel=PILOT_REL_TOLERANCE)
+    outcome = await solver.solve(_opt_6p14p_se())
+    assert outcome.method == 'linear'
+    assert outcome.peak_flux_density_t is None
+    assert outcome.inductance_h == pytest.approx(
+        PILOT_GETDP_LP_H, rel=PILOT_REL_TOLERANCE,
+    )

@@ -1,22 +1,24 @@
 """
-Integration: mag_verify_field с реальными PyOM + GetDP adapters (T113).
+Integration: mag_verify_field с реальными PyOM + GetDP adapters (T113 + T129).
 
-Phase 2 acceptance criterion из spec:
-> OPT 6П14П analytical L (PyOpenMagnetics) совпадает с FEM-solver L
-> в пределах ±10%.
+T129 Phase B + Phase C + ultrareview bug_001 fix (PR #61):
+> Primary acceptance ±10% к PyOM ZHANG **не достигнут** — split-coil
+> topology nullify net N·I + 2D-planar open-domain overestimates L.
+> Phase A/B остаются как **infrastructure** для T133 (Elmer pivot)
+> downstream consumer. Полное закрытие 242% gap отложено на T133.
 
-⚠️ Это criteria НЕ выполняется на pilot fixture (linear μ_r=8000 vs
-PyOM operating-point μ_eff, 242% diff — задокументировано в T113 spec
-+ ADR 2026-05-20). Use case корректно flag'ует discrepancy
-(discrepancy_flagged=True), что для LLM-агента — adequate сигнал
-"need revisit"; numeric agreement требует nonlinear B-H curve
-(BACKLOG T128).
+Secondary (back-compat T113 Phase 1 pilot baseline):
+> Linear mode без DC bias даёт тот же ~23.78 H ±5% что T113.
 
-Этот integration test проверяет:
-1. analytical-only path работает через реальный PyOM adapter;
-2. verify_with_fem path выполняется end-to-end (если gmsh+getdp в PATH);
-3. discrepancy_flagged корректно True на known-gap fixture (pilot
-   regression — мы должны увидеть exactly те же ~242% diff).
+Покрываемые сценарии:
+1. analytical-only path работает через реальный PyOM adapter (fast).
+2. linear FEM + verify_with_fem на pilot (без DC bias) → known 242%
+   gap к analytical → discrepancy_flagged=True (Secondary back-compat,
+   pilot baseline).
+3. nonlinear FEM + DC bias на pilot — **infrastructure smoke test**:
+   pipeline сходится, `fem_method='nonlinear-frohlich'`, diagnostic
+   поля заполнены. Numeric L_inc — relaxed bar (см. spec §4 revision
+   2 + T133 для полного ±10%).
 """
 
 from __future__ import annotations
@@ -63,11 +65,22 @@ def analytics(pyom):  # noqa: ANN001, ANN201
 
 
 @pytest.fixture(scope='module')
-def field_solver(pyom):  # noqa: ANN001, ANN201
-    return GetDpFemSolver(pyom)
+def field_solver_linear(pyom):  # noqa: ANN001, ANN201
+    return GetDpFemSolver(pyom, material_model='linear')
 
 
-def _opt_6p14p_se() -> MagneticComponent:
+@pytest.fixture(scope='module')
+def field_solver_nonlinear(pyom):  # noqa: ANN001, ANN201
+    return GetDpFemSolver(pyom, material_model='nonlinear-frohlich')
+
+
+# DC bias из pilot config (scripts/pilot/build_fixture.py PRIMARY_DC_BIAS_A):
+# 50 mA plate current класса A для 6П14П SE → H_dc ≈ 1289 A/m в core
+# (deep saturation, см. T129 spec §1).
+PILOT_DC_BIAS_A = 0.05
+
+
+def _opt_6p14p_se(dc_bias_a: float = 0.0) -> MagneticComponent:
     return MagneticComponent(
         name='OPT 6П14П SE',
         core=Core(
@@ -92,6 +105,7 @@ def _opt_6p14p_se() -> MagneticComponent:
         operating_point=OperatingPoint(
             frequency_hz=1000.0,
             primary_peak_voltage_v=250.0,
+            primary_dc_bias_a=dc_bias_a,
         ),
     )
 
@@ -108,26 +122,68 @@ async def test_analytical_only_on_pilot_fixture(analytics) -> None:  # noqa: ANN
     )
     assert r.fem_inductance_h is None
     assert r.discrepancy_flagged is False
+    assert r.fem_method is None
+    assert r.peak_flux_density_t is None
 
 
 @_NEED_GMSH_AND_GETDP
 @pytest.mark.asyncio
-async def test_analytical_plus_fem_pilot_regression(
+async def test_linear_fem_on_pilot_keeps_baseline(
     analytics,  # noqa: ANN001
-    field_solver,  # noqa: ANN001
+    field_solver_linear,  # noqa: ANN001
 ) -> None:
-    """End-to-end: analytical+FEM на pilot fixture, известный 242% gap."""
+    """Secondary (back-compat): linear path даёт T113 baseline 23.78 H ±5%."""
     r = await mag_verify_field(
         component=_opt_6p14p_se(),
         analytics=analytics,
-        field_solver=field_solver,
+        field_solver=field_solver_linear,
         verify_with_fem=True,
     )
     assert r.analytical_inductance_h == pytest.approx(
         PILOT_ANALYTICAL_LP_H, rel=1e-3,
     )
     assert r.fem_inductance_h == pytest.approx(PILOT_FEM_LP_H, rel=0.05)
-    # Known physics gap — use case correctly flags it (T128 follow-up
-    # с nonlinear B-H закроет numeric mismatch).
+    # Known physics gap — linear μ_r vs operating-point μ_eff (T113 ADR).
     assert r.discrepancy_flagged is True
     assert r.relative_difference == pytest.approx(PILOT_REL_DIFF, rel=0.1)
+    assert r.fem_method == 'linear'
+    assert r.peak_flux_density_t is None
+
+
+@_NEED_GMSH_AND_GETDP
+@pytest.mark.asyncio
+async def test_analytical_plus_fem_pilot_regression(
+    analytics,  # noqa: ANN001
+    field_solver_nonlinear,  # noqa: ANN001
+) -> None:
+    """Primary T129 acceptance (revision 3, infrastructure-only):
+    nonlinear path сходится end-to-end, diagnostic поля пробрасываются.
+
+    Numerical closure (±10% к PyOM ZHANG) отложен на T133 — split-coil
+    topology + 2D-planar open-domain не дают Frohlich engaged на pilot
+    (L_nl / L_lin ≈ 1). См. spec §4 revision 3 + ultrareview bug_001
+    history (Phase B initially reported false 70% gap из-за missing
+    Secondary integral term).
+    """
+    r = await mag_verify_field(
+        component=_opt_6p14p_se(dc_bias_a=PILOT_DC_BIAS_A),
+        analytics=analytics,
+        field_solver=field_solver_nonlinear,
+        verify_with_fem=True,
+    )
+    assert r.analytical_inductance_h == pytest.approx(
+        PILOT_ANALYTICAL_LP_H, rel=1e-3,
+    )
+    # Plumbing: dispatch правильно на nonlinear path
+    assert r.fem_method == 'nonlinear-frohlich'
+    assert r.fem_inductance_h is not None
+    assert r.relative_difference is not None
+    # Honest sanity: L_inc finite, в реальном physical range (не NaN,
+    # не negative, не absurd). Не делаем claim ±10% и не претендуем
+    # на "nonlinear engagement" proof — split-coil topology Frohlich
+    # сейчас не engaging (revision 3 acknowledgement).
+    assert 0.1 < r.fem_inductance_h < 100.0
+    # Currently relative_difference ≈ 241% (~ same as T113 linear baseline
+    # 242%, identity ratio к linear L_lin=23.78 within 1%). Bar держим
+    # широко чтобы test не сломался от mesh-related drift в будущем.
+    assert r.relative_difference <= 3.0
