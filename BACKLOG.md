@@ -412,6 +412,46 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   нет / можно ли добавить плагином.
   По итогам — ADR «Frontend для efactory: Claude Code vs OpenCode»
   в `DECISIONS.md` и решение по судьбе T011-T019.
+- **T120** — [2026-05-19, parked 2026-05-21] **Cleanup: удалить
+  AppImage-detection из `platform_layer`.** После Phase 0.9
+  KiCad/FreeCAD внутри контейнера всегда через apt (в PATH);
+  AppImage-fallback в `src/adapters/outbound/platform_native/
+  platform_layer.py` становится dead code. Удалить
+  `_scan_appimage_locations`, `_detect_kicad_cli_via_kicad_appimage`,
+  multi-call AppImage logic; почистить glob-патрены и known
+  locations (`~/Загрузки/`, `~/AppImages/`, `~/<app>/`). Подправить
+  тесты в `tests/integration/adapters/platform_native/`: убрать
+  AppImage reality-tests, оставить PATH-detection через apt.
+  Пройтись по `pytest.mark.skipif` в integration/e2e — оставить
+  только условие «kicad in PATH». Spec T009 пометить как
+  partially-replaced. Acceptance: 0 строк кода специфичных для
+  AppImage; все тесты зелёные при KiCad из apt; PR ловится
+  pre-push gate как обычно. **Parked:** dead code не блокирует
+  ничего; при взятии расширить scope до «упростить `platform_layer`
+  до PATH-only lookup» — FreeCAD AppImage внутри образа,
+  симлинк `/usr/local/bin/freecadcmd` (T112), весь native-AppImage
+  discovery становится мёртвым, не только KiCad-AppImage путь.
+- **T124** — [2026-05-20, parked 2026-05-21] **freecad-mcp wrapper
+  + integration.** Acceptance T112 изначально включал «freecad-mcp
+  подключается, базовые tool-calls работают»; вынесено в отдельную
+  задачу (Vladimir 2026-05-20 clarify-1). Содержание: Python
+  wrapper поверх `freecadcmd` в `src/adapters/outbound/freecad/`,
+  MCP-сервер с минимальным set'ом tool-calls (open document, create
+  sheet metal base wall, add bend, unfold, export STEP/DXF),
+  регистрация в общем MCP-реестре efactory. После выбора решения
+  T108 (Claude Code как frontend) — wrapper должен отвечать на
+  tool_use из агента. Acceptance: запуск MCP-сервера внутри
+  efactory:linux, smoke tool-call «open empty document и create
+  base wall» возвращает path к сохранённому `.FCStd`. Не
+  блокировано: T112 (FreeCAD CLI / GUI) уже даёт `freecadcmd`,
+  на котором wrapper может работать сразу. **Parked:** FreeCAD
+  сейчас драйвится Bash-вызовом `freecadcmd <macro.FCMacro>`
+  (см. `scripts/gen-bracket-demo.FCMacro`), что покрывает
+  агент-driven workflow без отдельного MCP-уровня. Возвращать
+  после T108 ADR и появления конкретного use case, где
+  stateless subprocess не годится (например, открыть документ
+  → ряд правок → save с сохранением состояния между
+  tool-call'ами).
 
 ### Фаза 1a — MVP-ядро (3–4 недели)
 
@@ -467,60 +507,28 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      FEM-solver внутри efactory:linux. -->
 <!-- T114 перенесена в BOARD.md → Doing (2026-05-20) — объединена
      с T121 в один PR (variant C). См. BOARD.md → T114 + T121. -->
-- **T120** — [2026-05-19] **Cleanup: удалить AppImage-detection
-  из `platform_layer`.** После Phase 0.9 KiCad/FreeCAD внутри
-  контейнера всегда через apt (в PATH); AppImage-fallback в
-  `src/adapters/outbound/platform_native/platform_layer.py`
-  становится dead code. Удалить `_scan_appimage_locations`,
-  `_detect_kicad_cli_via_kicad_appimage`, multi-call AppImage
-  logic; почистить glob-патрены и known locations
-  (`~/Загрузки/`, `~/AppImages/`, `~/<app>/`). Подправить
-  тесты в `tests/integration/adapters/platform_native/`:
-  убрать AppImage reality-tests, оставить PATH-detection через
-  apt. Пройтись по `pytest.mark.skipif` в integration/e2e —
-  оставить только условие «kicad in PATH». Spec T009 пометить
-  как partially-replaced. Acceptance: 0 строк кода специфичных
-  для AppImage; все тесты зелёные при KiCad из apt; PR ловится
-  pre-push gate как обычно.
+<!-- T120 перенесена в Tech Debt (parked 2026-05-21) — dead code, не
+     блокирует ничего, при взятии расширить scope. -->
 <!-- T121 перенесена в BOARD.md → Doing (2026-05-20) — объединена
      с T114 в один PR (variant C). См. BOARD.md → T114 + T121. -->
 
-- **T122** — [2026-05-20] **Fallback path: git clone KiCad-libraries
-  из upstream GitLab** (вместо `docker pull efactory-libs`). Spec
-  T110 §3 описывает primary / fallback пути для libraries bootstrap;
-  T121 реализовал только primary (`docker create` + `docker cp`).
-  Fallback нужен только в degraded scenario (нет сети к GHCR или
-  registry недоступен) — раньше T115/CI смысла не имеет (до GHCR
-  publish primary тоже local-only). Acceptance: `efactory-up
-  --update-libs --no-registry` (или auto-fallback при failed
-  `docker pull`) клонирует `https://gitlab.com/kicad/libraries/
-  kicad-symbols`, `kicad-footprints`, `kicad-templates` (3dmodels
-  — отдельно, тяжёлые) в `$HOME/efactory-libs/`, идемпотентно при
-  повторе. Зафиксировано как out-of-scope T121 (Vladimir 2026-05-19,
-  variant C).
-- **T123** — [2026-05-20] **Убрать KiCad warning «Sim.Library не
-  в symbol-library-table»** при открытии demo / любого
-  efactory-сгенерированного `.kicad_sch`. Источник — путаница в
-  KiCad 10: на открытии schematic смотрит каждое `Sim.Library`-
-  property компонента и сравнивает с `sym-lib-table` (хотя `.lib`
-  — это SPICE, а не symbol). Симуляция работает, warning безвреден,
-  но появляется при каждом открытии — раздражает.
-  Acceptance: при `./efactory-up --demo` (или любой схеме,
-  сгенерированной через `adapters/outbound/schematic_kicad/facade`)
-  KiCad открывает schematic без диалога «не в таблице».
-  Два возможных пути (выбрать после исследования):
-  (a) **Inline `.subckt`** в `Sim.Params` (или новый property) —
-      без внешней `Sim.Library`. Минус: каждое использование одной
-      и той же модели дублируется в schematic.
-  (b) **Well-known path для всех SPICE-libs** — система регистрирует
-      их где-то под `/usr/share/kicad/spice/` (или внутри
-      `kicad_common.json`) так, чтобы KiCad сразу видел и не
-      жаловался. Минус: нужно понять, что именно KiCad 10 проверяет
-      и считает «валидным» путём.
-  Затрагивает `src/adapters/outbound/schematic_kicad/facade.py`
-  (метод `_add_simulation_props` и аналоги). T100-test'ы должны
-  остаться зелёными (netlist export не меняется, меняется только
-  GUI-warning поведение).
+- **T122** — [2026-05-20, closed 2026-05-21 as outdated]
+  ~~Fallback path: git clone KiCad-libraries из upstream GitLab.~~
+  **Closed:** T115 GHCR publish active, primary path
+  `docker pull efactory-libs:linux-dev` стабилен (5/5 последних
+  workflow runs зелёные на 2026-05-21). Реальный degraded scenario
+  «GHCR упал, GitLab жив» маловероятен — обе инфраструктуры
+  под GitHub-side ecosystem. Полная original-спека сохранена
+  в git history (BACKLOG @ HEAD~ до правки 2026-05-21). ID не
+  переиспользуется.
+- **T123** — [2026-05-20, closed 2026-05-21 as outdated]
+  ~~Убрать KiCad warning «Sim.Library не в symbol-library-table».~~
+  **Closed:** warning безвреден (Simulator работает per
+  `feedback_kicad_sim_library_warning`), efactory-workflow сейчас
+  преимущественно subprocess/CLI — Vladimir warning видит редко.
+  При плотной работе через GUI в будущем задача может быть
+  переоткрыта новым T-ID. Полная original-спека (два возможных
+  пути a/b) сохранена в git history. ID не переиспользуется.
 <!-- T128 (Nonlinear B-H curve, originally proposed в ADR 2026-05-20)
      split при investigation 2026-05-20: оригинальная задача
      "single PR закроет 242% gap" оказалась невыполнимой за одну
@@ -560,40 +568,21 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      ±25% (target ±10%) к PyOM ZHANG; phasing Phase 0 pilot →
      Phase 1 adapter linear → Phase 2 nonlinear → Phase 3 closing. -->
 
-- **T127** — [2026-05-20, заведено по ADR 2026-05-20] **Cross-
-  validation FEM-solver'ов: Elmer ↔ GetDP на дополнительных
-  fixtures (50 Hz power transformer, опционально другие).** T113
-  Phase 1 показал 0.00% cross-check Elmer↔GetDP на OPT 6П14П SE
-  (одна geometry, linear физика) — но это один data point. Для
-  уверенности в выборе GetDP first-class в Phase 2 integration —
-  опциональная cross-validation на других topology classes (50 Hz
-  power transformer: больший core, более линейный режим работы;
-  опционально SMPS choke если будет сделана T128 nonlinear).
-  Использует pilot infrastructure (`scripts/pilot/elmer/`,
-  `stage_elmer` в `run_pilot.py` — preserved в T113-fem branch
-  именно под эту задачу). Содержание: новая power transformer
-  fixture (E-core или иной shape; PyOM analytical Lp как
-  reference), прогон pilot orchestrator, сравнение GetDP ↔ Elmer
-  Lp. Если расхождение > 0.5% — flag для review (mesh artefact?
-  numerical scheme diff?). Acceptance: либо «cross-check passed —
-  Elmer окончательно подтверждён как cross-validation backend»,
-  либо «найдена разница на geometry X — ADR update».
-  Не блокирует Phase 2 (она уже shipped); чисто follow-up для
-  confidence в long-run.
-- **T124** — [2026-05-20] **freecad-mcp wrapper + integration.**
-  Acceptance T112 изначально включал «freecad-mcp подключается,
-  базовые tool-calls работают»; вынесено в отдельную задачу
-  (Vladimir 2026-05-20 clarify-1). Содержание: Python wrapper
-  поверх `freecadcmd` в `src/adapters/outbound/freecad/`, MCP-
-  сервер с минимальным set'ом tool-calls (open document,
-  create sheet metal base wall, add bend, unfold, export STEP/
-  DXF), регистрация в общем MCP-реестре efactory. После выбора
-  решения T108 (Claude Code как frontend) — wrapper должен
-  отвечать на tool_use из агента. Acceptance: запуск MCP-сервера
-  внутри efactory:linux, smoke tool-call «open empty document
-  и create base wall» возвращает path к сохранённому `.FCStd`.
-  Не блокировано: T112 (FreeCAD CLI / GUI) уже даёт `freecadcmd`,
-  на котором wrapper может работать сразу.
+- **T127** — [2026-05-20, closed 2026-05-21 as outdated by T133]
+  ~~Cross-validation FEM-solver'ов: Elmer ↔ GetDP на дополнительных
+  fixtures.~~ **Closed:** premise сместился после T133 (Elmer pivot,
+  PR #66, merged 2026-05-21). Elmer стал primary для 3D (там,
+  где acceptance ±25% к ZHANG достигнут на Lp=6.04H), GetDP остался
+  для 2D linear. Они больше не дублируют один и тот же расчёт —
+  работают в разных режимах (3D vs 2D), cross-validation теряет
+  физический смысл. Релевантные follow-up'ы заведены T133 Phase 3e:
+  T136 (Elmer rebuild с AMS preconditioner → target ±10%),
+  T138 (PyOM lateral_x semantics fix), T139 (3D nonlinear-frohlich).
+  Полная original-спека сохранена в git history. ID не
+  переиспользуется.
+<!-- T124 перенесена в Tech Debt (parked 2026-05-21) — FreeCAD
+     драйвится Bash + `.FCMacro` без отдельного MCP-уровня;
+     возвращать после T108 ADR и появления stateful use case. -->
 
 ### Phase 1b — Чат-клиент (+2–3 недели, исполняется внутри контейнера после Phase 0.9)
 
