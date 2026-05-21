@@ -61,18 +61,41 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T133** — Elmer FEM pivot — переход на Elmer для nonlinear B-H +
-  DC bias FEM cross-check; цель закрыть T113 baseline 242% gap к
-  acceptance ±25% (target ±10%) к PyOM ZHANG на pilot fixture
-  OPT 6П14П SE. Топология — single-coil + outer Kelvin shell
-  transformation (proper open-domain flux closure). Spec —
-  `specs/T133-elmer-fem-pivot/spec.md` (Clarified, готова к Analyze).
-  Фазы: Phase 0 pilot probe (Elmer H-B Curve + Newton + Kelvin shell
-  smoke) → Phase 1 main Dockerfile + adapter scaffolding (linear) →
-  Phase 2 nonlinear mode + central-diff DC bias → Phase 3 acceptance
-  + ADR override + closing.
-
 ## Done
+
+- **T133** — [closed 2026-05-21, PR #66] **Elmer FEM pivot — 3D
+  acceptance ±25% к PyOM ZHANG achieved (Lp=6.04H, -13.3%);
+  factor 19× improvement от T113 baseline gap (3.42× → 1.15×).**
+  10 commits на ветке T133-elmer-fem-pivot squash в один при merge.
+  - **Phase 0** — Elmer 2D capability probes (H-B Curve syntax,
+    Infinity BC Robin-type, ElmerGrid -autoclean).
+  - **Phase 1** — 2D Elmer linear adapter + shared `fem_common.py`
+    (C3 refactor: ECoreDimensions / emit_e_core_geo / PyOM helpers
+    moved из getdp adapter).
+  - **Phase 2** — 2D nonlinear-frohlich + central-diff DC bias
+    (known IEEE_UNDERFLOW limitation, infrastructure-only).
+  - **Phase 3a** — 3D Whitney AV feasibility probe (tree gauge,
+    MUMPS direct).
+  - **Phase 3b** — `emit_e_core_geo_3d` OCC mesh generator (ungapped
+    smoke + gapped Phase 3d).
+  - **Phase 3c** — 3D adapter mode (`dimensionality='3d'`), Whitney
+    AV + CalcFields + energy extraction (auto-injects "electromagnetic
+    field energy" в SaveScalars → Lp = 2W/I²).
+  - **2D findings fixation** — docstring + tightened integration
+    test к 19.65 H baseline.
+  - **Phase 3d** — 3D gapped E-core с geometrically-derived lateral
+    leg bounds, factor 1.7× к ZHANG (4.07 H, -41.5%).
+  - **Phase 3d.2** — mesh refinement (20μm/5mm → 51K tetra) →
+    **acceptance ±25% achieved** (Lp=6.04 H, -13.3% к ZHANG).
+  - **Phase 3e** — ADR + BACKLOG follow-ups (T136-T139) + T134 KB
+    control example.
+  - **Follow-up T-IDs** (in BACKLOG): T136 Elmer rebuild с AMS
+    preconditioner → target ±10%, T137 Coil mechanism с mesh bridges,
+    T138 PyOM lateral_x semantics fix, T139 3D nonlinear-frohlich.
+  - Auto-memory: `feedback_elmer_2d_keyword_pitfalls`,
+    `feedback_fem_2d_inherent_gap_to_zhang`,
+    `feedback_elmer_3d_solver_memory_limits`.
+  - Spec: `specs/T133-elmer-fem-pivot/spec.md`.
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
