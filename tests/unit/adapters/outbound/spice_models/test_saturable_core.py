@@ -62,24 +62,42 @@ def test_subckt_includes_dcr_resistors() -> None:
     assert '0.3' in text
 
 
-def test_subckt_includes_pwl_with_symmetric_pairs() -> None:
-    """B-source с pwl + VCCS+C flux integrator; symmetric negative/positive."""
+def test_subckt_uses_xspice_lcouple_and_core() -> None:
+    """Phase E redesign: lcouple gyrator'ы + nonlinear core element."""
     text = _generate_default_subckt()
-    # PWL функция вызывается в нижнем или верхнем регистре
-    assert re.search(r'\bpwl\b', text, re.IGNORECASE) is not None
-    # должна присутствовать VCCS-based интегрирующая ветвь (G_int + C_int)
-    assert re.search(r'\bG_int\b', text) is not None
-    assert re.search(r'\bC_int\b', text) is not None
-    # должны быть и положительные, и отрицательные значения
-    # (symmetric saturation: odd-symmetry в (ψ_link, i_Lm))
+    # Two lcouple gyrators — primary + secondary
+    assert text.lower().count('lcouple') >= 2
+    # XSPICE a-elements
+    assert re.search(r'^a1\s+', text, re.MULTILINE) is not None
+    assert re.search(r'^a2\s+', text, re.MULTILINE) is not None
+    assert re.search(r'^a_core\s+', text, re.MULTILINE) is not None
+    # core element с tabulated B-H curve
+    assert re.search(r'\bcore\(', text, re.IGNORECASE) is not None
+    assert 'H_array=[' in text or 'h_array=[' in text.lower()
+    assert 'B_array=[' in text or 'b_array=[' in text.lower()
+
+
+def test_subckt_h_b_arrays_are_symmetric_odd() -> None:
+    """H_array / B_array odd-симметричны (включают origin + negative reflection)."""
+    text = _generate_default_subckt()
+    # должны присутствовать и положительные, и отрицательные значения
     assert re.search(r'-\d', text) is not None
+    # origin '0' должен быть в массиве (как middle point)
+    h_array_match = re.search(r'H_array=\[([^\]]+)\]', text, re.IGNORECASE)
+    assert h_array_match is not None
+    h_values = h_array_match.group(1).split()
+    # ожидаем нечётное количество (negative + 0 + positive)
+    assert len(h_values) % 2 == 1, h_values
+    middle = h_values[len(h_values) // 2]
+    assert float(middle) == 0.0
 
 
-def test_ratio_appears_in_coupling_sources() -> None:
-    """E/F секции содержат turns ratio N2/N1 = 40/1000 = 0.04."""
+def test_ratio_appears_in_num_turns() -> None:
+    """lcouple-models несут num_turns=N для primary и secondary."""
     text = _generate_default_subckt()
-    # 0.04 либо 0.04000... должно быть упомянуто
-    assert re.search(r'0\.04\b', text) is not None or '4e-2' in text.lower()
+    # n_primary=1000, n_secondary=40 в дефолтной фикстуре
+    assert 'num_turns=1000' in text
+    assert 'num_turns=40' in text
 
 
 def test_curve_parameters_documented_in_comments() -> None:

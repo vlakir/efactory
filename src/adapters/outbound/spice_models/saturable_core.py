@@ -1,37 +1,65 @@
 """
-Saturable transformer subckt generator (T131 Phase A).
+Saturable transformer subckt generator (T131 Phase A + Phase E redesign).
 
-Генерирует ngspice `.subckt` для T-model трансформатора с нелинейной
-магнитной ветвью (saturation primary side) на базе Frohlich-Kennelly
-B-H curve из T129 Phase A.
+Генерирует ngspice `.subckt` для saturable трансформатора используя
+**XSPICE gyrator-capacitor model** (Hamill 1993): primary/secondary
+обмотки через `lcouple` gyrator'ы преобразуют электрическую область
+(V, I) в магнитную (MMF, dψ/dt), а нелинейная B-H curve моделируется
+через XSPICE `core` element с tabulated H_array/B_array.
 
-Topology (T-equivalent с saturable magnetizing branch):
+**Почему gyrator-capacitor, а не current-source PWL (revision):**
 
-    P1 ─── R_pri ───┬─── Ideal Trans (n) ─── R_sec ─── S1
-                    │
-                  B_Lm (current source, nonlinear)
-                    │
-    P2 ────────────┴────── Ideal Trans GND ────────── S2
+Первая версия (Phase A, до Phase E refactor) использовала B-source
+`B_Lm` с PWL-таблицей (ψ_link, i_Lm) + capacitor-as-integrator
+(`C_int N_psi 0 1 + G_int N_psi 0 N_a P2 1`). На стенде «лампа + saturable
+OPT» это давало численный blow-up (magnitudes ≈ 1e+65) из-за algebraic
+loop через current-source `B_Lm` и G-source лампы Koren-модели —
+Newton-Raphson не сходился.
 
-`B_Lm` — magnetizing current source, controlled by flux-linkage state
-ψ_link через integrator `B_psi` (Faraday): ψ_link(t) = ∫V_Lm dt.
+XSPICE `lcouple + core` решает все три проблемы:
 
-PWL table maps ψ_link → i_Lm: для каждой Frohlich пары (H, B) генератор
-вычисляет (ψ_link = N_pri·A·B, i_Lm = H·l/N_pri) — обоюдо-однозначно из
-B-H и геометрии. Symmetric continuation на отрицательную сторону через
-odd-symmetry (B(-H) = -B(H), значит и (ψ_link, i_Lm) одинаково odd).
+1. **Нет algebraic loop**: gyrator — алгебраический элемент
+   (V_e = N·I_m; I_e = (1/N)·V_m), но **нелинейная B-H модель сидит
+   в магнитной области**, изолирована от electrical Newton iterations.
+2. **DC-стабильность**: магнитный поток ψ интегрируется внутри core
+   element'а (a_core) с собственным state, без external integrator
+   capacitor'а.
+3. **ngspice-native**: реализован C-кодом внутри XSPICE library;
+   numerically tuned для transient analysis магнетических цепей
+   (см. `transformers1.cir` пример в `ngspice/examples/various/`).
 
-Coupling secondary side через ideal-transformer reflection
-(VCVS `E_sec` + CCCS `F_pri` с ratio n = N_sec/N_pri) — для MVP без
-leakage inductance Lσ (вне scope T131; см. T132).
+Trade-off: B-H curve задаётся не Frohlich-формулой напрямую, а
+tabulated H_array/B_array (symmetric, odd-extended из FrohlichBHCurve).
+ngspice `core` использует PWL с гладкой interpolation на углах
+(`input_domain=0.01 fraction=true`), что устраняет non-smooth
+поведение на углах таблицы — в отличие от PWL B-source.
 
-Numerical стабильность: формулировка через **VCCS+capacitor integrator**
-(`G_int + C_int = ∫V_Lm dt = ψ_link`) — классический SPICE pattern для
-flux-linkage state. ngspice 45.2 не поддерживает `idt()` в B-source
-expressions; capacitor-as-integrator работает на всех версиях ngspice.
-Current-source magnetizing branch (`B_Lm I=pwl(...)`) избегает algebraic
-derivative loop типа `ddt(V(B-source-output))`, который вешает convergence
-на saturation knee.
+**Topology:**
+
+::
+
+    P1 ── R_pri ── pri_int ─┐                         ┌─ S1
+                            │ lcouple (N_pri turns)   │
+    P2 ─────────────────────┘                         │
+                              ↕ (magnetic mc1, mc2)   │
+                            ┌─ a_core ─┐              │
+                            │  (B-H)   │              │
+                            └──────────┘              │
+                              ↕ (magnetic 0, mc2)     │
+                                                      │
+                            ┌ lcouple (N_sec turns) ──┘
+                            │ (reverse polarity для dot convention)
+    S2 ─── sec_int ── R_sec ┘
+
+Primary gyrator: `a1 (pri_int P2) (mc1 0) primary` — MMF от primary winding
+появляется между mc1 и 0; flux integration выполняется core element'ом.
+
+Secondary gyrator: `a2 (sec_int S2) (0 mc2) secondary` — polarity reversed
+(0,mc2 vs mc1,0) для правильной dot-convention (primary + secondary MMF
+суммируются на core, как в реальном transformer'е).
+
+Core element: `a_core (mc1 mc2) magcore` — нелинейный bidirectional B-H
+с tabulated curve.
 """
 
 from __future__ import annotations
@@ -40,6 +68,13 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from adapters.outbound.fem_solver_getdp.material import FrohlichBHCurve
+
+# Smoothing параметры XSPICE core element'а.
+# input_domain=0.01 fraction=true → 1% от input span получает
+# parabolic-blend interpolation на угловых точках PWL (вместо
+# discontinuous derivative). Стандартный default из ngspice docs.
+_CORE_INPUT_DOMAIN = 0.01
+_CORE_FRACTION = 'true'
 
 
 def generate_saturable_transformer_subckt(
@@ -84,26 +119,24 @@ def generate_saturable_transformer_subckt(
         r_secondary_ohm=r_secondary_ohm,
     )
 
-    pwl_args = _psi_to_imag_pwl_arglist(
+    h_array_literal, b_array_literal = _build_symmetric_h_b_arrays(
         bh_curve.h_b_pairs(),
-        n_primary=n_primary,
-        a_core_m2=a_core_m2,
-        l_path_m=l_path_m,
     )
-    turns_ratio = n_secondary / n_primary
 
     return _SUBCKT_TEMPLATE.format(
         name=subckt_name,
         n_primary=n_primary,
         n_secondary=n_secondary,
-        a_core=a_core_m2,
-        l_path=l_path_m,
-        r_pri=r_primary_ohm,
-        r_sec=r_secondary_ohm,
+        a_core=_g(a_core_m2),
+        l_path=_g(l_path_m),
+        r_pri=_g(r_primary_ohm),
+        r_sec=_g(r_secondary_ohm),
         mu_init=bh_curve.mu_initial,
         b_sat=bh_curve.b_sat,
-        turns_ratio=_g(turns_ratio),
-        pwl_args=pwl_args,
+        h_array=h_array_literal,
+        b_array=b_array_literal,
+        input_domain=_CORE_INPUT_DOMAIN,
+        fraction=_CORE_FRACTION,
     )
 
 
@@ -140,36 +173,36 @@ def _validate_inputs(
         raise ValueError(msg)
 
 
-def _psi_to_imag_pwl_arglist(
+def _build_symmetric_h_b_arrays(
     h_b_pairs: tuple[tuple[float, float], ...],
-    *,
-    n_primary: int,
-    a_core_m2: float,
-    l_path_m: float,
-) -> str:
+) -> tuple[str, str]:
     """
-    Построить symmetric (ψ_link, i_Lm) PWL arglist для ngspice ``pwl(...)``.
+    Преобразовать positive-only (H, B) pairs в symmetric arrays для XSPICE.
 
-    Преобразование Frohlich (H, B) → (ψ_link, i_Lm) по формулам:
+    Frohlich curve задаётся только для B ∈ [0, b_top]. Магнитный материал
+    odd-симметричен: B(-H) = -B(H). XSPICE `core` element требует **полный
+    monotonic array** от minimum H до maximum H — extend'им через
+    odd reflection.
 
-        ψ_link = N_pri · A_core · B
-        i_Lm   = H · l_path / N_pri
+    Output формат:
 
-    Symmetric continuation (odd-symmetry):
-        (..., (-ψ_N, -i_N), ..., (-ψ_1, -i_1), (0, 0), (ψ_1, i_1), ..., (ψ_N, i_N))
+    - h_array: ``"[-h_max, ..., -h1, 0, h1, ..., h_max]"``
+    - b_array: ``"[-b_max, ..., -b1, 0, b1, ..., b_max]"``
     """
-    positive = [
-        (n_primary * a_core_m2 * b, h * l_path_m / n_primary)
-        for h, b in h_b_pairs[1:]  # skip origin (0, 0)
-    ]
-    negative_reversed = tuple(reversed([(-p, -i) for p, i in positive]))
+    positive = list(h_b_pairs[1:])  # skip origin (0, 0)
+    negative_reversed = [(-h, -b) for h, b in reversed(positive)]
     origin = (0.0, 0.0)
-    symmetric = (*negative_reversed, origin, *positive)
-    flat: list[str] = []
-    for psi, i_lm in symmetric:
-        flat.append(_g(psi))
-        flat.append(_g(i_lm))
-    return ', '.join(flat)
+    symmetric: list[tuple[float, float]] = [
+        *negative_reversed,
+        origin,
+        *positive,
+    ]
+    h_values = [_g(h) for h, _ in symmetric]
+    b_values = [_g(b) for _, b in symmetric]
+    return (
+        '[' + ' '.join(h_values) + ']',
+        '[' + ' '.join(b_values) + ']',
+    )
 
 
 def _g(x: float) -> str:
@@ -179,27 +212,27 @@ def _g(x: float) -> str:
 
 _SUBCKT_TEMPLATE = """\
 .SUBCKT {name} P1 P2 S1 S2
-* T131 saturable transformer (Frohlich-Kennelly B-H, T-model).
+* T131 saturable transformer (XSPICE gyrator-capacitor, Hamill 1993).
 * Material: mu_init={mu_init}, B_sat={b_sat} T.
 * Geometry: N_pri={n_primary}, N_sec={n_secondary},
 *           A_core={a_core} m^2, l_path={l_path} m.
 * DCR: R_pri={r_pri} Ohm, R_sec={r_sec} Ohm.
-* turns_ratio (N_sec/N_pri) = {turns_ratio}.
 *
-* Flux-linkage integrator (VCCS + capacitor = SPICE classic pattern):
-*   i_G = V(N_a, P2);  V(N_psi) = ∫i_G dt / C = ∫V_Lm dt = psi_link.
-* Magnetizing branch (saturable): current source B_Lm via PWL lookup
-* (psi_link → i_Lm), symmetric (odd) extension from Frohlich pairs.
-* Secondary side: ideal-transformer reflection (no leakage in MVP).
+* Primary side: P1 → R_pri → pri_int, lcouple to magnetic (mc1, 0).
+* Secondary side: S1 → sec_int → R_sec, lcouple to magnetic (0, mc2)
+* (reverse polarity for dot convention — MMF sums on core).
+* a_core: nonlinear B-H curve from Frohlich-Kennelly (odd-symmetric).
 *
-R_pri P1 N_a {r_pri}
-G_int N_psi 0 N_a P2 1
-C_int N_psi 0 1
-B_Lm N_a P2 I=pwl(V(N_psi), {pwl_args})
-V_jsense N_c N_d DC 0
-E_sec N_c S2 N_a P2 {turns_ratio}
-F_pri N_a P2 V_jsense {turns_ratio}
-R_sec N_d S1 {r_sec}
+R_pri P1 pri_int {r_pri}
+a1 (pri_int P2) (mc1 0) primary_{name}
+.model primary_{name} lcouple(num_turns={n_primary})
+a2 (sec_int S2) (0 mc2) secondary_{name}
+.model secondary_{name} lcouple(num_turns={n_secondary})
+R_sec sec_int S1 {r_sec}
+a_core (mc1 mc2) magcore_{name}
+.model magcore_{name} core(H_array={h_array} B_array={b_array}
++ area={a_core} length={l_path}
++ input_domain={input_domain} fraction={fraction})
 .ENDS {name}
 """
 
