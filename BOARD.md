@@ -61,16 +61,41 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T131** — SPICE saturable transformer + THD distortion analysis
-  use case. Reuse T129 Phase A `FrohlichBHCurve`. Pilot — SE-amp
-  6П14П, THD @ 1W vs published reference ±2 dB. Spec:
-  `specs/T131-saturable-thd/spec.md` (Draft, фаза Clarify).
-  Ветка: `T131-saturable-thd` (создаётся при переходе к implement).
-
 ## Done
 
 <!-- Закрытые задачи, ждущие переноса в CHANGELOG.md при следующем
      релизе или значимой точке. После переноса — очищаем. -->
+
+- **T131** — [closed 2026-05-21, PR #63] **SPICE saturable transformer
+  + THD distortion analysis use case — fully working pilot.**
+  5 phase-commits (squash в один при merge):
+  - **Phase A**: saturable subckt generator + `FrohlichBHCurve.h_b_pairs()`.
+  - **Phase B**: `FourierAnalysis` branch + ngspice `.four` parser (через
+    interactive `fourier` команду в `.control` блоке, top-level `.four`
+    директива не работает с `.control` + `run`).
+  - **Phase C**: `ThdSweepSpec/ThdSpectrum` domain VOs + use case
+    `analyze_distortion_spectrum` + netlist library substitution helpers.
+  - **Phase D**: pilot fixture (PyOM-derived OPT_SE_5K_8 MagneticComponent)
+    + acceptance test (6П14П SE + saturable OPT). Изначально
+    infrastructure-only closure из-за convergence blocker'а.
+  - **Phase E**: **redesign saturable_core с PWL current-source → XSPICE
+    gyrator-capacitor (Hamill 1993, `lcouple`+`core`)** — решает algebraic
+    loop с EL84 Koren-моделью; pilot acceptance test **проходит**. Scope
+    expansion в той же ветке (2026-05-21).
+  - **Phase E2**: hexagonal architecture cleanup — FrohlichBHCurve в
+    domain, два port'а (`SaturableSubcktGenerator` + `NetlistEditor`),
+    use case через ports, lint-imports 3/3 contracts kept.
+
+  **Pilot results** (3×3 sweep): THD @ 1 kHz / 1 W = **9.63%** в band
+  [3%, 15%] (revised из [1%, 5%] для compact E 42/15 cores); dominant
+  n=2 везде; saturation contribution +4.85 pp (T131 raison d'être
+  validated); runtime 0.52 s; PyOM Lp = 50.36 H exact match со static
+  lib 50 H. ADR в `DECISIONS.md` 2026-05-21 «Saturable магнетика в SPICE:
+  XSPICE gyrator-capacitor».
+
+  **Follow-ups**: T134 в BACKLOG — «Agent Knowledge Base infrastructure»
+  с T131 как контрольный пример (3 регрессионных query: lcouple+core
+  rule, R_dc_leak requirement, saturation contribution metric).
 
 - **T129** — [closed 2026-05-20, PR #61] **Nonlinear Frohlich-Kennelly
   material model + DC-bias load line — infrastructure-only closure
