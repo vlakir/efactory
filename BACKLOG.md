@@ -198,7 +198,7 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   - **Не входит**: полный seeding текущих знаний (отдельная задача
     после KB skeleton готов); production-quality vector DB tuning.
 
-  Scope ~3-5 дней. **Blocked by Phase 1b «Чат-клиент»** — KB
+  Scope ~3-5 дней. **Blocked by Phase 1b «Claude Code integration»** — KB
   спецификация зависит от characteristics самого agent'а (framework,
   retrieval strategy, context window, interaction API). До появления
   agent'а KB — premature investment без consumer'а. Знания на этапе
@@ -536,56 +536,69 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      драйвится Bash + `.FCMacro` без отдельного MCP-уровня;
      возвращать после T108 ADR и появления stateful use case. -->
 
-### Phase 1b — Чат-клиент (+2–3 недели, исполняется внутри контейнера после Phase 0.9)
+### Phase 1b — Claude Code integration (+~1 неделя efactory-specific glue, исполняется внутри контейнера после Phase 0.9)
 
 <!-- T011 перенесён в Tech Debt 2026-05-19: решено использовать
-     Claude Code как frontend; пилот OpenCode = T108. Судьба
-     T012-T016 (бэкенды, MCP-клиент, slash-команды, контекст-
-     менеджмент, system prompt) будет переоценена после T108
-     ADR — большая часть закрывается готовым frontend'ом
-     "из коробки". Frontend живёт внутри Docker-образа
+     Claude Code как frontend (ADR 2026-05-19 «Distribution: Linux
+     Docker image»). T108 OpenCode pilot — due-diligence, в Tech
+     Debt; не блокирует.
+
+     Phase 1b reformulated 2026-05-22 (см. CHANGELOG ## Closed
+     without implementation): T012/T015 closed (custom backend +
+     token-budget compaction → Claude Code built-in); T017/T018/T019
+     закрыты (multi-backend инфраструктура не нужна); T020
+     переформулирован в research MCP-tool, перенесён в Фазу 8.
+     Оставшиеся T013/T014/T016 — узкий scope efactory-specific glue
+     поверх Claude Code (регистрация MCP-серверов, slash-команды,
+     project context). Frontend живёт внутри Docker-образа
      (см. Phase 0.9). -->
 
-- **T012** — [2026-05-15] `kicad-sim-chat`: бэкенд `claude-code-max`
-  через `claude -p` (только генерация текста / tool_use, без
-  исполнения).
-  Acceptance: запрос пользователя → LLM генерирует tool_use →
-  клиент исполняет инструмент → результат возвращается в LLM.
-- **T013** — [2026-05-15] `kicad-sim-chat`: MCP-клиент с единым
-  реестром инструментов (все 5 серверов) + tool use loop.
-  Acceptance: при старте клиент подключает все настроенные
-  MCP-серверы; инструменты доступны по полному имени.
-- **T014** — [2026-05-15] `kicad-sim-chat`: базовые команды `/model`,
-  `/tools`, `/project`, `/save`, `/load`.
-  Acceptance: каждая команда выполняется, валидирует аргументы,
-  показывает help при `/<cmd> --help`.
-- **T015** — [2026-05-15] `kicad-sim-chat`: управление контекстным
-  окном — summary + conversation compaction по триггеру (token budget).
-  Acceptance: при достижении ~80% контекста бэкенда история
-  сворачивается в summary, не теряя текущей задачи.
-- **T016** — [2026-05-15] `kicad-sim-chat`: system prompt —
-  статические блоки (роль, правила, инструменты) + динамический
-  контекст (текущий проект, открытые файлы, последние результаты).
-  Acceptance: при переключении проекта system prompt обновляется,
-  старый контекст не утекает.
+- **T013** — [2026-05-15, reformulated 2026-05-22] **Регистрация
+  efactory MCP-серверов в Claude Code config.** Bootstrap `.mcp.json`
+  (или `~/.claude/settings.json`) внутри `efactory:linux` образа
+  с прописанными efactory-MCP-серверами: `kicad-mcp-pro` (схема +
+  симуляция), `freecad-mcp` (когда T124 поднимется из Tech Debt),
+  собственные efactory-серверы для тех use case'ов, которые не
+  закрываются готовыми. Configure runtime mount-and-launch через
+  `efactory-up`.
+  Acceptance: после `efactory-up` агент в Claude Code видит
+  efactory-инструменты по имени; smoke tool-call (ngspice analyze
+  или kicad export) проходит end-to-end из чата. Список
+  зарегистрированных серверов покрывается в `docs/` или `README`.
+- **T014** — [2026-05-15, reformulated 2026-05-22] **efactory custom
+  slash-команды для Claude Code.** Реализация через `.claude/
+  commands/<name>.md` в репозитории efactory: `/project create`
+  (создать новый проект из шаблона), `/project use NAME`
+  (переключить активный проект, обновить context), `/sim run`
+  (запустить ngspice pipeline на текущей схеме), `/export-production`
+  (полный пакет документации per §7.1 концепта). Generic команды
+  (`/model`, `/tools`, `/save`, `/load`, `/compact`) — встроены в
+  Claude Code, не дублируем.
+  Acceptance: `/project create --template se-amp NAME` создаёт
+  работающий проект с предзаполненной схемой и моделями; список
+  efactory-команд виден через `/help`; каждая показывает usage при
+  невалидных аргументах.
+- **T016** — [2026-05-15, reformulated 2026-05-22] **Dynamic project
+  context в Claude Code.** Проектный `CLAUDE.md` (статика — роль
+  efactory-агента, правила, ссылки на BOARD/BACKLOG/DECISIONS) уже
+  работает. Динамический project state (текущий выбранный проект,
+  открытые `.kicad_sch`, последние sim results) — подгружается:
+  либо через `SessionStart` hook в `.claude/settings.json` (auto-
+  refresh при открытии Claude Code), либо через slash-команду
+  `/project use NAME` (T014, явный switch). Выбрать механизм
+  при имплементации.
+  Acceptance: при переключении проекта context обновляется
+  автоматически (либо при старте сессии, либо явно `/project use`),
+  старый project-state не утекает в новую сессию.
 
 ### Фаза 2 (+2 недели)
 
-- **T017** — [2026-05-15] Бэкенд `anthropic-api`.
-  Acceptance: переключение `/model anthropic claude-X` работает,
-  tool use идентичен `claude-code-max`.
-- **T018** — [2026-05-15] Бэкенд `openai-compat` (Anthropic SDK,
-  OpenAI SDK, любой OpenAI-совместимый endpoint).
-  Acceptance: можно подключить кастомный URL/key через
-  `backends.toml`, tool use работает.
-- **T019** — [2026-05-15] Конвертация контекста между форматами
-  LLM (Anthropic ↔ OpenAI ↔ Claude Code).
-  Acceptance: переключение бэкенда в середине сессии не теряет
-  историю; tool calls конвертируются корректно.
-- **T020** — [2026-05-15] Команда `/compare` — режим сравнения
-  моделей на одном запросе.
-  Acceptance: `/compare claude-X openai-Y` шлёт один промпт в обе
-  модели, рендерит ответы рядом.
+<!-- T017/T018/T019 закрыты 2026-05-22 как outdated by ADR 2026-05-19
+     (multi-backend инфраструктура не нужна — Claude Code as frontend);
+     перенесены в CHANGELOG → ## Closed without implementation. -->
+<!-- T020 переформулирован 2026-05-22 как research MCP-tool, перенесён
+     в Фазу 8 (nice-to-have, не Phase 2). -->
+
 - **T021** — [2026-05-15] `bridge_edit_and_resim` с автосравнением
   результатов (до/после).
   Acceptance: после изменения схемы выводится дельта по ключевым
@@ -900,6 +913,19 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
 ### Фаза 8 — Будущее
 
+- **T020** — [2026-05-15, reformulated 2026-05-22, moved Phase 2 → 8]
+  **`/compare` MCP-tool для side-by-side model comparison.** После
+  ADR 2026-05-19 (Claude Code as frontend) встроенной multi-backend
+  infrastructure нет — `/compare` реализуется как research MCP-tool:
+  принимает prompt + список моделей, опрашивает Anthropic API /
+  openai-compat endpoints параллельно, возвращает агрегированный
+  markdown с ответами рядом. Nice-to-have для архитектурных решений
+  (eval нескольких LLM на одну efactory-задачу).
+  Acceptance: MCP-tool `efactory.compare_models` принимает
+  `models: list[str]` + `prompt: str`, возвращает структурированный
+  response с ответами и метаданными (latency, токены, cost оценочно).
+  Originally T020 в Фазе 2 (2026-05-15) — «своя slash-команда»;
+  переформулировано как MCP-tool 2026-05-22.
 - **T076** — [2026-05-15] Web-интерфейс для удалённого доступа к
   `kicad-sim-chat` (без замены TUI, дополнительный фронтенд).
   Acceptance: запуск web-server, базовый чат-UI работает поверх той
