@@ -21,6 +21,11 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 хранилище номеров завершённых задач (см. правило нумерации
 в `README.md`).
 
+Задачи, которым присвоен T-ID, но не дошедшие до реализации
+(replaced, absorbed, closed-as-outdated), переезжают в секцию
+`## Closed without implementation` в конце файла — без них формула
+«новый T-ID = max(BOARD + BACKLOG + CHANGELOG) + 1» сломается.
+
 ---
 
 ## [Unreleased]
@@ -1355,3 +1360,72 @@ Walking Skeleton сквозного use case.
   для hexagonal, domain без mock-ов, адаптеры — integration с
   реальными зависимостями. Зафиксировано в auto-memory
   (`feedback_tdd.md`) и в mem0.
+
+---
+
+## Closed without implementation
+
+Задачи, которым был присвоен T-ID, но которые не дошли до
+реализации — replaced (заменены другой задачей), absorbed
+(поглощены другой задачей), или closed-as-outdated (premise
+утратил актуальность). Существуют только для гарантии, что
+T-ID не переиспользуется. Полные original-спеки сохранены
+в git history.
+
+- **T002** — [2026-05-15, replaced 2026-05-19 by T110] bootstrap.sh
+  для Linux: установка KiCad, ngspice, FreeCAD, FEMM, Python,
+  MCP-серверов по `compatibility.toml`. **Replaced by T110**
+  (Dockerfile с полным стеком). ADR — `DECISIONS.md` 2026-05-19,
+  «Distribution: Linux Docker image».
+- **T058** — [2026-05-15, absorbed 2026-05-19 by T113] Bootstrap:
+  установка FEMM (системно) + pyFEMM (Python) на Linux и Windows;
+  обновление `compatibility.toml`. **Absorbed by T113** (FEM-solver
+  pilot + integration в Phase 0.9): Linux-native solver (Elmer /
+  GetDP) ставится в Dockerfile, отдельная bootstrap-задача не
+  нужна. FEMM сам заменён в ADR от 2026-05-19.
+- **T066** — [2026-05-15, absorbed 2026-05-19 by T112] Bootstrap:
+  установка FreeCAD 1.0+ + addon Sheet Metal на Linux и Windows;
+  обновление `compatibility.toml`. **Absorbed by T112** (FreeCAD
+  CLI + GUI в образе, Phase 0.9): FreeCAD и Sheet Metal addon
+  ставятся в Dockerfile, отдельная bootstrap-задача не нужна.
+- **T122** — [2026-05-20, closed 2026-05-21 as outdated] Fallback
+  path: git clone KiCad-libraries из upstream GitLab (вместо
+  `docker pull efactory-libs`). **Closed:** T115 GHCR publish
+  active, primary path `docker pull efactory-libs:linux-dev`
+  стабилен (5/5 последних workflow runs зелёные на 2026-05-21).
+  Реальный degraded scenario «GHCR упал, GitLab жив» маловероятен —
+  обе инфраструктуры под GitHub-side ecosystem.
+- **T123** — [2026-05-20, closed 2026-05-21 as outdated] Убрать
+  KiCad warning «Sim.Library не в symbol-library-table» при
+  открытии efactory-сгенерированного `.kicad_sch`. **Closed:**
+  warning безвреден (Simulator работает per
+  `feedback_kicad_sim_library_warning`), efactory-workflow
+  преимущественно subprocess/CLI — Vladimir warning видит редко.
+  При плотной работе через GUI в будущем задача может быть
+  переоткрыта новым T-ID.
+- **T127** — [2026-05-20, closed 2026-05-21 as outdated by T133]
+  Cross-validation FEM-solver'ов: Elmer ↔ GetDP на дополнительных
+  fixtures (50 Hz power transformer). **Closed:** premise сместился
+  после T133 (Elmer pivot, PR #66, merged 2026-05-21). Elmer стал
+  primary для 3D (acceptance ±25% к ZHANG на Lp=6.04H), GetDP
+  остался для 2D linear; они больше не дублируют один и тот же
+  расчёт. Релевантные follow-up'ы заведены T133 Phase 3e: T136
+  (Elmer rebuild с AMS preconditioner), T138 (PyOM lateral_x
+  semantics fix), T139 (3D nonlinear-frohlich).
+- **T128** — [2026-05-20, split в investigation phase] Nonlinear
+  B-H curve, изначально предложен в ADR 2026-05-20 как «single
+  PR закроет 242% gap». Investigation 2026-05-20: оригинальный
+  scope невыполним за одну сессию — корень gap в DC bias loaded
+  operating point, не только в материальной нелинейности (Nanoperm
+  probe: H_dc=1289 A/m > H_sat=200 A/m). PyOM 1.3.10 не экспонирует
+  bhCycle (probe 409 materials, все null) — B-H синтезируется
+  аналитически. **Split** на T129 (synthetic Frohlich material
+  model) + T130 (DC-bias load line). T128 ID не переиспользуется.
+- **T130** — [2026-05-20, absorbed by T129 в Clarify-фазе] DC-bias
+  load line, originally split from T128. Clarify-фаза T129
+  2026-05-20 wave 2: T130 признана **атомарной с T129** — acceptance
+  ±10% gap closure требует обоих изменений одновременно (nonlinear
+  material без load-line даёт chord L, не incremental; load-line
+  без nonlinear material бессмыслен — μ константа). **Absorbed
+  by T129**: одна спека / одна реализация / один PR (methodology:
+  «по возможности укрупняем PR»). T130 ID не переиспользуется.
