@@ -1429,3 +1429,32 @@ T-ID не переиспользуется. Полные original-спеки с�
   без nonlinear material бессмыслен — μ константа). **Absorbed
   by T129**: одна спека / одна реализация / один PR (methodology:
   «по возможности укрупняем PR»). T130 ID не переиспользуется.
+- **T012** — [2026-05-15, closed 2026-05-22 as outdated by ADR
+  2026-05-19] `kicad-sim-chat`: бэкенд `claude-code-max` через
+  `claude -p` (только генерация текста / tool_use, без исполнения).
+  **Closed:** ADR 2026-05-19 «Distribution: Linux Docker image»
+  зафиксировал Claude Code как frontend агента — своего chat-клиента
+  не строим, значит «backend для своего клиента» теряет смысл
+  (Claude Code сам и frontend, и LLM-runtime). Phase 1b
+  reformulated, см. PR обзора 2026-05-22.
+- **T015** — [2026-05-15, closed 2026-05-22 as outdated by ADR
+  2026-05-19] `kicad-sim-chat`: управление контекстным окном —
+  summary + conversation compaction по триггеру (token budget).
+  **Closed:** Claude Code из коробки делает auto-compact + есть
+  slash-команда `/compact`. Своего token-budget controller не нужно.
+  Phase 1b reformulated 2026-05-22.
+- **T017** — [2026-05-15, closed 2026-05-22 as outdated by ADR
+  2026-05-19] `kicad-sim-chat`: бэкенд `anthropic-api`. **Closed:**
+  своего chat-клиента нет → multi-backend инфраструктура отпала.
+  Claude Code — Anthropic-only by design; смена LLM-провайдера
+  означает смену frontend (см. T108 OpenCode pilot в Tech Debt).
+- **T018** — [2026-05-15, closed 2026-05-22 as outdated by ADR
+  2026-05-19] `kicad-sim-chat`: бэкенд `openai-compat` (любой
+  OpenAI-совместимый endpoint). **Closed:** того же родителя что
+  T017 — нет своего клиента, нет multi-backend слоя.
+- **T019** — [2026-05-15, closed 2026-05-22 as outdated by ADR
+  2026-05-19] Конвертация контекста между форматами LLM
+  (Anthropic ↔ OpenAI ↔ Claude Code) для in-session model switch.
+  **Closed:** model switch внутри Claude Code не требует
+  внешней конверсии (frontend сам владеет state); cross-frontend
+  миграция — задача T108-преемника, если возникнет.
