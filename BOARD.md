@@ -61,40 +61,19 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T140** — [взято 2026-05-24] **`docs/container-boundary.md` как
-  single source of truth для границы образ/host + persist Claude
-  Code state наружу.** Сейчас описание volume mounts размазано по
-  `specs/T110-containerization/spec.md` §5, `README.md` и
-  `DECISIONS.md` 2026-05-19 — при правках Phase 0.9 / 1b глаз
-  цепляется за устаревшие места. Параллельно — runtime-агенту в
-  контейнере **не сохраняется** persistent state (auto-memory,
-  settings, todos): из `~/.claude/` mount'ится только
-  `credentials.json:ro` (и тот ещё ждёт T013), остальное теряется
-  при `docker rm`.
-
-  **Acceptance:**
-
-  1. `docs/container-boundary.md` — новый документ. Принцип «образ
-     ≈ инструменты, volumes ≈ данные» + единая таблица всех
-     категорий host ↔ container (включая новую секцию Claude Code
-     state) + «что НЕ выносим и почему» (изоляция runtime-агента
-     от dev-инстанса Гвидо).
-  2. `efactory-up` — добавлен mount `$STATE_DIR/claude` →
-     `/efactory/.claude` (rw), bootstrap создаёт пустую директорию
-     если нет.
-  3. Cross-refs в одну строку «See `docs/container-boundary.md`»
-     в: `specs/T110-containerization/spec.md` §5, `README.md`
-     mount-таблица, `DECISIONS.md` 2026-05-19 Последствия,
-     `BACKLOG.md` T013 acceptance.
-  4. Manual smoke: `./efactory-up` → внутри контейнера
-     `touch /efactory/.claude/smoke.txt` → выйти → файл присутствует
-     в `$HOME/efactory-state/claude/smoke.txt`.
-
-  **Не входит:** mount credentials.json (это T013, Phase 1b);
-  migration существующего `~/.claude/` контента (директория
-  пустая по дизайну — изоляция). Scope ~2-3 часа, без спецки.
-
 ## Done
+
+- **T140** — [closed 2026-05-24, PR #70] **`docs/container-boundary.md`
+  как single source of truth для границы образ/host + persist Claude
+  Code state наружу.** Новый документ как SSOT (принцип «образ ≈
+  инструменты, volumes ≈ данные», полная таблица mounts, env vars,
+  явная секция «что НЕ выносим и почему»). `efactory-up` mount'ит
+  `$HOME/efactory-state/claude/` → `/efactory/.claude` (rw):
+  runtime-агент сохраняет auto-memory / settings / todos между
+  `docker rm`. Cross-refs в spec T110 §5, README, DECISIONS
+  2026-05-19, BACKLOG T013. Pre-push gates зелёные (ruff / format /
+  mypy / pytest 86.16% coverage). Manual smoke (после merge):
+  `touch /efactory/.claude/smoke.txt` в контейнере → файл на хосте.
 
 - **T133** — [closed 2026-05-21, PR #66] **Elmer FEM pivot — 3D
   acceptance ±25% к PyOM ZHANG achieved (Lp=6.04H, -13.3%);
