@@ -61,20 +61,43 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T013** — **Claude Code runtime в контейнере: install + auth +
-  entrypoint** (переформулировано 2026-05-24; старая «Регистрация
-  efactory MCP-серверов» закрыта по обсуждению — MCP не используем).
-  Установка `@anthropic-ai/claude-code` через npm в `efactory:linux`,
-  interactive `claude login` изнутри контейнера (credentials в
-  `$HOME/efactory-state/claude/` mount T140 — без host→container
-  overlay), новый режим `efactory-up --agent`, минимальный stub
-  `/efactory/CLAUDE.md` (роль РЭА-проектировщика, только реально
-  доступные инструменты — без `efactory` CLI, который ещё нет).
-  Сопутствующий ADR в `DECISIONS.md` «Tool surface = Bash + efactory
-  CLI + filesystem, не MCP». Spec — `specs/T013-claude-code-runtime/
-  spec.md` (Analyzed). Ветка `T013-claude-code-runtime`.
-
 ## Done
+
+- **T013** — [closed 2026-05-24, PR #71] **Claude Code runtime в
+  контейнере: install + auth + entrypoint** (переформулировано
+  2026-05-24; старая «Регистрация efactory MCP-серверов» закрыта
+  по обсуждению — MCP не используем).
+  - **Dockerfile:** `nodejs`+`npm` в base stage + отдельный RUN-слой
+    с `ARG CLAUDE_CODE_VERSION=2.1.150` + `npm install -g
+    @anthropic-ai/claude-code`. `COPY docker/runtime-agent-CLAUDE.md
+    /CLAUDE.md` (system prompt в корне образа).
+  - **efactory-up --agent:** новый TUI-режим без X11/libs, `-it +
+    -w /workspace`, защита от root, env-passthrough
+    `ANTHROPIC_API_KEY`, mutually-exclusive с
+    `--demo/--demo-freecad/--headless`. `claude
+    --dangerously-skip-permissions`.
+  - **docker/runtime-agent-CLAUDE.md:** stub system prompt (роль
+    РЭА-проектировщика efactory; реально доступные инструменты:
+    `kicad-cli`, `ngspice`, `freecadcmd`, `ElmerSolver`, `getdp`,
+    `gmsh`, `uv run python -m efactory.*`, базовые Bash/Read/Write/
+    Edit/Glob/Grep). Без `efactory` CLI (T014, не сделан).
+  - **DECISIONS.md 2026-05-24:** ADR «Tool surface = Bash + efactory
+    CLI + filesystem, не MCP» — Phase 1b: MCP не используем.
+  - **docs/container-boundary.md:** убраны MCP overrides + credentials
+    overlay (отменены); снят aspirational статус с CLI/ENV; добавлена
+    секция про изоляцию credentials через interactive login изнутри.
+  - **BACKLOG T141:** «Dev-only build acceleration через `docker
+    buildx --cache-from/-to type=local`» (контекст: build T013 на
+    медленном канале занял ~1.5 ч; Dockerfile portable per Vladimir
+    «пользователь должен честно тянуть»).
+  - Smoke внутри `efactory:linux`: `claude --version` → 2.1.150,
+    `node --version` → v18.19.1, `/CLAUDE.md` (3343 байт),
+    `CLAUDE_CONFIG_DIR=/efactory/.claude`. Pre-push gates зелёные,
+    coverage 86.16%. Image size: 7.99 → 8.88 GB (+890 MB).
+  - End-to-end TUI smoke (interactive login + tool-use) — Vladimir
+    вручную перед merge.
+  - Spec — `specs/T013-claude-code-runtime/spec.md` (Analyzed, 8
+    clarify resolved, 10 analyze issues).
 
 - **T140** — [closed 2026-05-24, PR #70] **`docs/container-boundary.md`
   как single source of truth для границы образ/host + persist Claude
