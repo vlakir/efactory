@@ -36,6 +36,22 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T140 — `docs/container-boundary.md` как SSOT + persist Claude
+  Code state.** Новый документ `docs/container-boundary.md` —
+  single source of truth для границы образ/host: принцип «образ
+  ≈ инструменты, volumes ≈ данные», полная таблица volume mounts,
+  env vars, явная секция «что НЕ выносим и почему» (изоляция
+  runtime-агента от dev-инстанса Гвидо: `~/.claude/CLAUDE.md`,
+  mem0, tools MCP, API-ключи). `efactory-up` добавляет mount
+  `$HOME/efactory-state/claude/` → `/efactory/.claude` (rw):
+  runtime-агент сохраняет auto-memory / settings.json / todos
+  между `docker rm`. Mount-point уже создан в Dockerfile
+  (`/efactory/.claude`, T111 C3-фикс), `CLAUDE_CONFIG_DIR`
+  настроен. Cross-refs (одна строка «See `docs/container-boundary.md`»)
+  в `specs/T110-containerization/spec.md` §5, `README.md` mount-
+  таблица, `DECISIONS.md` 2026-05-19 Последствия, `BACKLOG.md`
+  T013 acceptance. (T140)
+
 - **Phase 0.9 — Containerization** (новая фаза в roadmap): T110
   (базовый Dockerfile efactory с KiCad из официального apt-репозитория,
   ngspice, Python 3.14, agent), T111 (KiCad GUI passthrough —
