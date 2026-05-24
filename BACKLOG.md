@@ -565,6 +565,11 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   efactory-инструменты по имени; smoke tool-call (ngspice analyze
   или kicad export) проходит end-to-end из чата. Список
   зарегистрированных серверов покрывается в `docs/` или `README`.
+  Persistent state агента (auto-memory, settings.json, todos)
+  живёт на хосте в `$HOME/efactory-state/claude/`, mount уже
+  готов в `efactory-up` (T140); credentials.json — отдельный
+  ro-overlay, добавляется здесь. Полная карта границы образ/host —
+  `docs/container-boundary.md`.
 - **T014** — [2026-05-15, reformulated 2026-05-22] **efactory custom
   slash-команды для Claude Code.** Реализация через `.claude/
   commands/<name>.md` в репозитории efactory: `/project create`

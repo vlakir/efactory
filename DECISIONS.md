@@ -931,6 +931,11 @@ ADR-Lite: компактный лог архитектурных решений 
     инструментарий в один воспроизводимый образ. Задачи:
     T110-T115 (см. BACKLOG.md). После Phase 0.9 все
     дальнейшие фазы исполняются внутри контейнера.
+  - **Карта границы образ/host** — single source of truth
+    `docs/container-boundary.md` (T140). Любое уточнение
+    «что внутри / что снаружи» (volume mounts, env vars,
+    исключения по изоляции) — туда; этот ADR фиксирует
+    архитектурное решение, документ — текущую карту.
 
 ### 2026-05-19 — Magnetic field verification: Linux-native FEM-solver (Elmer FEM primary, GetDP+Gmsh fallback), FEMM как legacy [Заменено решением от 2026-05-20 ниже]
 

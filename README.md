@@ -167,13 +167,15 @@ uv run python scripts/gen-se-amp-demo.py
 В GUI: Tools → Simulator → Run, чтобы прогнать `.tran 10u 80m 10m
 uic` и увидеть на plate-net AC-амплификацию 5–7× от 10mV input.
 
-**Что mount'ит efactory-up:**
+**Что mount'ит efactory-up** (краткая выжимка; полная карта границы
+образ/host — в [`docs/container-boundary.md`](docs/container-boundary.md)):
 
 | Host | Container | Назначение |
 |---|---|---|
 | `$HOME/efactory-projects/` | `/workspace/` | Проекты пользователя |
 | `$HOME/efactory-libs/{symbols,footprints,template,3dmodels}/` | `/usr/share/kicad/{symbols,footprints,template,3dmodels}/` | KiCad system libraries (T121, ro) |
 | `$HOME/efactory-state/{config,cache,local}/` | `/opt/efactory/.{config,cache,local}/` | Persistent KiCad state (setup wizard, settings) |
+| `$HOME/efactory-state/claude/` | `/efactory/.claude/` | Runtime-агент Claude Code state (auto-memory, settings, todos) |
 | `/tmp/.X11-unix/` | `/tmp/.X11-unix/` | X11 socket |
 | `$XAUTHORITY` | `/efactory/.Xauthority` | X11 auth cookie (ro) |
 
