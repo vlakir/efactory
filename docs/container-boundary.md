@@ -18,10 +18,17 @@ spec T110; здесь — только актуальная карта.
 
 Внутри образа — только то, что нужно для запуска тулчейна efactory:
 KiCad, ngspice, FreeCAD, FEM-solver (Elmer + GetDP+Gmsh), Python
-3.13 + uv, Claude Code CLI, наши MCP-серверы, код efactory editable
-install. Всё, что специфично для пользователя (проекты, библиотеки,
-персистентное состояние приложений, секреты) — на хосте, монтируется
-в контейнер volume mount'ами.
+3.13 + uv, Claude Code CLI (T013, npm), runtime-агентский system
+prompt в `/efactory/CLAUDE.md`, код efactory editable install. Всё,
+что специфично для пользователя (проекты, библиотеки, персистентное
+состояние приложений, секреты) — на хосте, монтируется в контейнер
+volume mount'ами.
+
+**MCP-серверы efactory не использует** — tool surface runtime-агента
+= `Bash` + `efactory` CLI + filesystem (см. `DECISIONS.md` 2026-05-24
+«Tool surface = Bash + efactory CLI + filesystem, не MCP»). Door для
+конкретного stateful MCP (например, `freecad-mcp` T124) остаётся
+открытой через separate task с явным обоснованием.
 
 Контейнер **stateless**: `docker rm` оставляет на хосте только то,
 что в host-volumes; ничего пользовательского не теряется.
@@ -38,13 +45,11 @@ install. Всё, что специфично для пользователя (п
 | KiCad templates | `$HOME/efactory-libs/template/` | `/usr/share/kicad/template/` | ro | bootstrap |
 | KiCad 3D models (опц., `--with-3dmodels`) | `$HOME/efactory-libs/3dmodels/` | `/usr/share/kicad/3dmodels/` | ro | bootstrap |
 | KiCad persistent state | `$HOME/efactory-state/{config,cache,local}/` | `/opt/efactory/.{config,cache,local}/` | rw | KiCad GUI (settings, setup wizard) |
-| **Claude Code state** | `$HOME/efactory-state/claude/` | `/efactory/.claude/` | rw | runtime-агент (auto-memory, settings, todos, projects) |
-| Claude Code auth (Phase 1b, T013) | `$HOME/.claude/.credentials.json` | `/efactory/.claude/.credentials.json` | ro | overlay поверх state-mount |
+| **Claude Code state** | `$HOME/efactory-state/claude/` | `/efactory/.claude/` | rw | runtime-агент (auto-memory, settings, todos, projects, `.credentials.json` после первого `claude login`) |
 | X11 socket | `/tmp/.X11-unix/` | `/tmp/.X11-unix/` | rw | X server |
 | X11 auth cookie | `$XAUTHORITY` (или `~/.Xauthority`) | `/efactory/.Xauthority` | ro | host X session |
 | Wayland socket (опц.) | `/run/user/$UID/wayland-0` | `/run/user/$UID/wayland-0` | rw | Wayland compositor |
 | Пользовательские SPICE / custom libs | `$HOME/efactory-libs/custom/` | `/libs/custom/` | rw | пользователь |
-| MCP overrides (dev, опц.) | `~/efactory-mcp.d/` | `/etc/efactory/mcp.d/` | ro | разработчик efactory |
 | Editable source (dev, `--dev`) | `./src/` | `/opt/efactory/src/` | rw | разработчик efactory |
 
 ### Persistent index (внутри `/workspace`)
@@ -93,12 +98,24 @@ dev-инстанса — закрыта бесплатно как побочны
 выглядит как чистый `$CLAUDE_CONFIG_DIR`. Это сохраняет
 изоляцию (efactory не видит ни сессии Гвидо, ни наоборот).
 
-### API-ключи провайдеров (OpenAI, Anthropic, кроме Claude Code auth)
+### Хостовый `~/.claude/.credentials.json` разработчика
 
-**Не пробрасываем.** Если runtime-агенту нужен API-ключ — пользователь
-кладёт его в env-файл проекта, контейнер подхватывает через
-`docker run -e ...` или `--env-file`. Не share'им хостовые ключи
-автоматически (security).
+**Не пробрасываем.** Авторизация runtime-агента в контейнере — через
+интерактивный `claude login` при первом запуске `efactory-up --agent`;
+полученный `.credentials.json` сохраняется в
+`$HOME/efactory-state/claude/.credentials.json` через тот же state-mount,
+что и остальное состояние. Это даёт **полную изоляцию** между моим
+хостовым Claude Code (dev-инстанс с глобальным `~/.claude/CLAUDE.md`,
+mem0, tools MCP) и контейнерным runtime-агентом — у них разные
+credentials, разные projects/sessions, разные системные prompt'ы.
+
+### API-ключи провайдеров (OpenAI, Anthropic API key)
+
+**Не пробрасываем автоматически.** Если пользователь хочет работать
+без subscription (через usage-based billing), `efactory-up --agent`
+поддерживает env-passthrough: `ANTHROPIC_API_KEY` с хоста подхватывается
+в контейнер, если переменная задана. По умолчанию — не share'им
+хостовые ключи (security).
 
 ### Хостовый Docker socket
 
@@ -143,9 +160,18 @@ dev-инстанса — закрыта бесплатно как побочны
 ## Где это применяется в коде
 
 - **`efactory-up`** (корень репо) — реализует mount'ы из таблицы выше.
+  Режимы: дефолтный (KiCad GUI), `--demo` / `--demo-freecad` (демо-
+  фикстуры), `--headless` (CI/pytest), **`--agent` (runtime Claude
+  Code, T013)** — последний отключает X11 pre-flight и libs mount,
+  выделяет TTY (`-it`), запускает `claude --dangerously-skip-permissions`
+  как `LAUNCH_BIN`.
 - **Dockerfile** (корень репо) — создаёт mount-points
   (`/efactory/.claude`, `/efactory/.Xauthority`) с правами
   `0755 root:root`; runtime-юзер читает/пишет через mount.
+  `ENV CLAUDE_CONFIG_DIR=/efactory/.claude`, `claude` CLI ставится
+  через `npm install -g @anthropic-ai/claude-code@<version>` в final
+  stage (T013). `/efactory/CLAUDE.md` — read-only system prompt
+  runtime-агента (роль РЭА-проектировщика).
 - **`Dockerfile.libs`** (корень репо) — собирает `efactory-libs`
   image, из которого `bootstrap_libs` копирует KiCad libraries.
 
@@ -153,7 +179,11 @@ dev-инстанса — закрыта бесплатно как побочны
 
 - `DECISIONS.md` 2026-05-19 «Distribution: Linux Docker image» —
   обоснование архитектуры дистрибутива.
+- `DECISIONS.md` 2026-05-24 «Tool surface = Bash + efactory CLI +
+  filesystem, не MCP» — почему в карте нет MCP overrides.
 - `specs/T110-containerization/spec.md` — спецификация Phase 0.9
   Containerization, history Open questions и Analyze.
-- `README.md` § «Запуск KiCad GUI из контейнера» — пользовательский
-  quick start.
+- `specs/T013-claude-code-runtime/spec.md` — спецификация runtime-
+  агента в контейнере.
+- `README.md` § «Запуск KiCad GUI из контейнера» / «Запуск runtime-
+  агента» — пользовательский quick start.

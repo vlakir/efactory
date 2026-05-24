@@ -18,6 +18,12 @@
 # копирует /opt/freecad/ + симлинки на freecadcmd / freecad. Qt6
 # runtime deps добавлены в base stage. +3 GB к образу.
 #
+# T013 (2026-05-24): Claude Code CLI в base stage через
+# `npm install -g @anthropic-ai/claude-code@$CLAUDE_CODE_VERSION` +
+# nodejs/npm из apt (Ubuntu 24.04 — node 18.19, npm 9.x; достаточно
+# для Claude Code per upstream requirements). Runtime-агентский
+# system prompt — `/efactory/CLAUDE.md`, COPY в final stage.
+#
 # FEM-solver (T113), CI (T115), AppImage cleanup (T120) — отдельные
 # фазы внутри Phase 0.9, отдельные PR.
 
@@ -91,6 +97,8 @@ RUN apt-get update \
       libxkbcommon-x11-0 \
       libxrandr2 \
       libxtst6 \
+      nodejs \
+      npm \
  && sed -i \
       -e 's/^# *\(en_US.UTF-8 UTF-8\)/\1/' \
       -e 's/^# *\(ru_RU.UTF-8 UTF-8\)/\1/' \
@@ -99,6 +107,15 @@ RUN apt-get update \
  && apt-get purge -y software-properties-common gnupg \
  && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+
+# T013 — Claude Code CLI через npm. ARG объявлен здесь (после apt-блока),
+# чтобы bump CLAUDE_CODE_VERSION не инвалидировал кэш apt-layer. Отдельный
+# RUN-слой для той же цели: при bump'е пересобирается только этот слой,
+# apt + nodejs + npm остаются из layer cache.
+ARG CLAUDE_CODE_VERSION=2.1.150
+
+RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+ && rm -rf /root/.npm
 
 
 # ============================================================================
@@ -216,12 +233,20 @@ RUN ln -s /opt/freecad/usr/bin/freecadcmd /usr/local/bin/freecadcmd \
  && ln -s /opt/freecad/AppRun /usr/local/bin/freecad
 
 # C3 mount targets: user-agnostic пути (spec §5 «Volume mounts»).
-# `/efactory/.claude` — credentials для Claude Code (T114), `/workspace`
-# — проекты пользователя, `/libs` — custom libraries.
+# `/efactory/.claude` — state для Claude Code runtime-агента (T013;
+# host mount $HOME/efactory-state/claude/), `/workspace` — проекты
+# пользователя, `/libs` — custom libraries.
 # `/efactory/.Xauthority` (T111) создаёт сам docker при `-v
 # $XAUTHORITY:/efactory/.Xauthority:ro`, parent `/efactory` уже есть.
 RUN mkdir -p /efactory/.claude /workspace /libs \
  && chmod 0755 /efactory /efactory/.claude /workspace /libs
+
+# T013 — system prompt runtime-агента (роль РЭА-проектировщика).
+# Кладём в корень `/CLAUDE.md` чтобы parent-trail от любой CWD внутри
+# контейнера (в т.ч. `/workspace`, `/opt/efactory`) находил файл.
+# Read-only часть образа, override пользователем не предусмотрен в
+# этой задаче (полноценный prompt — после T014 + T016).
+COPY docker/runtime-agent-CLAUDE.md /CLAUDE.md
 
 ENV EFACTORY_VERSION=linux-dev \
     CLAUDE_CONFIG_DIR=/efactory/.claude \
