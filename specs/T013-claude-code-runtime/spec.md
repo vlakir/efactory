@@ -303,8 +303,16 @@ efactory:linux bash -c "id; pwd; ls -ld /efactory /workspace"`). Нашёл
      или `--system-prompt-file=/efactory/CLAUDE.md` (если CLI это
      поддерживает — нужно проверить `claude --help`). Самое чистое.
 
-   **Action:** в начале implementation `claude --help` → определить
-   подходящий флаг; иначе fallback (a).
+   **Resolution (post-implementation, 2026-05-24):** на TUI smoke
+   подход **(a)** **не сработал** — Claude Code 2.1.150 auto-discovery
+   не подхватил `/CLAUDE.md` из parent-trail (агент не упоминал роль,
+   спрашивал «расскажи о проекте»). Переключились на **(c)** через
+   `claude --append-system-prompt "$(cat /CLAUDE.md)"` в `efactory-up
+   --agent` — явная подгрузка через флаг, не зависит от поиска по
+   файловой системе. Smoke подтвердил: агент знает роль РЭА-
+   проектировщика efactory из первого ответа. Файл `/CLAUDE.md` в
+   образе остаётся как single-source — его читаем через `cat` при
+   запуске.
 
 3. **`--dangerously-skip-permissions` имеет ограничения.** В upstream
    Claude Code этот флаг **отказывается работать под root**. У нас

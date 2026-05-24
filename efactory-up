@@ -249,13 +249,20 @@ if (( AGENT_MODE )); then
         AGENT_ENV_ARGS+=(-e "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
         log "ANTHROPIC_API_KEY проброшен в контейнер (usage-based billing)"
     fi
+    # `--append-system-prompt "$(cat /CLAUDE.md)"` — явная подгрузка
+    # runtime-агентского system prompt. Claude Code 2.1.150 auto-discovery
+    # CLAUDE.md из parent-trail CWD=/workspace до / в нашем layout не
+    # сработал (Analyzed issue #2 в spec'е); явное указание через флаг —
+    # надёжно и не зависит от поиска по файловой системе.
+    # bash -c обёртка нужна для $(cat) интерполяции внутри контейнера.
     exec docker run --rm -it \
         "${AGENT_ENV_ARGS[@]}" \
         -v "$STATE_DIR/claude:/efactory/.claude:rw" \
         -v "$PROJECTS_DIR:/workspace:rw" \
         -w /workspace \
         "$IMAGE" \
-        claude --dangerously-skip-permissions "${PASS_ARGS[@]}"
+        bash -c 'exec claude --dangerously-skip-permissions --append-system-prompt "$(cat /CLAUDE.md)" "$@"' \
+        bash "${PASS_ARGS[@]}"
 fi
 
 # ── GUI: pre-flight для X11 ────────────────────────────────────────────────
