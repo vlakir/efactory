@@ -63,6 +63,18 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T140** — [closed 2026-05-24, PR #70] **`docs/container-boundary.md`
+  как single source of truth для границы образ/host + persist Claude
+  Code state наружу.** Новый документ как SSOT (принцип «образ ≈
+  инструменты, volumes ≈ данные», полная таблица mounts, env vars,
+  явная секция «что НЕ выносим и почему»). `efactory-up` mount'ит
+  `$HOME/efactory-state/claude/` → `/efactory/.claude` (rw):
+  runtime-агент сохраняет auto-memory / settings / todos между
+  `docker rm`. Cross-refs в spec T110 §5, README, DECISIONS
+  2026-05-19, BACKLOG T013. Pre-push gates зелёные (ruff / format /
+  mypy / pytest 86.16% coverage). Manual smoke (после merge):
+  `touch /efactory/.claude/smoke.txt` в контейнере → файл на хосте.
+
 - **T133** — [closed 2026-05-21, PR #66] **Elmer FEM pivot — 3D
   acceptance ±25% к PyOM ZHANG achieved (Lp=6.04H, -13.3%);
   factor 19× improvement от T113 baseline gap (3.42× → 1.15×).**

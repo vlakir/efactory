@@ -224,7 +224,10 @@ XAUTH_HOST="${XAUTHORITY:-$HOME/.Xauthority}"
 command -v xhost >/dev/null || fail "xhost не найден в PATH (поставь x11-xserver-utils)"
 
 # State и projects mounts: создаём если нет.
-mkdir -p "$STATE_DIR/config" "$STATE_DIR/cache" "$STATE_DIR/local" "$PROJECTS_DIR"
+# `claude/` — runtime-агент Claude Code (auto-memory, settings, todos,
+# projects). См. docs/container-boundary.md.
+mkdir -p "$STATE_DIR/config" "$STATE_DIR/cache" "$STATE_DIR/local" \
+    "$STATE_DIR/claude" "$PROJECTS_DIR"
 
 # Опциональный GPU passthrough.
 DRI_ARGS=()
@@ -260,6 +263,7 @@ exec docker run --rm \
     -v "$STATE_DIR/config:/opt/efactory/.config:rw" \
     -v "$STATE_DIR/cache:/opt/efactory/.cache:rw" \
     -v "$STATE_DIR/local:/opt/efactory/.local:rw" \
+    -v "$STATE_DIR/claude:/efactory/.claude:rw" \
     -v "$PROJECTS_DIR:/workspace:rw" \
     "${LIBS_ARGS[@]}" \
     "${DRI_ARGS[@]}" \

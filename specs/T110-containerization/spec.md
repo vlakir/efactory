@@ -336,6 +336,11 @@ Stage 5-alt (slim CI): efactory:linux-headless
 
 ### Volume mounts при запуске
 
+> **Текущая карта границы образ/host — в `docs/container-boundary.md`
+> (single source of truth).** Таблица ниже зафиксирована на момент
+> Phase 0.9 как историческая часть спецификации; при расхождении —
+> верит `docs/container-boundary.md`.
+
 | Host | Container | Mode | Назначение |
 |---|---|---|---|
 | `$HOME/efactory-projects/` | `/workspace/` | rw | Проекты пользователя (Project YAML, decisions, схемы, симуляции) |
@@ -344,7 +349,8 @@ Stage 5-alt (slim CI): efactory:linux-headless
 | `$HOME/efactory-libs/kicad-footprints/` (после T121) | `/usr/share/kicad/footprints/` | ro | KiCad system footprint library |
 | `$HOME/efactory-libs/kicad-3dmodels/` (после T121) | `/usr/share/kicad/3dmodels/` | ro | KiCad 3D models |
 | `$HOME/efactory-libs/freecad-mods/` (после T121) | `/usr/share/freecad/Mod/` | ro | FreeCAD workbenches / addons |
-| `$HOME/.claude/.credentials.json` | `/efactory/.claude/.credentials.json` | ro | Claude Code auth (refresh token). См. `CLAUDE_CONFIG_DIR` ниже — путь user-agnostic, не привязан к `/root` или `/home/<user>`. |
+| `$HOME/efactory-state/claude/` (после T140) | `/efactory/.claude/` | rw | Runtime-агент Claude Code state (auto-memory, settings, todos, projects). Не путать с хостовым `~/.claude/` — это отдельная директория для изоляции от dev-инстанса Гвидо. |
+| `$HOME/.claude/.credentials.json` | `/efactory/.claude/.credentials.json` | ro | Claude Code auth (refresh token), overlay поверх state-mount. См. `CLAUDE_CONFIG_DIR` ниже — путь user-agnostic, не привязан к `/root` или `/home/<user>`. |
 | `/tmp/.X11-unix/` | `/tmp/.X11-unix/` | rw | X11 socket |
 | `$XAUTHORITY` (или `~/.Xauthority`) | `/efactory/.Xauthority` | ro | X auth cookie (user-agnostic path) |
 | `/run/user/$UID/wayland-0` (опц.) | `/run/user/$UID/wayland-0` | rw | Wayland socket (XWayland fallback или native) |
