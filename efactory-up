@@ -34,6 +34,13 @@
 #                       запускает gen-bracket-demo.FCMacro через `freecadcmd`
 #                       внутри контейнера. Не тащит kicad-libs.
 #                       Несовместимо с --demo.
+#     --agent           Запустить runtime-агента Claude Code в TUI (T013).
+#                       Без X11/libs — только state + projects mount.
+#                       Первый запуск — интерактивный `claude login` (OAuth);
+#                       credentials кладутся в $HOME/efactory-state/claude/
+#                       и переживают `docker rm`. Альтернатива — экспортировать
+#                       ANTHROPIC_API_KEY на хосте перед запуском.
+#                       Несовместимо с --demo, --demo-freecad, --headless.
 #     -h, --help        Показать help и выйти.
 #
 # Env:
@@ -65,13 +72,14 @@ UPDATE_LIBS=0
 WITH_3DMODELS=0
 DEMO_MODE=0
 DEMO_FREECAD_MODE=0
+AGENT_MODE=0
 PASS_ARGS=()
 
 log() { printf '[efactory-up] %s\n' "$*" >&2; }
 fail() { log "FAIL: $*"; exit 1; }
 
 usage() {
-    sed -n '2,48p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,55p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
 }
 
@@ -85,6 +93,7 @@ while (( $# )); do
         --with-3dmodels) WITH_3DMODELS=1; shift ;;
         --demo)          DEMO_MODE=1; shift ;;
         --demo-freecad)  DEMO_FREECAD_MODE=1; shift ;;
+        --agent)         AGENT_MODE=1; shift ;;
         -h|--help)       usage ;;
         --)              shift; PASS_ARGS+=("$@"); break ;;
         *)               PASS_ARGS+=("$1"); shift ;;
@@ -93,6 +102,17 @@ done
 
 if (( DEMO_MODE && DEMO_FREECAD_MODE )); then
     fail "--demo и --demo-freecad взаимоисключающи (KiCad/FreeCAD — разные binaries)"
+fi
+
+if (( AGENT_MODE && ( DEMO_MODE || DEMO_FREECAD_MODE || HEADLESS ) )); then
+    fail "--agent взаимоисключающ с --demo / --demo-freecad / --headless (разные LAUNCH_BIN / режимы запуска)"
+fi
+
+# `--dangerously-skip-permissions` (Claude Code CLI) отказывается работать
+# под root. Контейнер запускается под `ubuntu` (uid=1000) — но если кто-то
+# запустит этот скрипт через sudo с root-HOME / env, эвристически предупредим.
+if (( AGENT_MODE )) && [[ $(id -u) -eq 0 ]]; then
+    fail "--agent: hostный uid=0 (sudo?). Claude Code --dangerously-skip-permissions откажется работать под root. Запусти без sudo."
 fi
 
 if (( WITH_3DMODELS )); then
@@ -215,6 +235,27 @@ if (( HEADLESS )); then
         cmd=("${PASS_ARGS[@]}")
     fi
     exec docker run --rm "$IMAGE" "${cmd[@]}"
+fi
+
+# ── Agent режим (Claude Code TUI) — T013 ───────────────────────────────────
+# Без X11, без libs (агент не обращается напрямую к KiCad-libs — они
+# доступны через `kicad-cli` который сам найдёт их в `/usr/share/kicad/`,
+# но Symbol Library Browser не нужен в TUI-сценарии). State + projects
+# mount, опциональный ANTHROPIC_API_KEY passthrough. `-it` для TUI.
+if (( AGENT_MODE )); then
+    mkdir -p "$STATE_DIR/claude" "$PROJECTS_DIR"
+    AGENT_ENV_ARGS=()
+    if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+        AGENT_ENV_ARGS+=(-e "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
+        log "ANTHROPIC_API_KEY проброшен в контейнер (usage-based billing)"
+    fi
+    exec docker run --rm -it \
+        "${AGENT_ENV_ARGS[@]}" \
+        -v "$STATE_DIR/claude:/efactory/.claude:rw" \
+        -v "$PROJECTS_DIR:/workspace:rw" \
+        -w /workspace \
+        "$IMAGE" \
+        claude --dangerously-skip-permissions "${PASS_ARGS[@]}"
 fi
 
 # ── GUI: pre-flight для X11 ────────────────────────────────────────────────

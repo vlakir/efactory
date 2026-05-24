@@ -140,6 +140,8 @@ docker build -f Dockerfile.libs -t efactory-libs:linux-dev .  # ~450 MB
                                     # запуск bootstrap'ит libraries
                                     # из efactory-libs image в
                                     # $HOME/efactory-libs/
+./efactory-up --agent               # запустить runtime-агента Claude Code
+                                    # (TUI, без X11 / GUI; T013)
 ./efactory-up --update-libs         # пересоздать libraries
 ./efactory-up --update-libs --with-3dmodels   # подтянуть 3D-модели
 ./efactory-up --headless            # запустить pytest в контейнере
@@ -175,7 +177,7 @@ uic` и увидеть на plate-net AC-амплификацию 5–7× от 1
 | `$HOME/efactory-projects/` | `/workspace/` | Проекты пользователя |
 | `$HOME/efactory-libs/{symbols,footprints,template,3dmodels}/` | `/usr/share/kicad/{symbols,footprints,template,3dmodels}/` | KiCad system libraries (T121, ro) |
 | `$HOME/efactory-state/{config,cache,local}/` | `/opt/efactory/.{config,cache,local}/` | Persistent KiCad state (setup wizard, settings) |
-| `$HOME/efactory-state/claude/` | `/efactory/.claude/` | Runtime-агент Claude Code state (auto-memory, settings, todos) |
+| `$HOME/efactory-state/claude/` | `/efactory/.claude/` | Runtime-агент Claude Code state: auto-memory, settings, todos, `.credentials.json` (после первого `claude login`) |
 | `/tmp/.X11-unix/` | `/tmp/.X11-unix/` | X11 socket |
 | `$XAUTHORITY` | `/efactory/.Xauthority` | X11 auth cookie (ro) |
 
@@ -183,6 +185,32 @@ Wayland-сессии (Ubuntu 24.04 GNOME по умолчанию) работаю
 XWayland-bridge без изменений. Native Wayland-passthrough
 (`-v /run/user/$UID/wayland-0:/run/user/$UID/wayland-0`) пока не
 добавлен — пилим, когда появится Wayland-only сценарий.
+
+### Запуск runtime-агента (Claude Code в контейнере, T013)
+
+```bash
+./efactory-up --agent
+```
+
+Первый запуск — интерактивный `claude login` (OAuth); полученный
+`.credentials.json` сохраняется в
+`$HOME/efactory-state/claude/.credentials.json` и переживает
+`docker rm`. Системный prompt runtime-агента (роль РЭА-проектировщика
+efactory) — `/efactory/CLAUDE.md` в образе, read-only.
+
+Альтернатива subscription — usage-based через API-key:
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+./efactory-up --agent
+```
+
+Изоляция от хостового Claude Code (моего dev-инстанса с глобальным
+`~/.claude/CLAUDE.md`, mem0, tools-MCP) — полная: разные credentials,
+разные `CLAUDE.md`, разные sessions/projects. Полная карта границы —
+[`docs/container-boundary.md`](docs/container-boundary.md). Tool
+surface агента — `Bash` + `efactory` CLI + filesystem; MCP не
+используется (см. ADR от 2026-05-24 в `DECISIONS.md`).
 
 ### Для разработчика efactory (текущий режим разработки)
 

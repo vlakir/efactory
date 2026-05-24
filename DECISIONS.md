@@ -26,6 +26,92 @@ ADR-Lite: компактный лог архитектурных решений 
      дат — от фундаментального к инструментальному. -->
 
 
+### 2026-05-24 — Tool surface runtime-агента: Bash + efactory CLI + filesystem, не MCP
+
+- **Контекст.** В рамках Phase 1b «Claude Code integration» подняли
+  задачу T013 «Регистрация efactory MCP-серверов». При обсуждении
+  Vladimir поставил вопрос: имеет ли смысл MCP, если ADR 2026-05-19
+  («Distribution: Linux Docker image») зафиксировал Claude Code как
+  единственный frontend?
+
+- **Анализ.** MCP создан для двух задач: (1) унификации tool-surface
+  между разными LLM-провайдерами; (2) удалённых stateful tool-серверов.
+  В архитектуре efactory оба смысла исчезли:
+
+  - **Унификация** — Claude Code уже даёт единый набор tools
+    (Read/Edit/Write/Bash/Glob/Grep), мы не таргетим OpenAI/Gemini/Ollama.
+  - **Remote/stateful** — всё локально в контейнере; вызовы stateless:
+    `kicad-cli`, `ngspice`, `getdp`, `ElmerSolver`, `freecadcmd <macro>`,
+    Python use cases через `uv run python -m ...`.
+
+  Любой MCP-сервер был бы тонкой обёрткой над уже существующими
+  hex-use case'ами в `src/` — дублирование без прироста ценности.
+
+- **Решение.** Tool surface runtime-агента efactory:
+
+  1. **`Bash`** — для запуска CLI-тулзов (`kicad-cli`, `ngspice`,
+     `freecadcmd`, `ElmerSolver`, `getdp`, `gmsh`) и Python use cases
+     через `uv run python -m efactory.*`.
+  2. **`efactory` CLI** (T014, будущее) — высокоуровневый entrypoint
+     в hex-use case'ы (`efactory project create ...`, `efactory sim
+     run`, `efactory mag verify ...`). Тонкий adapter в
+     `adapters/inbound/cli/`, hex-архитектура остаётся consumer-
+     agnostic.
+  3. **Filesystem** через `Read` / `Edit` / `Write` — все артефакты
+     efactory (`.kicad_sch`, `.kicad_pro`, `.sif`, `.geo`, `.FCStd`,
+     reports) живут на диске как SSOT; агент работает с ними как
+     разработчик в IDE.
+
+- **Альтернативы рассмотрены:**
+
+  - **MCP-серверы efactory-собственные** — отвергнуто как дублирование
+    hex-use case'ов без прироста.
+  - **Сторонние MCP (kicad-mcp-pro, freecad-mcp)** — отвергнуто как
+    default путь. Если конкретный сторонний MCP даст value, который
+    не закрывается прямой работой (например, высокоуровневые ERC
+    helpers лучше нашего `kicad-cli` + sexp-фасадов) — оценить как
+    готовый tool в отдельной задаче, не как часть инфраструктуры.
+  - **`freecad-mcp` для stateful FreeCAD-сессий (T124, Tech Debt)** —
+    остаётся открытой опцией для одного конкретного use case
+    («открой документ → серия правок → save»), не для всей
+    архитектуры. Триггер — реальный сценарий, где stateless
+    `.FCMacro` через `freecadcmd` (как сейчас, `gen-bracket-demo.
+    FCMacro`) не годится.
+
+- **Последствия:**
+
+  - **Closed без implementation:** старая формулировка T013
+    («Регистрация efactory MCP-серверов» MCP-bootstrap часть).
+    T012/T015/T017/T018/T019 уже closed аналогично 2026-05-22.
+    T013 переформулирована в «Claude Code runtime в контейнере:
+    install + auth + entrypoint»: npm-install Claude Code CLI,
+    interactive login изнутри контейнера, новый режим
+    `efactory-up --agent`. Спецификация —
+    `specs/T013-claude-code-runtime/spec.md`.
+  - **`docs/container-boundary.md`** правится: убирается строка
+    `MCP overrides (dev, опц.)` (`~/efactory-mcp.d/` →
+    `/etc/efactory/mcp.d/`); убирается строка `Claude Code auth
+    (Phase 1b, T013)` overlay из `~/.claude/.credentials.json` —
+    отменена в пользу login-изнутри.
+  - **Phase 1b reduced до трёх задач:** T013 (runtime в контейнере)
+    + T016 (project context) + T014 (CLI + slash-команды). Без
+    MCP-задачи.
+  - **`efactory` CLI становится центральным артефактом T014** —
+    единый entrypoint в hex-use case'ы, используемый и из чата
+    (через slash-команды поверх него), и в скриптах, и в CI, и
+    руками в терминале.
+  - **`T134` (Agent Knowledge Base)** остаётся актуальной как
+    Phase 1b follow-up — но scope упрощается, поскольку нет MCP-
+    специфичной семантики хранения.
+  - **Door остаётся открытой:** если в будущем возникнет реальная
+    необходимость stateful MCP-сервера (T124, или ещё что-то),
+    добавляем под конкретный use case с явным обоснованием.
+
+  Reference: спецификация T013
+  (`specs/T013-claude-code-runtime/spec.md`) — clarify-блок
+  зафиксировал это решение в пункте Resolved-7.
+
+
 ### 2026-05-21 — T133 closure: 3D Elmer FEM ACHIEVED acceptance ±25% к PyOM ZHANG (Lp=6.04H, -13.3%); 2D inherent gap +180-240% confirmed physics-bound
 
 - **Контекст.** T133 (Elmer FEM pivot) trigger — T113 Phase 1 pilot

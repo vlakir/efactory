@@ -61,6 +61,19 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T013** — **Claude Code runtime в контейнере: install + auth +
+  entrypoint** (переформулировано 2026-05-24; старая «Регистрация
+  efactory MCP-серверов» закрыта по обсуждению — MCP не используем).
+  Установка `@anthropic-ai/claude-code` через npm в `efactory:linux`,
+  interactive `claude login` изнутри контейнера (credentials в
+  `$HOME/efactory-state/claude/` mount T140 — без host→container
+  overlay), новый режим `efactory-up --agent`, минимальный stub
+  `/efactory/CLAUDE.md` (роль РЭА-проектировщика, только реально
+  доступные инструменты — без `efactory` CLI, который ещё нет).
+  Сопутствующий ADR в `DECISIONS.md` «Tool surface = Bash + efactory
+  CLI + filesystem, не MCP». Spec — `specs/T013-claude-code-runtime/
+  spec.md` (Analyzed). Ветка `T013-claude-code-runtime`.
+
 ## Done
 
 - **T140** — [closed 2026-05-24, PR #70] **`docs/container-boundary.md`

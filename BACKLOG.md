@@ -448,6 +448,55 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   → ряд правок → save с сохранением состояния между
   tool-call'ами).
 
+- **T141** — [2026-05-24, заведено по дороге в T013] **Dev-only
+  build acceleration: `efactory-build-dev` wrapper с
+  `docker buildx --cache-from/-to type=local`.**
+
+  **Контекст.** Build `efactory:linux` в T013 на медленном канале
+  занял ~1.5 ч (apt-download KiCad/FreeCAD-deps + Python deps через
+  uv sync + npm install Claude Code). Docker layer cache работает,
+  но только при идентичном Dockerfile + контексте; bump'ы apt-deps
+  или ARG в начале stages инвалидируют большие куски (как было с
+  ARG до перемещения).
+
+  Vladimir 2026-05-24: **«пользователь должен честно тянуть»** — то
+  есть Dockerfile **не должен** содержать BuildKit-specific syntax
+  (`--mount=type=cache,target=...`), чтобы остаться портативным для
+  обычного `docker build` без buildx. Ускорение — на уровне
+  *команды сборки*, не Dockerfile.
+
+  **Acceptance.**
+  - `scripts/efactory-build-dev` (или Makefile-target) — wrapper:
+    ```
+    docker buildx build \
+      --cache-from type=local,src=$HOME/efactory-buildcache \
+      --cache-to   type=local,dest=$HOME/efactory-buildcache,mode=max \
+      -t efactory:linux .
+    ```
+  - Документация: short note в `README.md` § Development про
+    предустановку `docker-buildx-plugin` (`sudo apt install
+    docker-buildx-plugin`) и использование dev-wrapper'а.
+  - Acceptance: после первого «прогревочного» build (длинный, как
+    обычный) **повторный** build без изменений Dockerfile + контекста
+    проходит за **секунды** (только final layers).
+  - Dockerfile остаётся portable — `docker build` без buildx
+    работает как сейчас (T013 acceptance).
+
+  Опционально (если будет полезно):
+  - `--cache-from type=registry,ref=ghcr.io/vlakir/efactory:cache`
+    для распределённого cache между dev-машинами и CI; параллель к
+    T115 publish workflow.
+  - Аналогичный wrapper `efactory-build-libs-dev` для
+    `Dockerfile.libs`.
+
+  Scope ~1-2 часа: установка buildx, написание wrapper, smoke,
+  README-note.
+
+  Не блокирует: текущий `docker build` работает (T013 closed).
+  Триггер: следующий долгий build, когда захочется выиграть
+  20+ минут.
+
+
 ### Фаза 1a — MVP-ядро (3–4 недели)
 
 <!-- T004b + T005 перенесены в BOARD.md → Done (2026-05-19, common PR). -->
@@ -553,23 +602,14 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      project context). Frontend живёт внутри Docker-образа
      (см. Phase 0.9). -->
 
-- **T013** — [2026-05-15, reformulated 2026-05-22] **Регистрация
-  efactory MCP-серверов в Claude Code config.** Bootstrap `.mcp.json`
-  (или `~/.claude/settings.json`) внутри `efactory:linux` образа
-  с прописанными efactory-MCP-серверами: `kicad-mcp-pro` (схема +
-  симуляция), `freecad-mcp` (когда T124 поднимется из Tech Debt),
-  собственные efactory-серверы для тех use case'ов, которые не
-  закрываются готовыми. Configure runtime mount-and-launch через
-  `efactory-up`.
-  Acceptance: после `efactory-up` агент в Claude Code видит
-  efactory-инструменты по имени; smoke tool-call (ngspice analyze
-  или kicad export) проходит end-to-end из чата. Список
-  зарегистрированных серверов покрывается в `docs/` или `README`.
-  Persistent state агента (auto-memory, settings.json, todos)
-  живёт на хосте в `$HOME/efactory-state/claude/`, mount уже
-  готов в `efactory-up` (T140); credentials.json — отдельный
-  ro-overlay, добавляется здесь. Полная карта границы образ/host —
-  `docs/container-boundary.md`.
+<!-- T013 переехала в BOARD.md → Doing 2026-05-24 после второй
+     переформулировки. Старая формулировка «Регистрация efactory
+     MCP-серверов» закрыта (MCP не используем — ADR 2026-05-24 в
+     DECISIONS.md «Tool surface = Bash + efactory CLI + filesystem,
+     не MCP»); новая — «Claude Code runtime в контейнере: install +
+     auth + entrypoint». Spec — specs/T013-claude-code-runtime/spec.md
+     (Analyzed). -->
+
 - **T014** — [2026-05-15, reformulated 2026-05-22] **efactory custom
   slash-команды для Claude Code.** Реализация через `.claude/
   commands/<name>.md` в репозитории efactory: `/project create`
