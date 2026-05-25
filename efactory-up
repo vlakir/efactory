@@ -34,13 +34,23 @@
 #                       запускает gen-bracket-demo.FCMacro через `freecadcmd`
 #                       внутри контейнера. Не тащит kicad-libs.
 #                       Несовместимо с --demo.
-#     --agent           Запустить runtime-агента Claude Code в TUI (T013).
+#     --agent [NAME]    Запустить runtime-агента Claude Code в TUI (T013).
 #                       Без X11/libs — только state + projects mount.
 #                       Первый запуск — интерактивный `claude login` (OAuth);
 #                       credentials кладутся в $HOME/efactory-state/claude/
 #                       и переживают `docker rm`. Альтернатива — экспортировать
 #                       ANTHROPIC_API_KEY на хосте перед запуском.
 #                       Несовместимо с --demo, --demo-freecad, --headless.
+#                       NAME (T016) — имя проекта в $HOME/efactory-projects/.
+#                       Контейнер стартует с cwd=/workspace/NAME/; SessionStart
+#                       hook генерирует динамический project context. Если NAME
+#                       не указан — стартует в /workspace/ без активного
+#                       проекта (агент увидит "No active project").
+#     --reset-claude-settings
+#                       Перезаписать $HOME/efactory-state/claude/settings.json
+#                       embedded template'ом из образа (с backup *.bak-DATE).
+#                       Использовать после upgrade образа, если SessionStart
+#                       hook перестал работать (T016 mitigation для A1).
 #     -h, --help        Показать help и выйти.
 #
 # Env:
@@ -73,13 +83,15 @@ WITH_3DMODELS=0
 DEMO_MODE=0
 DEMO_FREECAD_MODE=0
 AGENT_MODE=0
+AGENT_PROJECT=""
+RESET_CLAUDE_SETTINGS=0
 PASS_ARGS=()
 
 log() { printf '[efactory-up] %s\n' "$*" >&2; }
 fail() { log "FAIL: $*"; exit 1; }
 
 usage() {
-    sed -n '2,55p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,65p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
 }
 
@@ -93,7 +105,19 @@ while (( $# )); do
         --with-3dmodels) WITH_3DMODELS=1; shift ;;
         --demo)          DEMO_MODE=1; shift ;;
         --demo-freecad)  DEMO_FREECAD_MODE=1; shift ;;
-        --agent)         AGENT_MODE=1; shift ;;
+        --agent)
+            # T016 — `--agent [NAME]`: optional positional NAME, не другой
+            # флаг и не `--` (separator). Если NAME отсутствует, агент
+            # стартует в /workspace без активного проекта.
+            AGENT_MODE=1
+            shift
+            if (( $# > 0 )) && [[ "$1" != --* && "$1" != "--" ]]; then
+                AGENT_PROJECT="$1"
+                shift
+            fi
+            ;;
+        --reset-claude-settings)
+            RESET_CLAUDE_SETTINGS=1; shift ;;
         -h|--help)       usage ;;
         --)              shift; PASS_ARGS+=("$@"); break ;;
         *)               PASS_ARGS+=("$1"); shift ;;
@@ -106,6 +130,18 @@ fi
 
 if (( AGENT_MODE && ( DEMO_MODE || DEMO_FREECAD_MODE || HEADLESS ) )); then
     fail "--agent взаимоисключающ с --demo / --demo-freecad / --headless (разные LAUNCH_BIN / режимы запуска)"
+fi
+
+# T016 — `--reset-claude-settings` без `--agent` допустим как standalone
+# команда: сбросить settings.json embedded template'ом и выйти.
+if (( RESET_CLAUDE_SETTINGS && DEMO_MODE )); then
+    fail "--reset-claude-settings и --demo несовместимы (--reset работает только в context'е --agent или standalone)"
+fi
+if (( RESET_CLAUDE_SETTINGS && DEMO_FREECAD_MODE )); then
+    fail "--reset-claude-settings и --demo-freecad несовместимы"
+fi
+if (( RESET_CLAUDE_SETTINGS && HEADLESS )); then
+    fail "--reset-claude-settings и --headless несовместимы"
 fi
 
 # `--dangerously-skip-permissions` (Claude Code CLI) отказывается работать
@@ -237,29 +273,104 @@ if (( HEADLESS )); then
     exec docker run --rm "$IMAGE" "${cmd[@]}"
 fi
 
-# ── Agent режим (Claude Code TUI) — T013 ───────────────────────────────────
+# ── Claude Code settings.json bootstrap (T016) ─────────────────────────────
+# Bootstrap-step для AGENT_MODE и standalone --reset-claude-settings.
+# settings.json содержит SessionStart hook, который генерирует project
+# context. Persist mount $STATE_DIR/claude:/efactory/.claude/ означает,
+# что запечённый в образе файл (по `/efactory/.claude/settings.json`)
+# перетрётся пустой host-директорией; материализуем дефолт **на хосте**.
+#
+# Источник дефолта (приоритет):
+#   1) $REPO_ROOT/docker/runtime-agent-settings.json — если есть (dev: репо
+#      под рукой, никаких docker run).
+#   2) /opt/efactory/share/claude-defaults/settings.json в образе — fallback
+#      когда репо отсутствует (production: распространяем только image).
+bootstrap_claude_settings() {
+    local force="${1:-0}"
+    local target_dir="$STATE_DIR/claude"
+    local target_file="$target_dir/settings.json"
+    mkdir -p "$target_dir"
+
+    if [[ -f "$target_file" && "$force" -eq 0 ]]; then
+        return 0
+    fi
+
+    local source_in_repo="$REPO_ROOT/docker/runtime-agent-settings.json"
+    if [[ -f "$target_file" && "$force" -eq 1 ]]; then
+        local backup="$target_file.bak-$(date +%Y-%m-%d)"
+        cp -f "$target_file" "$backup"
+        log "settings.json reset: backup → $backup"
+    fi
+
+    if [[ -f "$source_in_repo" ]]; then
+        cp -f "$source_in_repo" "$target_file"
+        log "Claude Code settings.json bootstrapped из репо ($source_in_repo)"
+    else
+        # Fallback: docker run + cp из образа.
+        local container
+        container="$(docker create "$IMAGE")"
+        if ! docker cp \
+                "$container:/opt/efactory/share/claude-defaults/settings.json" \
+                "$target_file" 2>/dev/null; then
+            docker rm "$container" >/dev/null 2>&1 || true
+            fail "Не удалось материализовать settings.json (репо отсутствует, в образе тоже нет /opt/efactory/share/claude-defaults/settings.json — пересобери image)"
+        fi
+        docker rm "$container" >/dev/null
+        log "Claude Code settings.json bootstrapped из образа ($IMAGE)"
+    fi
+}
+
+if (( RESET_CLAUDE_SETTINGS && ! AGENT_MODE )); then
+    # Standalone сброс — не запускаем агента.
+    bootstrap_claude_settings 1
+    log "Готово. Запусти агента: ./efactory-up --agent [NAME]"
+    exit 0
+fi
+
+# ── Agent режим (Claude Code TUI) — T013 + T016 ────────────────────────────
 # Без X11, без libs (агент не обращается напрямую к KiCad-libs — они
 # доступны через `kicad-cli` который сам найдёт их в `/usr/share/kicad/`,
 # но Symbol Library Browser не нужен в TUI-сценарии). State + projects
 # mount, опциональный ANTHROPIC_API_KEY passthrough. `-it` для TUI.
+#
+# T016 — позиционный AGENT_PROJECT:
+#   - если задан, cwd контейнера = /workspace/$AGENT_PROJECT, pre-flight
+#     проверяет существование $PROJECTS_DIR/$AGENT_PROJECT;
+#   - если пуст, cwd = /workspace (SessionStart hook выведет «No active
+#     project, available: ...»).
 if (( AGENT_MODE )); then
     mkdir -p "$STATE_DIR/claude" "$PROJECTS_DIR"
+
+    AGENT_CWD="/workspace"
+    if [[ -n "$AGENT_PROJECT" ]]; then
+        if [[ ! -d "$PROJECTS_DIR/$AGENT_PROJECT" ]]; then
+            available="$(cd "$PROJECTS_DIR" 2>/dev/null \
+                && ls -1d */ 2>/dev/null | sed 's:/$::' | paste -sd', ' || echo '(пусто)')"
+            fail "Проект '$AGENT_PROJECT' не найден в $PROJECTS_DIR. Доступно: $available"
+        fi
+        AGENT_CWD="/workspace/$AGENT_PROJECT"
+    fi
+
+    bootstrap_claude_settings "$RESET_CLAUDE_SETTINGS"
+
     AGENT_ENV_ARGS=()
     if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
         AGENT_ENV_ARGS+=(-e "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
         log "ANTHROPIC_API_KEY проброшен в контейнер (usage-based billing)"
     fi
+    log "agent cwd = $AGENT_CWD"
+
     # `--append-system-prompt "$(cat /CLAUDE.md)"` — явная подгрузка
     # runtime-агентского system prompt. Claude Code 2.1.150 auto-discovery
     # CLAUDE.md из parent-trail CWD=/workspace до / в нашем layout не
-    # сработал (Analyzed issue #2 в spec'е); явное указание через флаг —
+    # сработал (Analyzed issue #2 в T013 spec'е); явное указание через флаг —
     # надёжно и не зависит от поиска по файловой системе.
     # bash -c обёртка нужна для $(cat) интерполяции внутри контейнера.
     exec docker run --rm -it \
         "${AGENT_ENV_ARGS[@]}" \
         -v "$STATE_DIR/claude:/efactory/.claude:rw" \
         -v "$PROJECTS_DIR:/workspace:rw" \
-        -w /workspace \
+        -w "$AGENT_CWD" \
         "$IMAGE" \
         bash -c 'exec claude --dangerously-skip-permissions --append-system-prompt "$(cat /CLAUDE.md)" "$@"' \
         bash "${PASS_ARGS[@]}"

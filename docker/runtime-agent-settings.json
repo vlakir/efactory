@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 /opt/efactory/scripts/session_start_hook.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

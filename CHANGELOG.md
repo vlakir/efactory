@@ -36,6 +36,61 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T016 — Dynamic project context в Claude Code (SessionStart hook
+  + sim-results infrastructure).** Phase 1b завершена: runtime-агент
+  при старте сессии получает динамическую project-сводку (название,
+  ключевые файлы, последние sim-результаты) дополнительно к
+  статическому system prompt из T013.
+  - **SessionStart hook** (`scripts/session_start_hook.py`) — Python
+    stdlib only через `/usr/bin/python3` (cold start ~30-50 ms),
+    сканирует cwd → определяет project = первый сегмент после
+    `/workspace/`, формирует markdown-block в JSON envelope
+    `hookSpecificOutput.additionalContext`. Категории файлов: KiCad
+    (`.kicad_pro`/`sch`/`pcb`), SPICE (`.cir`/`.spice`/`.subckt`/
+    `.lib`), FreeCAD (`.FCStd`), FEM (`.geo`/`.sif`/`.pro`). Глубина
+    скана — top-level + 1 уровень subdir. Soft cap = 20 файлов на
+    категорию + «(+N more)».
+  - **`docker/runtime-agent-settings.json`** — embedded template
+    settings.json (matcher `startup|resume|clear|compact`, timeout
+    10 s), bootstrap'ится в `$HOME/efactory-state/claude/settings.json`
+    на хосте через `efactory-up --agent` (или standalone
+    `--reset-claude-settings`).
+  - **`efactory-up --agent [NAME]`** — позиционный аргумент NAME:
+    pre-flight проверяет `$PROJECTS_DIR/$NAME` существование, контейнер
+    стартует с `-w /workspace/$NAME/`. Без NAME — cwd `/workspace/`
+    (агент видит «No active project, available: ...»). Новый флаг
+    `--reset-claude-settings` (с backup `*.bak-YYYY-MM-DD`) — escape
+    hatch для апгрейда (mitigation A1 спеки).
+  - **Sim-results infrastructure** (Phase B): `SimResult` Pydantic
+    domain VO (`src/domain/sim_results.py`, schema_version=1, fields:
+    timestamp/analysis_type/source_file/tool/duration/summary/metrics/
+    artefacts), `AnalysisType` StrEnum (tran/ac/dc/op/four/thd/
+    fem_field/leakage/bracket_sheet_metal/other), `SimResultsRepository`
+    Protocol (`src/ports/outbound/sim_results.py`), `FileSystemSimResults`
+    adapter (`src/adapters/outbound/sim_results_filesystem/`) с
+    атомарной записью через `asyncio.to_thread` (`.json.tmp` →
+    `Path.replace`). Канонический путь —
+    `<PROJECT_ROOT>/.efactory/sim-results/<TIMESTAMP-safe>-<analysis>.json`.
+  - **`sim_run` integration** (Phase C): добавлены optional `sim_results_writer`
+    + `project_root` параметры; `ValueError` при partial DI (один без
+    другого); полная обратная совместимость когда оба `None`. Summary
+    рендерится по `analysis.type` (op/tran/ac/four).
+  - **52 новых теста** (27 hook unit + 2 hook subprocess integration +
+    11 domain + 8 adapter + 6 sim_run): 896 passed, 9 skipped, coverage
+    86.10%. All 4 pre-push gates зелёные.
+  - **Mitigation issues** из Analyze: A1 (`--reset-claude-settings`),
+    A2 (sync writer body в async via `asyncio.to_thread`), A3
+    (SimResult ≠ SimulationResult, build snapshot extract logic),
+    A6 (cwd → `$CLAUDE_PROJECT_DIR` ⇒ `os.getcwd()` ⇒ `/`).
+  - **Doc updates:** `docs/container-boundary.md` (sim-results в
+    workspace, hook + settings template paths в коде), `README.md`
+    («Запуск runtime-агента» расширен про project context).
+  - **Out of scope (BACKLOG follow-ups, см. ниже):** sim-results
+    rotation/cleanup, `PostToolUse` hook для real-time refresh во
+    время сессии, `/project use NAME` slash-команда (T014).
+  - Spec — `specs/T016-project-context/spec.md` (Analyzed, 7 clarify
+    resolved, 7 analyze issues — all Warning/Note, no Critical).
+
 - **T140 — `docs/container-boundary.md` как SSOT + persist Claude
   Code state.** Новый документ `docs/container-boundary.md` —
   single source of truth для границы образ/host: принцип «образ

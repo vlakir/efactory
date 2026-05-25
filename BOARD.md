@@ -61,6 +61,26 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T016** — [taken 2026-05-25] **Dynamic project context в Claude
+  Code.** SessionStart hook (Python 3 stdlib) сканирует cwd агента,
+  определяет project = первый сегмент после `/workspace/`, инжектирует
+  динамическую секцию (project name + ключевые файлы + последние
+  sim-результаты) в system prompt через `additionalContext`. Параллельно
+  вводится sim-results infrastructure: канонический путь
+  `<PROJECT_ROOT>/.efactory/sim-results/`, JSON schema, port + adapter
+  по гексагону, интеграция в `sim_run` use case.
+  Acceptance:
+  - `./efactory-up --agent <PROJECT>` → агент сразу видит project name
+    и файлы (sanity-проверка через диалог).
+  - Sim-результат из `sim_run` записывается в
+    `.efactory/sim-results/<TS>-<analysis>.json`, валидируется по schema.
+  - Hook не падает при cwd=`/workspace` (без проекта) — выводит
+    «No active project, available: ...».
+  - Hook latency < 200 ms на demo-проекте; pre-push gates зелёные.
+  Spec — `specs/T016-project-context/spec.md` (Analyzed). Ветка
+  `T016-project-context`.
+
+
 ## Done
 
 - **T013** — [closed 2026-05-24, PR #71] **Claude Code runtime в

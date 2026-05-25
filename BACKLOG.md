@@ -496,6 +496,40 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   Триггер: следующий долгий build, когда захочется выиграть
   20+ минут.
 
+- **T142** — [2026-05-25, заведено по дороге в T016] **Sim-results
+  rotation / cleanup policy.** `.efactory/sim-results/` сейчас
+  append-only — каждый запуск симуляции (sim_run, mag_verify_field,
+  analyze_distortion_spectrum, ...) добавляет JSON-файл (несколько KB
+  каждый, но потенциально неограниченно). Через тысячу запусков —
+  десятки MB и сотни файлов в одном каталоге, заметная медлительность
+  SessionStart hook'а (хотя у него max_results=3 уже defensively
+  ограничивает).
+  Acceptance: configurable retention policy (например, оставлять
+  последние N=100 или последние D=30 дней), CLI команда
+  `efactory sim-results prune` для ручной очистки, опционально —
+  background prune при `efactory sim run`. Триггер — когда у Vladimir
+  накопится первые 100+ результатов в реальном проекте и появится
+  трение.
+
+- **T143** — [2026-05-25, заведено по дороге в T016] **`PostToolUse`
+  hook для real-time sim-results refresh в Claude Code.** Сейчас
+  `SessionStart` hook (T016) показывает sim-results только при старте
+  сессии. Если агент в той же сессии запустил `sim_run` через `Bash`,
+  новый JSON в `.efactory/sim-results/` появился, но контекст не
+  обновится до `/clear` / `/compact` / нового стартапа. Решение —
+  `PostToolUse` hook (Claude Code docs §Hooks), реагирующий на
+  `Bash` tool, и при изменении `.efactory/sim-results/` инжектирующий
+  diff в следующее сообщение.
+  Acceptance: после `sim_run` запуска агент в той же сессии видит
+  новый sim-результат без manual `Read`. Hook latency < 100 ms
+  (срабатывает на каждый tool call — не должен замедлить агента).
+  Out of scope T016 потому что: (а) увеличивает scope; (б) `PostToolUse`
+  тонкое решение, требует продуманного UX (не каждый Bash-tool call
+  читает sim-results, нужен smart change-detection); (в) для пилотного
+  использования T016 hook'а достаточно: пользователь может явно
+  `/clear` после симуляции и получит свежий контекст. Триггер —
+  когда захочется доп. seamless.
+
 
 ### Фаза 1a — MVP-ядро (3–4 недели)
 
@@ -623,18 +657,11 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   работающий проект с предзаполненной схемой и моделями; список
   efactory-команд виден через `/help`; каждая показывает usage при
   невалидных аргументах.
-- **T016** — [2026-05-15, reformulated 2026-05-22] **Dynamic project
-  context в Claude Code.** Проектный `CLAUDE.md` (статика — роль
-  efactory-агента, правила, ссылки на BOARD/BACKLOG/DECISIONS) уже
-  работает. Динамический project state (текущий выбранный проект,
-  открытые `.kicad_sch`, последние sim results) — подгружается:
-  либо через `SessionStart` hook в `.claude/settings.json` (auto-
-  refresh при открытии Claude Code), либо через slash-команду
-  `/project use NAME` (T014, явный switch). Выбрать механизм
-  при имплементации.
-  Acceptance: при переключении проекта context обновляется
-  автоматически (либо при старте сессии, либо явно `/project use`),
-  старый project-state не утекает в новую сессию.
+<!-- T016 переехала в BOARD.md → Doing 2026-05-25 после clarify-прохода.
+     Механизм выбран — SessionStart hook + cwd-based project detection
+     (vs `/project use NAME` остаётся за T014). Spec —
+     specs/T016-project-context/spec.md (Analyzed). -->
+
 
 ### Фаза 2 (+2 недели)
 
