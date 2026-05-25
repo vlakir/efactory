@@ -61,7 +61,55 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+
+
 ## Done
+
+- **T016** — [closed 2026-05-26, PR #72] **Dynamic project context в
+  Claude Code (SessionStart hook + sim-results infrastructure).**
+  Phase 1b завершена: runtime-агент при старте сессии получает
+  динамическую project-сводку дополнительно к статическому system
+  prompt из T013.
+  - **Phase A — SessionStart hook + settings.json bootstrap.**
+    `scripts/session_start_hook.py` (Python 3 stdlib через
+    `/usr/bin/python3`, cold start ~30-50 ms) сканирует cwd →
+    `/workspace/<NAME>/`, формирует markdown-block (KiCad/SPICE/
+    FreeCAD/FEM файлы, soft cap 20/категория, последние 3 sim-
+    результата без `metrics`) в JSON envelope `additionalContext`.
+    `docker/runtime-agent-settings.json` — embedded template
+    settings.json (matcher `startup|resume|clear|compact`, timeout
+    10 s), bootstrap'ится в host state через `efactory-up --agent`.
+  - **`efactory-up --agent [NAME]`** — позиционный аргумент NAME с
+    pre-flight валидацией, cwd=`/workspace/$NAME/`. Новый
+    `--reset-claude-settings` (backup `*.bak-YYYY-MM-DD`) — escape
+    hatch для апгрейда образа (mitigation A1 спеки).
+  - **Phase B — sim-results infrastructure (hex архитектура).**
+    `domain/sim_results.py` (`SimResult` Pydantic VO + `AnalysisType`
+    StrEnum, `schema_version=1`), `ports/outbound/sim_results.py`
+    (`SimResultsRepository` Protocol), `adapters/outbound/
+    sim_results_filesystem/` (`FileSystemSimResults` с атомарной
+    записью `.json.tmp → Path.replace` через `asyncio.to_thread`).
+    Канонический путь — `<PROJECT>/.efactory/sim-results/
+    <TIMESTAMP-safe>-<analysis>.json`.
+  - **Phase C — `sim_run` integration.** Optional `sim_results_writer`
+    + `project_root` параметры; `ValueError` при partial DI; полная
+    обратная совместимость без них. Summary рендерится по
+    `analysis.type` (op/tran/ac/four).
+  - **Phase D — docs.** `docs/container-boundary.md` (sim-results +
+    hook/template paths), `README.md` (Запуск runtime-агента
+    расширен), `CHANGELOG.md` [Unreleased]. Follow-ups в `BACKLOG.md`:
+    T142 (sim-results rotation), T143 (`PostToolUse` real-time
+    refresh).
+  - **52 новых теста**: 27 hook unit + 2 hook subprocess integration +
+    11 domain + 8 adapter + 6 sim_run. Pre-push gates зелёные
+    (ruff/format/mypy/lint-imports 3/3 KEPT/pytest); 896 passed,
+    9 skipped, coverage 86.10%.
+  - **Mitigation issues** из Analyze: A1 (`--reset-claude-settings`),
+    A2 (async writer body via `asyncio.to_thread`), A3 (SimResult ≠
+    SimulationResult, build snapshot extract), A6 (cwd →
+    `$CLAUDE_PROJECT_DIR` ⇒ `os.getcwd()` ⇒ `/`).
+  - Spec — `specs/T016-project-context/spec.md` (Analyzed, 7 clarify
+    resolved «по рекомендации», 7 issues все Warning/Note).
 
 - **T013** — [closed 2026-05-24, PR #71] **Claude Code runtime в
   контейнере: install + auth + entrypoint** (переформулировано

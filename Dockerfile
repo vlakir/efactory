@@ -248,6 +248,18 @@ RUN mkdir -p /efactory/.claude /workspace /libs \
 # этой задаче (полноценный prompt — после T014 + T016).
 COPY docker/runtime-agent-CLAUDE.md /CLAUDE.md
 
+# T016 — embedded SessionStart hook + дефолтный settings.json template
+# для Claude Code. settings.json bootstrap'ится в `/efactory/.claude/`
+# на host'е через `efactory-up --agent` (persist mount поверх
+# `/efactory/.claude/` перетрёт запечённый в образ файл, поэтому
+# bootstrap идёт на host). Hook — stdlib-only Python через
+# `/usr/bin/python3` (3.12 в Ubuntu 24.04 base), не зависит от
+# editable venv: cold-start ~30-50 ms.
+COPY docker/runtime-agent-settings.json /opt/efactory/share/claude-defaults/settings.json
+# scripts/ уже скопирован в stage 3 (efactory-code) для других целей
+# (gen-bracket-demo.FCMacro и т.п.); session_start_hook.py попадает
+# в `/opt/efactory/scripts/` без отдельного COPY.
+
 ENV EFACTORY_VERSION=linux-dev \
     CLAUDE_CONFIG_DIR=/efactory/.claude \
     EFACTORY_PROJECTS_ROOT=/workspace \

@@ -62,6 +62,15 @@ projects-директории. Это значит: каждая проектн�
 
 `EFACTORY_DATABASE_URL=sqlite+aiosqlite:///workspace/.efactory/db.sqlite`.
 
+### Sim-results (внутри `/workspace/<PROJECT>`)
+
+efactory use cases пишут sim-результаты в
+`/workspace/<PROJECT>/.efactory/sim-results/<TIMESTAMP>-<analysis>.json`
+(T016). Не отдельный mount, часть проектной директории — путешествует
+вместе с проектом. SessionStart hook читает последние 3 файла и
+включает summary в динамический project context. Структура файла —
+`SimResult` schema (см. `src/domain/sim_results.py`), `schema_version=1`.
+
 ---
 
 ## Что НЕ выносим на host и почему
@@ -161,10 +170,14 @@ credentials, разные projects/sessions, разные системные pro
 
 - **`efactory-up`** (корень репо) — реализует mount'ы из таблицы выше.
   Режимы: дефолтный (KiCad GUI), `--demo` / `--demo-freecad` (демо-
-  фикстуры), `--headless` (CI/pytest), **`--agent` (runtime Claude
-  Code, T013)** — последний отключает X11 pre-flight и libs mount,
-  выделяет TTY (`-it`), запускает `claude --dangerously-skip-permissions`
-  как `LAUNCH_BIN`.
+  фикстуры), `--headless` (CI/pytest), **`--agent [NAME]` (runtime
+  Claude Code, T013 + T016)** — отключает X11 pre-flight и libs
+  mount, выделяет TTY (`-it`), запускает `claude --dangerously-skip-
+  permissions` с cwd=`/workspace/[NAME]` (при заданном NAME) или
+  `/workspace` (default). При первом запуске и `--reset-claude-
+  settings` материализует `$HOME/efactory-state/claude/settings.json`
+  из embedded template'а (репо: `docker/runtime-agent-settings.json`,
+  fallback из образа: `/opt/efactory/share/claude-defaults/settings.json`).
 - **Dockerfile** (корень репо) — создаёт mount-points
   (`/efactory/.claude`, `/efactory/.Xauthority`) с правами
   `0755 root:root`; runtime-юзер читает/пишет через mount.
@@ -172,6 +185,11 @@ credentials, разные projects/sessions, разные системные pro
   через `npm install -g @anthropic-ai/claude-code@<version>` в final
   stage (T013). `/efactory/CLAUDE.md` — read-only system prompt
   runtime-агента (роль РЭА-проектировщика).
+  `/opt/efactory/scripts/session_start_hook.py` (T016) — SessionStart
+  hook, генерирует динамический project context из cwd.
+  `/opt/efactory/share/claude-defaults/settings.json` (T016) —
+  embedded template settings.json (read-only fallback для bootstrap'а
+  на хосте, если репо отсутствует).
 - **`Dockerfile.libs`** (корень репо) — собирает `efactory-libs`
   image, из которого `bootstrap_libs` копирует KiCad libraries.
 
@@ -185,5 +203,7 @@ credentials, разные projects/sessions, разные системные pro
   Containerization, history Open questions и Analyze.
 - `specs/T013-claude-code-runtime/spec.md` — спецификация runtime-
   агента в контейнере.
+- `specs/T016-project-context/spec.md` — спецификация dynamic project
+  context (SessionStart hook) и sim-results infrastructure.
 - `README.md` § «Запуск KiCad GUI из контейнера» / «Запуск runtime-
   агента» — пользовательский quick start.

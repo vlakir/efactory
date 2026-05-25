@@ -186,9 +186,13 @@ XWayland-bridge без изменений. Native Wayland-passthrough
 (`-v /run/user/$UID/wayland-0:/run/user/$UID/wayland-0`) пока не
 добавлен — пилим, когда появится Wayland-only сценарий.
 
-### Запуск runtime-агента (Claude Code в контейнере, T013)
+### Запуск runtime-агента (Claude Code в контейнере, T013 + T016)
 
 ```bash
+# В контексте конкретного проекта:
+./efactory-up --agent se-amp-demo
+
+# Или без выбранного проекта (агент увидит «No active project»):
 ./efactory-up --agent
 ```
 
@@ -197,6 +201,33 @@ XWayland-bridge без изменений. Native Wayland-passthrough
 `$HOME/efactory-state/claude/.credentials.json` и переживает
 `docker rm`. Системный prompt runtime-агента (роль РЭА-проектировщика
 efactory) — `/efactory/CLAUDE.md` в образе, read-only.
+
+**Dynamic project context (T016).** Контейнер стартует с
+cwd=`/workspace/<PROJECT>/` (если NAME задан) или `/workspace/`
+(если нет). SessionStart hook (`scripts/session_start_hook.py`)
+читает cwd и инжектирует в system prompt динамический блок:
+название проекта, список KiCad/SPICE/FreeCAD/FEM файлов, последние
+3 sim-результата из `<PROJECT>/.efactory/sim-results/*.json`. При
+смене проекта (новый `efactory-up --agent OTHER`) старый контекст
+не утекает — каждая сессия читает cwd заново.
+
+> **После апгрейда до T016 — обязательно пересобрать образ:**
+> `docker build -t efactory:linux .` (или `docker pull` из GHCR
+> после T115 publish). Без rebuild hook script отсутствует в образе,
+> и SessionStart hook silently no-op'ит (graceful degradation).
+> Если у тебя ранее существовал `$HOME/efactory-state/claude/
+> settings.json` от ручной настройки — однократно запусти
+> `./efactory-up --reset-claude-settings` (backup *.bak-YYYY-MM-DD
+> рядом). Авто-merge без затирания user-prefs — follow-up T149.
+
+Sim-результаты пишутся use cases (например, `sim_run`) в
+`<PROJECT>/.efactory/sim-results/<TIMESTAMP>-<analysis>.json` по
+`SimResult` schema (см. `src/domain/sim_results.py`). Часть проектной
+директории, путешествует вместе с проектом.
+
+После апгрейда образа hook может перестать работать (settings.json
+запечатан в host-state и не обновляется): сбросить можно явно
+`./efactory-up --reset-claude-settings` — с backup'ом старого файла.
 
 Альтернатива subscription — usage-based через API-key:
 
