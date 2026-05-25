@@ -1,0 +1,24 @@
+* OPT_SE_5K_8 — Single-Ended output transformer, primary 5kΩ : secondary 8Ω.
+*
+* Generic typical-class модель (Hammond 1627A-class):
+*   ~5-15 W power handling, ~30 Hz - 40 kHz bandwidth, k ≈ 0.9995.
+*
+* Параметры — typical для бюджетного SE OPT. Для production используйте
+* спецификацию вашего конкретного трансформатора (Tango XE-20S,
+* Hammond 1627A, Lundahl LL1620 и т.п.) либо расчёт через T052.
+*
+* subcategory: opt
+* Pins:
+*   P1, P2 — primary (P1 to plate, P2 to B+ supply).
+*   S1, S2 — secondary (S1, S2 to load).
+.SUBCKT OPT_SE_5K_8 P1 P2 S1 S2
+* Turns ratio sqrt(5000/8) ≈ 25:1. Lp = 50 H (typical SE OPT).
+Lp P1 P2 50
+Ls S1 S2 0.08
+K1 Lp Ls 0.9995
+* DCR (primary winding much higher than secondary).
+Rp_dcr P1 P3 200
+Rs_dcr S1 S3 0.3
+* Inter-winding capacitance — определяет HF roll-off.
+Cps P1 S1 200p
+.ENDS OPT_SE_5K_8

@@ -96,7 +96,7 @@ def test_create_writes_session_log_with_ok_event(
     assert len(create_events) == 1
     assert create_events[0]['status'] == 'ok'
     assert create_events[0]['project'] == 'demo'
-    assert create_events[0]['payload'] == {'name': 'demo'}
+    assert create_events[0]['payload'] == {'name': 'demo', 'template': None}
 
 
 def test_decision_add_to_missing_project_writes_error_event(

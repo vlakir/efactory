@@ -61,6 +61,18 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T014** — [taken 2026-05-26] **efactory custom slash-команды для
+  Claude Code: `/project-create`, `/project-use`, `/sim-run`.** Phase
+  1b closing. Реализация через `docker/runtime-agent-commands/<name>.md`
+  (bootstrap'ятся в host state, mount'ятся в `/efactory/.claude/
+  commands/`), thin wrappers поверх существующего `efactory` CLI с
+  расширением `efactory project create --template se-amp NAME`.
+  `/project-use` — display-only (Bash cwd persistence нестабильна).
+  `/export-production` вынесен в T150.
+  Spec — `specs/T014-claude-code-slash/spec.md` (Analyzed).
+  Acceptance — § Success Criteria спеки.
+  Ветка — `T014-claude-code-slash`.
+
 
 
 ## Done
