@@ -41,6 +41,25 @@ T-ID между релизами — `CHANGELOG.md` единственное per
   при старте сессии получает динамическую project-сводку (название,
   ключевые файлы, последние sim-результаты) дополнительно к
   статическому system prompt из T013.
+
+  **Действия после merge (обязательно для активации hook'а):**
+
+  1. Пересобрать образ: `docker build -t efactory:linux .` —
+     иначе в `efactory:linux` не будет ни
+     `scripts/session_start_hook.py`, ни embedded template'а
+     (`/opt/efactory/share/claude-defaults/settings.json`), и
+     SessionStart hook в settings.json указывает на несуществующий
+     файл → graceful degradation, агент не видит project block. Или
+     дождаться CI publish из T115 (после merge — `docker pull
+     ghcr.io/vlakir/efactory:linux-latest`).
+  2. Если у пользователя ранее существовал
+     `$HOME/efactory-state/claude/settings.json` (например, с user-
+     prefs `theme` от ручной настройки) — запустить
+     `./efactory-up --reset-claude-settings`. Bootstrap-функция
+     consciously **не** мерджит hooks в существующий файл
+     (отдельный T-ID T149 — auto-merge без затирания user-prefs).
+     Reset делает backup `*.bak-YYYY-MM-DD` рядом.
+
   - **SessionStart hook** (`scripts/session_start_hook.py`) — Python
     stdlib only через `/usr/bin/python3` (cold start ~30-50 ms),
     сканирует cwd → определяет project = первый сегмент после

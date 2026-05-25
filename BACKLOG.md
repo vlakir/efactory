@@ -530,6 +530,106 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   `/clear` после симуляции и получит свежий контекст. Триггер —
   когда захочется доп. seamless.
 
+- **T144** — [2026-05-26, заведено по итогам прогона 5 сценариев T016
+  на se-amp-demo] **`efactory bridge sweep`: tabular numerical output
+  + CSV.** Runner сейчас отрабатывает все combination'ы и пишет per-
+  combination `.cir`, но **в stdout печатает только лейблы** (`[R2=330] …`),
+  никаких numerical results. Причина: сгенерированные netlist'ы
+  содержат `.tran` без `.print` / `.control`, парсер из `.raw` не
+  выкачивается. По `--help` обещано «key voltages per run», по факту —
+  пусто. Главный gap для повседневной работы: sweep по катодному
+  резистору / B+ / Rg — самый частый use case в проектировании
+  ламповых каскадов, сейчас даёт ноль полезного output из коробки
+  (агент проверил вручную через `ngspice -b` — физика правильная,
+  значит проблема только в извлечении).
+  Acceptance:
+  - В per-combination netlist класть `.control { op; wrdata <file>
+    v(<nodes>) i(<sources>); }` либо честный `.raw` export.
+  - Парсер собирает values и печатает tabular: `param V(plate) V(K)
+    I(V1)` в одну таблицу для всех combination'ов.
+  - Опциональный `--output csv` / `--output json` для пост-обработки.
+  Приоритет высокий (без этого sweep не используется).
+
+- **T145** — [2026-05-26, заведено по итогам прогона 5 сценариев T016]
+  **`efactory bridge sim-run op`: auto-fallback на transient-to-op
+  при non-convergence.** Голая `.op` на реальных tube-схемах часто
+  падает с `singular matrix` / `Newton iteration failure` — нужны
+  initial guess'ы (`nodeset`), `.options gmin=1e-10`, либо
+  transient run до большого `t_stop` и взятие последнего sample как
+  OP (классическая SPICE-практика для непростых нелинейностей).
+  Acceptance:
+  - На первой попытке — обычная `.op` (быстро).
+  - При fail — auto-retry: `.tran 1us 100ms uic` + извлечение последнего
+    sample. Лимит на retry-длительность (например, 30 s по умолчанию).
+  - Stdout явно отмечает каким способом получено: `OP (direct)` vs
+    `OP (transient-fallback at t=100ms)`.
+  Триггер задачи: на se-amp-demo баг `OPT_SE_5K_8.lib` (T147)
+  ломает direct `.op`, fallback решил бы UX без ручной правки моделей.
+
+- **T146** — [2026-05-26, заведено по итогам прогона 5 сценариев T016]
+  **SPICE-models validation при импорте в `/libs/custom/`.** Простой
+  static check: каждая внутренняя нода subckt должна встречаться
+  как минимум 2 раза (один раз — как pin компонента, один раз — на
+  другом компоненте). Floating ноды (как `P3` в `OPT_SE_5K_8.lib` —
+  туда подключён `Rp_dcr`, но больше нигде не используется → DCR
+  висит на воздухе → singular matrix при `.op`) ловились бы до
+  интеграции в проект.
+  Acceptance:
+  - `efactory model validate <file.lib>` или auto-check при
+    `kicad-cli` netlist-генерации с warning'ом.
+  - На фикстурном `.lib` с floating-node — fail / warning с указанием
+    конкретной ноды.
+
+- **T147** — [2026-05-26, заведено по итогам прогона 5 сценариев T016]
+  **Fix `data/templates/.../OPT_SE_5K_8.lib`: floating ноды `P3` /
+  `sec_a`.** Hot-fix демо-фикстуры: либо подключить `Rp_dcr` через
+  правильную ноду (вероятно `P` instead of `P3`, опечатка в библиотеке),
+  либо удалить unused references. Тривиально (1 строка), но без него
+  `sim-run op` на se-amp-demo не сходится. Триггер для T146 (валидатор
+  поймал бы это сам), но фикс делается раньше — иначе demo broken для
+  agent UX.
+  Acceptance: `ngspice -b` с `.op` на se_amp.cir завершается success,
+  напряжения физичные.
+
+- **T149** — [2026-05-26, заведено по итогам round-trip T016]
+  **`bootstrap_claude_settings`: auto-merge `hooks` секции в
+  существующий host settings.json.** Сейчас функция в `efactory-up`
+  проверяет «файл есть → не трогать», что ломается у пользователей с
+  pre-T016 `$HOME/efactory-state/claude/settings.json` (например, с
+  user-prefs `theme`/`skipDangerousModePermissionPrompt`): bootstrap
+  no-op'ит, hooks секция не появляется, SessionStart hook не
+  engaged — agent виден агенту только cwd, но без project block.
+  Единственный workaround сейчас — `--reset-claude-settings`,
+  затирающий user-prefs.
+  Acceptance:
+  - Если host settings.json существует и **не** содержит `hooks`
+    ключа — мерджить hooks из embedded template (`docker/runtime-
+    agent-settings.json`), сохраняя остальные user keys.
+  - Если host settings.json содержит `hooks` секцию (пусть даже
+    кастомную) — НЕ трогать без `--reset-claude-settings` (явное
+    решение user'а).
+  - Корректный merge для SessionStart matcher arrays: append без
+    дублирования.
+  - Тесты: pre-T016 settings.json (theme only) → после bootstrap
+    содержит и theme, и hooks с правильным matcher.
+  Триггер: текущая T016 версия без T149 требует ручного
+  `--reset-claude-settings` после upgrade, что затирает user
+  preferences. T149 закрывает этот UX-rough.
+
+- **T148** — [2026-05-26, заведено по итогам прогона 5 сценариев T016]
+  **Inplace-проект: `efactory bridge edit/sweep/sim-run` без
+  `project create`.** Сейчас все bridge-команды требуют PROJECT-имя,
+  и `project create` создаёт `/workspace/<NAME>/` под именем проекта,
+  игнорируя cwd. Для quick exploration overkill — хочется работать с
+  существующим `.kicad_sch` по cwd без регистрации в DB.
+  Acceptance:
+  - `efactory bridge sim-run --schematic <path>` без позиционного
+    PROJECT — стартует через временный/inplace проект на основе cwd.
+  - Auto-инференс PROJECT-имени из cwd basename, если позиционный
+    аргумент опущен.
+  - DB-регистрация — опциональная (lazy, при первом decision /
+    artefact, который должен куда-то persist'иться).
+
 
 ### Фаза 1a — MVP-ядро (3–4 недели)
 

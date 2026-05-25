@@ -211,6 +211,15 @@ cwd=`/workspace/<PROJECT>/` (если NAME задан) или `/workspace/`
 смене проекта (новый `efactory-up --agent OTHER`) старый контекст
 не утекает — каждая сессия читает cwd заново.
 
+> **После апгрейда до T016 — обязательно пересобрать образ:**
+> `docker build -t efactory:linux .` (или `docker pull` из GHCR
+> после T115 publish). Без rebuild hook script отсутствует в образе,
+> и SessionStart hook silently no-op'ит (graceful degradation).
+> Если у тебя ранее существовал `$HOME/efactory-state/claude/
+> settings.json` от ручной настройки — однократно запусти
+> `./efactory-up --reset-claude-settings` (backup *.bak-YYYY-MM-DD
+> рядом). Авто-merge без затирания user-prefs — follow-up T149.
+
 Sim-результаты пишутся use cases (например, `sim_run`) в
 `<PROJECT>/.efactory/sim-results/<TIMESTAMP>-<analysis>.json` по
 `SimResult` schema (см. `src/domain/sim_results.py`). Часть проектной
