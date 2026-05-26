@@ -48,6 +48,11 @@ from application.get_project import (
 )
 from application.list_decisions import list_decisions as list_decisions_use_case
 from application.list_projects import list_projects as list_projects_use_case
+from application.measure_bandwidth import (
+    measure_bandwidth as measure_bandwidth_use_case,
+)
+from application.measure_gain import measure_gain as measure_gain_use_case
+from application.measure_thd import measure_thd as measure_thd_use_case
 from application.reindex_projects import (
     reindex_projects as reindex_projects_use_case,
 )
@@ -90,6 +95,11 @@ if TYPE_CHECKING:
     from application.create_project import CreateProjectResult
     from application.reindex_projects import ReindexSummary
     from domain.decision import Decision
+    from domain.measurement import (
+        BandwidthMeasurement,
+        GainMeasurement,
+        ThdMeasurement,
+    )
     from domain.project import Project
     from domain.simulation import AnalysisSpec, Simulation, SimulationResult
     from domain.spice_model import SpiceModel
@@ -97,6 +107,7 @@ if TYPE_CHECKING:
     from ports.outbound.decision_repository import DecisionRepository
     from ports.outbound.git_repository import GitRepository
     from ports.outbound.metadata_repository import MetadataRepository
+    from ports.outbound.netlist_editor import NetlistEditor
     from ports.outbound.project_file_repository import ProjectFileRepository
     from ports.outbound.project_manifest_repository import (
         ProjectManifestRepository,
@@ -136,6 +147,42 @@ async def _log_command[T](
     return result
 
 
+def _emit_gain(result: GainMeasurement, *, output_fmt: str) -> None:
+    if output_fmt == 'json':
+        typer.echo(result.model_dump_json(indent=2))
+        return
+    typer.echo(
+        f'Gain: {result.value_db:.2f} dB '
+        f'(x{result.value_linear:.4g}) @ {result.frequency_hz:.0f} Hz '
+        f'[mode={result.mode}, in={result.input_signal}, out={result.output_signal}]',
+    )
+
+
+def _emit_bandwidth(result: BandwidthMeasurement, *, output_fmt: str) -> None:
+    if output_fmt == 'json':
+        typer.echo(result.model_dump_json(indent=2))
+        return
+    typer.echo(
+        f'Bandwidth: {result.f_low_hz:.1f} Hz … {result.f_high_hz:.1f} Hz '
+        f'({result.bandwidth_hz:.1f} Hz @ {result.ref_db:+.1f} dB, '
+        f'midpoint={result.midpoint_db:.2f} dB '
+        f'[{result.midpoint_source}])',
+    )
+
+
+def _emit_thd(result: ThdMeasurement, *, output_fmt: str) -> None:
+    if output_fmt == 'json':
+        typer.echo(result.model_dump_json(indent=2))
+        return
+    typer.echo(
+        f'THD: {result.thd_percent:.3f}% @ {result.fundamental_hz:.0f} Hz '
+        f'(v_in_peak={result.v_in_peak:.4g} V, '
+        f'P_out={result.measured_power_w * 1000:.2f} mW, '
+        f'dominant n={result.dominant_harmonic_n} '
+        f'@ {result.dominant_harmonic_percent:.3f}%)',
+    )
+
+
 def build_app(
     *,
     projects_root: Path,
@@ -149,6 +196,7 @@ def build_app(
     app_manager: AppManager,
     schematic_exporter: SchematicExporter,
     simulator: Simulator,
+    netlist_editor: NetlistEditor,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -1670,5 +1718,291 @@ def build_app(
             op = run.result.operating_points or {}
             op_repr = ' '.join(f'{k}={v:.4g}' for k, v in sorted(op.items()))
             typer.echo(f'  [{params_repr}]  {op_repr}')
+
+    # === bridge measure <gain|bandwidth|thd> (T023 Phase C) ===
+
+    measure_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    bridge_app.add_typer(measure_app, name='measure')
+
+    @measure_app.command('gain')
+    def measure_gain_cmd(
+        netlist: Annotated[str, typer.Argument(help='Путь к SPICE netlist (.cir)')],
+        *,
+        freq: Annotated[
+            str,
+            typer.Option('--freq', help='Частота измерения (1k, 100, 10Meg)'),
+        ],
+        mode: Annotated[
+            str,
+            typer.Option('--mode', help='small (AC analysis) | large (TRAN RMS)'),
+        ] = 'small',
+        v_in_peak: Annotated[
+            float | None,
+            typer.Option(
+                '--v-in-peak',
+                help='Peak amplitude входа (V), обязательно для --mode large',
+            ),
+        ] = None,
+        input_source: Annotated[
+            str | None,
+            typer.Option(
+                '--input-source',
+                help='V-source ref (auto-detect, если ровно один в netlist)',
+            ),
+        ] = None,
+        input_signal: Annotated[
+            str | None,
+            typer.Option(
+                '--input-signal',
+                help='Trace name для VO/RMS (обязательно для --mode large)',
+            ),
+        ] = None,
+        output_signal: Annotated[
+            str,
+            typer.Option('--output-signal', help='Trace для измерения'),
+        ] = 'v(load)',
+        output: Annotated[
+            str,
+            typer.Option('--output', help='Формат: text (default) | json'),
+        ] = 'text',
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
+        ] = 60.0,
+    ) -> None:
+        if mode not in ('small', 'large'):
+            typer.echo(f'Invalid --mode: {mode!r}; expected small|large', err=True)
+            raise typer.Exit(code=2)
+        try:
+            freq_hz = parse_spice_number(freq)
+        except SpiceNumberFormatError as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        async def _run() -> GainMeasurement:
+            return await measure_gain_use_case(
+                netlist=Path(netlist),
+                frequency_hz=freq_hz,
+                mode=mode,  # type: ignore[arg-type]
+                simulator=simulator,
+                netlist_editor=netlist_editor,
+                output_signal=output_signal,
+                input_source=input_source,
+                input_signal=input_signal,
+                v_in_peak=v_in_peak,
+                timeout_seconds=timeout,
+            )
+
+        try:
+            result = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'bridge.measure.gain',
+                    project=None,
+                    payload={
+                        'netlist': netlist,
+                        'freq_hz': freq_hz,
+                        'mode': mode,
+                    },
+                    fn=_run,
+                ),
+            )
+        except (
+            SimulationFailedError,
+            SimulatorUnavailableError,
+            SpiceNumberFormatError,
+            ValidationError,
+            ValueError,
+        ) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        _emit_gain(result, output_fmt=output)
+
+    @measure_app.command('bandwidth')
+    def measure_bandwidth_cmd(
+        netlist: Annotated[str, typer.Argument(help='Путь к SPICE netlist (.cir)')],
+        *,
+        f_low: Annotated[
+            str,
+            typer.Option('--f-low', help='Нижняя граница sweep (default 1)'),
+        ] = '1',
+        f_high: Annotated[
+            str,
+            typer.Option('--f-high', help='Верхняя граница sweep (default 1Meg)'),
+        ] = '1Meg',
+        n_points_per_decade: Annotated[
+            int,
+            typer.Option('--n-points-per-decade', help='Разрешение (default 10)'),
+        ] = 10,
+        ref_db: Annotated[
+            float,
+            typer.Option('--ref-db', help='Reference dB (default -3)'),
+        ] = -3.0,
+        midpoint_source: Annotated[
+            str,
+            typer.Option(
+                '--midpoint-source',
+                help='auto (max|H|) | ref_freq (|H(ref_freq)|)',
+            ),
+        ] = 'auto',
+        ref_freq: Annotated[
+            str | None,
+            typer.Option(
+                '--ref-freq',
+                help='Опорная частота для midpoint_source=ref_freq',
+            ),
+        ] = None,
+        input_source: Annotated[
+            str | None,
+            typer.Option('--input-source', help='V-source ref (auto-detect)'),
+        ] = None,
+        output_signal: Annotated[
+            str,
+            typer.Option('--output-signal', help='Trace для измерения'),
+        ] = 'v(load)',
+        output: Annotated[
+            str,
+            typer.Option('--output', help='Формат: text (default) | json'),
+        ] = 'text',
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
+        ] = 60.0,
+    ) -> None:
+        if midpoint_source not in ('auto', 'ref_freq'):
+            typer.echo(
+                f'Invalid --midpoint-source: {midpoint_source!r}; '
+                f'expected auto|ref_freq',
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        try:
+            f_low_hz = parse_spice_number(f_low)
+            f_high_hz = parse_spice_number(f_high)
+            ref_freq_hz = parse_spice_number(ref_freq) if ref_freq else None
+        except SpiceNumberFormatError as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        async def _run() -> BandwidthMeasurement:
+            return await measure_bandwidth_use_case(
+                netlist=Path(netlist),
+                simulator=simulator,
+                netlist_editor=netlist_editor,
+                f_low=f_low_hz,
+                f_high=f_high_hz,
+                n_points_per_decade=n_points_per_decade,
+                output_signal=output_signal,
+                input_source=input_source,
+                ref_db=ref_db,
+                midpoint_source=midpoint_source,  # type: ignore[arg-type]
+                ref_freq_hz=ref_freq_hz,
+                timeout_seconds=timeout,
+            )
+
+        try:
+            result = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'bridge.measure.bandwidth',
+                    project=None,
+                    payload={
+                        'netlist': netlist,
+                        'f_low_hz': f_low_hz,
+                        'f_high_hz': f_high_hz,
+                        'ref_db': ref_db,
+                    },
+                    fn=_run,
+                ),
+            )
+        except (
+            SimulationFailedError,
+            SimulatorUnavailableError,
+            SpiceNumberFormatError,
+            ValidationError,
+            ValueError,
+        ) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        _emit_bandwidth(result, output_fmt=output)
+
+    @measure_app.command('thd')
+    def measure_thd_cmd(
+        netlist: Annotated[str, typer.Argument(help='Путь к SPICE netlist (.cir)')],
+        *,
+        freq: Annotated[
+            str,
+            typer.Option('--freq', help='Fundamental частота (1k, 100)'),
+        ],
+        v_in_peak: Annotated[
+            float,
+            typer.Option('--v-in-peak', help='Peak amplitude входа (V)'),
+        ],
+        input_source: Annotated[
+            str | None,
+            typer.Option('--input-source', help='V-source ref (auto-detect)'),
+        ] = None,
+        signal: Annotated[
+            str,
+            typer.Option('--signal', help='Trace для Fourier (default v(load))'),
+        ] = 'v(load)',
+        load_ohm: Annotated[
+            float,
+            typer.Option('--load-ohm', help='Нагрузка для measured_power'),
+        ] = 8.0,
+        n_harmonics: Annotated[
+            int,
+            typer.Option('--n-harmonics', help='Число гармоник (3..20)'),
+        ] = 10,
+        output: Annotated[
+            str,
+            typer.Option('--output', help='Формат: text (default) | json'),
+        ] = 'text',
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
+        ] = 60.0,
+    ) -> None:
+        try:
+            freq_hz = parse_spice_number(freq)
+        except SpiceNumberFormatError as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        async def _run() -> ThdMeasurement:
+            return await measure_thd_use_case(
+                netlist=Path(netlist),
+                frequency_hz=freq_hz,
+                v_in_peak=v_in_peak,
+                simulator=simulator,
+                netlist_editor=netlist_editor,
+                signal=signal,
+                input_source=input_source,
+                load_ohm=load_ohm,
+                n_harmonics=n_harmonics,
+                timeout_seconds=timeout,
+            )
+
+        try:
+            result = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'bridge.measure.thd',
+                    project=None,
+                    payload={
+                        'netlist': netlist,
+                        'freq_hz': freq_hz,
+                        'v_in_peak': v_in_peak,
+                    },
+                    fn=_run,
+                ),
+            )
+        except (
+            SimulationFailedError,
+            SimulatorUnavailableError,
+            SpiceNumberFormatError,
+            ValidationError,
+            ValueError,
+        ) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        _emit_thd(result, output_fmt=output)
 
     return app

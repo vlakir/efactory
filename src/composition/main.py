@@ -29,6 +29,7 @@ from adapters.outbound.kicad_cli.schematic_exporter import (
 from adapters.outbound.manifest_yaml.project_manifest_repository import (
     FilesystemProjectManifestRepository,
 )
+from adapters.outbound.ngspice.netlist_substitution import NgspiceNetlistEditor
 from adapters.outbound.ngspice.simulator import NgspiceSimulator
 from adapters.outbound.persistence_sql.migrations_runner import run_migrations
 from adapters.outbound.persistence_sql.repository import (
@@ -115,6 +116,7 @@ def build_cli_app() -> typer.Typer:
         app_manager=app_manager,
         schematic_exporter=KicadCliSchematicExporter(app_manager),
         simulator=NgspiceSimulator(app_manager),
+        netlist_editor=NgspiceNetlistEditor(),
     )
 
 
