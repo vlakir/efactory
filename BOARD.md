@@ -61,32 +61,54 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T134** — **Agent Knowledge Base — persistent KB для runtime-
-  агента efactory.** Решает: agent не имеет доступа к auto-memory
-  Гвидо / mem0; каждая сессия свежая, без аккумулированного опыта.
-  KB закрывает три класса знаний: (1) typical user-request → slash-
-  command mapping (защита от изобретения велосипеда / сканирования
-  собственных исходников efactory), (2) hard-won technical lessons
-  (T131/T132/T133 control examples), (3) project-specific decisions
-  (cross-link с T103 Decision Aggregate).
-
-  Markdown-based: built-in seed в `docker/runtime-agent-knowledge-
-  base/` + host-mutated `$HOME/efactory-state/knowledge-base/`,
-  bootstrap pattern T014. SessionStart hook (T016) расширен —
-  инжектирует TOC в `additionalContext`. Slash-команды `/kb-search
-  <query>` и `/kb-add <topic>`. Без vector DB / embeddings (premature
-  для scale).
-
-  Spec в Draft (`specs/T134-agent-knowledge-base/spec.md`),
-  11 clarify-вопросов. Acceptance — 10 control-example regression
-  test (9 from T131/T132/T133 BACKLOG + новый `agent.command-routing`).
-  Scope ~3-5 дней.
-
-  Ветка `T134-agent-knowledge-base`.
 
 
 
 ## Done
+
+- **T134** — [closed 2026-05-26, PR #78] **Agent Knowledge Base —
+  persistent KB для runtime-агента efactory.** 5-phase implementation
+  по полному методическому ритуалу (spec → A domain → B store → C
+  hook+bind-mount → D CLI+slash+DI → E 10 seed+regression+CHANGELOG).
+  - **Архитектура** (без MCP / vector DB): markdown с frontmatter,
+    namespaced slug `<ns>.<name>`. Built-in seed в `docker/runtime-
+    agent-knowledge-base/` запекается в образ; host-mutated через
+    bind-mount `$HOME/efactory-state/knowledge-base/`. Host wins
+    при conflict; `--reset-claude-state` расширен. SessionStart hook
+    (T016) injection TOC grouped by namespace в `additionalContext`;
+    полный body через `Read` / `/kb-search` (никакого RAG).
+  - **Domain + adapters** (Phase A+B): `KbEntry` Pydantic strict
+    (extra='forbid', namespaced topic pattern, цифра-начало после
+    точки разрешена для `3d`/`2d`); `FileSystemKbStore` с host-wins
+    merge, `KbConflictError` на add без `--force`, filter `'.' in
+    stem` пропускает README.
+  - **CLI** (Phase D): `efactory kb {list,show,add,search}` + 2
+    slash-команды `/kb-search`, `/kb-add`. `build_app` signature
+    +`kb_store`; composition пробрасывает `FileSystemKbStore`.
+  - **Hook + efactory-up** (Phase C): `render_kb_section()` stdlib-
+    only frontmatter parser (без pyyaml, cold-start ~30-50 ms);
+    `bootstrap_kb_state()` + новый bind-mount; Dockerfile COPY seed.
+  - **10 seed entries** (Phase E): 3 из T131 + 3 из T132 + 3 из
+    T133 + новый `agent.command-routing` (mapping user-request →
+    slash-command для защиты от изобретения велосипеда / scan
+    собственных исходников).
+  - **Тесты** (+66): 19 domain + 16 parser + 19 KbStore integration
+    + 9 hook KB + 4 frontmatter + 12 control-example regression.
+    Pre-push gates все 5 зелёные (1119 passed, coverage 85.50%).
+  - **T154 spin-off** (BACKLOG, Q-F → c): full migration dev-process
+    knowledge (DECISIONS/CHANGELOG/auto-memory/mem0) → KB как
+    отдельная 4-phased curation-задача.
+  - **Out of scope:** vector DB / RAG, multi-agent KB, project-
+    specific knowledge (T103), subdirectory layout (>30 entries),
+    inverted index (>100 entries).
+  - **Owner manual smoke (после merge):** `docker build` +
+    `./efactory-up --reset-claude-state`; в TUI запрос
+    «построй график АЧХ» — agent должен использовать KB hit
+    `agent.command-routing` → выбрать `/plot-ac` без изобретения
+    велосипеда.
+  - Spec — `specs/T134-agent-knowledge-base/spec.md` (Analyzed:
+    11 clarify «по рекомендации» + 8 analyze issues — 0 Critical,
+    3 Warning отражены, 5 Note guidance).
 
 - **T023** — [closed 2026-05-26, PR #76] **Измерения как отдельные
   bridge-инструменты (gain / bandwidth / thd).** Первая содержательная
