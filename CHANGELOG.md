@@ -36,6 +36,50 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T024 — `efactory bridge plot <ac|tran>`: ASCII-графики через
+  plotext.** Второй шаг analysis-first ordering Фазы 2 (фундамент для
+  T022 sweep visualization).
+
+  **Действия после merge:**
+  1. `docker build -t efactory:linux .` (новая dependency `plotext` +
+     новые slash-команды).
+  2. Однократно `./efactory-up --reset-claude-state`.
+
+  - **`plotext==5.3.2`** — новая runtime dependency для terminal-
+    friendly ASCII plot'ов (`uv add plotext`).
+  - **CLI** `bridge plot <ac|tran>` sub-Typer (гомогенно с
+    `sim-run/measure`):
+    - `plot ac <netlist> [--signal v(load)] [--f-start 1 --f-stop 1Meg]
+      [--n-points 10] [--sweep dec] [--width 80 --height 20]` — АЧХ
+      (магнитуда в dB vs log-частота). Запускает sim_run с
+      AcAnalysis → render_ac_sweep.
+    - `plot tran <netlist> --t-step --t-stop [--t-start 0] [--uic]
+      [--signal v(load)] [--width 80 --height 20]` — waveform vs
+      time. Запускает sim_run с TranAnalysis → render_time_series.
+  - **Renderer** (`adapters/inbound/cli/plot_renderer.py`,
+    адаптер-уровень — изолирован от CLI argparse):
+    `render_ac_sweep(sweep, signal, width, height, title)` и
+    `render_time_series(series, signal, width, height, title)` —
+    возвращают ASCII-string через `plotext.build()` (testable без
+    захвата stdout). Case-insensitive trace lookup; missing signal
+    → ValueError со списком available. `_db()` с floor -200 dB
+    (plotext не умеет infinity).
+  - **Два slash-команды**: `/plot-ac` и `/plot-tran` в
+    `docker/runtime-agent-commands/` (hyphenated flat).
+    `runtime-agent-CLAUDE.md` обновлён.
+  - **Тесты** (+15): 12 unit для renderer (happy path, custom title,
+    case-insensitive, missing signal, zero magnitude floor,
+    width-respect через ANSI strip) + 3 e2e на real ngspice
+    (RC low-pass: AC plot, TRAN plot, missing signal → exit 2) +
+    2 frontmatter теста для slash-команд (existence + completeness).
+  - **Out of scope:** integration `--plot` flag в `measure_bandwidth`
+    (с f_low/f_high markers) → потенциальный follow-up; multi-signal
+    subplot'ы — single signal достаточно для acceptance; не делаем
+    схематик-render (T025).
+  - Acceptance T024 (BACKLOG): «график АЧХ выводится в терминал,
+    читаемый на ширине 80» — выполнено (default `--width 80`,
+    visible-width проверена ANSI-strip'ом в тестах).
+
 - **T023 — `efactory bridge measure <gain|bandwidth|thd>`: измерения
   как отдельные bridge-инструменты.** Первая содержательная задача
   Фазы 2 (analysis-first ordering); фундамент для T021 (delta-измерения

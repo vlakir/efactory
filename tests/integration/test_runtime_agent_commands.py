@@ -23,6 +23,8 @@ _EXPECTED_COMMANDS = {
     'measure-gain',
     'measure-bandwidth',
     'measure-thd',
+    'plot-ac',
+    'plot-tran',
 }
 _REQUIRED_FRONTMATTER = {'description', 'argument-hint', 'allowed-tools'}
 

@@ -10,6 +10,10 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 from pydantic import ValidationError
 
+from adapters.inbound.cli.plot_renderer import (
+    render_ac_sweep,
+    render_time_series,
+)
 from adapters.inbound.cli.spice_units import (
     SpiceNumberFormatError,
     parse_spice_number,
@@ -2004,5 +2008,176 @@ def build_app(
             raise _exit_on_bridge_error(exc) from exc
 
         _emit_thd(result, output_fmt=output)
+
+    # === bridge plot <ac|tran> (ASCII chart, T024) ===
+
+    plot_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    bridge_app.add_typer(plot_app, name='plot')
+
+    @plot_app.command('ac')
+    def plot_ac_cmd(
+        netlist: Annotated[str, typer.Argument(help='Путь к SPICE netlist (.cir)')],
+        *,
+        signal: Annotated[
+            str,
+            typer.Option('--signal', help='Trace для отрисовки (default v(load))'),
+        ] = 'v(load)',
+        f_start: Annotated[
+            str,
+            typer.Option('--f-start', help='Начальная частота (default 1)'),
+        ] = '1',
+        f_stop: Annotated[
+            str,
+            typer.Option('--f-stop', help='Конечная частота (default 1Meg)'),
+        ] = '1Meg',
+        n_points: Annotated[
+            int,
+            typer.Option('--n-points', help='Точек на декаду (default 10)'),
+        ] = 10,
+        sweep: Annotated[
+            str,
+            typer.Option('--sweep', help='dec | lin | oct (default dec)'),
+        ] = 'dec',
+        width: Annotated[
+            int,
+            typer.Option('--width', help='Ширина графика в символах'),
+        ] = 80,
+        height: Annotated[
+            int,
+            typer.Option('--height', help='Высота графика в строках'),
+        ] = 20,
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
+        ] = 60.0,
+    ) -> None:
+        try:
+            analysis = _make_ac(sweep, n_points, f_start, f_stop)
+        except (SpiceNumberFormatError, ValidationError) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        async def _run() -> SimulationResult:
+            return await sim_run_use_case(
+                netlist=Path(netlist),
+                analysis=analysis,
+                simulator=simulator,
+                timeout_seconds=timeout,
+            )
+
+        try:
+            result = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'bridge.plot.ac',
+                    project=None,
+                    payload={'netlist': netlist, 'signal': signal},
+                    fn=_run,
+                ),
+            )
+        except (
+            SimulationFailedError,
+            SimulatorUnavailableError,
+            SpiceNumberFormatError,
+            ValidationError,
+        ) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        if result.ac_sweep is None:
+            typer.echo('Simulator returned no ac_sweep result.', err=True)
+            raise typer.Exit(code=2)
+        try:
+            chart = render_ac_sweep(
+                result.ac_sweep,
+                signal=signal,
+                width=width,
+                height=height,
+            )
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        typer.echo(chart)
+
+    @plot_app.command('tran')
+    def plot_tran_cmd(
+        netlist: Annotated[str, typer.Argument(help='Путь к SPICE netlist (.cir)')],
+        *,
+        signal: Annotated[
+            str,
+            typer.Option('--signal', help='Trace для отрисовки (default v(load))'),
+        ] = 'v(load)',
+        t_step: Annotated[
+            str,
+            typer.Option('--t-step', help='Шаг по времени (1u, 10n)'),
+        ],
+        t_stop: Annotated[
+            str,
+            typer.Option('--t-stop', help='Длительность (1m, 20m)'),
+        ],
+        t_start: Annotated[
+            str,
+            typer.Option('--t-start', help='Начало записи (default 0)'),
+        ] = '0',
+        uic: Annotated[
+            bool,
+            typer.Option('--uic', help='Use Initial Conditions'),
+        ] = False,
+        width: Annotated[
+            int,
+            typer.Option('--width', help='Ширина графика в символах'),
+        ] = 80,
+        height: Annotated[
+            int,
+            typer.Option('--height', help='Высота графика в строках'),
+        ] = 20,
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
+        ] = 60.0,
+    ) -> None:
+        try:
+            analysis = _make_tran(t_step, t_stop, t_start, uic=uic)
+        except (SpiceNumberFormatError, ValidationError) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        async def _run() -> SimulationResult:
+            return await sim_run_use_case(
+                netlist=Path(netlist),
+                analysis=analysis,
+                simulator=simulator,
+                timeout_seconds=timeout,
+            )
+
+        try:
+            result = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'bridge.plot.tran',
+                    project=None,
+                    payload={'netlist': netlist, 'signal': signal},
+                    fn=_run,
+                ),
+            )
+        except (
+            SimulationFailedError,
+            SimulatorUnavailableError,
+            SpiceNumberFormatError,
+            ValidationError,
+        ) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        if result.time_series is None:
+            typer.echo('Simulator returned no time_series result.', err=True)
+            raise typer.Exit(code=2)
+        try:
+            chart = render_time_series(
+                result.time_series,
+                signal=signal,
+                width=width,
+                height=height,
+            )
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        typer.echo(chart)
 
     return app
