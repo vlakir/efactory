@@ -115,6 +115,31 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
     «по рекомендации» + 12 analyze issues — 1 Critical разрешён
     in-spec, 4 Warning отражены, 7 Note guidance'ы).
 
+- **T147** — [closed 2026-05-26, PR #74] **Fix `OPT_SE_5K_8.lib`:
+  floating ноды DCR через internal nodes (`Pint`/`Sint`).** Hot-fix
+  демо-фикстуры: `Rp_dcr`/`Rs_dcr` подключались к floating узлам
+  `P3`/`S3` → singular matrix при `.op` на `se-amp-demo`. Корректный
+  fix — внутренние узлы для последовательного включения DCR с
+  обмоткой:
+  - `Lp Pint P2 50` (было `Lp P1 P2 50`).
+  - `Rp_dcr P1 Pint 200` (было `Rp_dcr P1 P3 200`).
+  - `Ls Sint S2 0.08` (было `Ls S1 S2 0.08`).
+  - `Rs_dcr S1 Sint 0.3` (было `Rs_dcr S1 S3 0.3`).
+  - `K1`, `Cps`, параметры (200 Ω / 0.3 Ω / K=0.9995 / 200 pF) без
+    изменений.
+  - `data/templates/se-amp/models/OPT_SE_5K_8.lib` пересобрана через
+    `scripts/regenerate-templates.py`; `{{PROJECT_NAME}}.kicad_sch`
+    не commit'нут (UUID flakiness, snapshot test нормализует).
+  - Pre-push gates все 5 зелёные (ruff/format/mypy/lint-imports 3/3
+    KEPT/pytest 928 passed, coverage 86.14%).
+  - Manual smoke: `ngspice -b` с `.op` на минимальном testbench →
+    convergence, `v(plate)=250 V` (DCR ≪ R_plate=100k), physically
+    valid.
+  - **Owner manual smoke (после merge):** `./efactory-up --agent
+    se-amp-demo` → `/sim-run --analysis op` после `docker build`.
+  Закрывает 1 из 5 round-trip gap'ов T016 (BACKLOG). Первый шаг
+  analysis-first ordering Фазы 2.
+
 - **T014** — [closed 2026-05-26, PR #73] **efactory custom slash-команды
   для Claude Code + template-инфраструктура.** Phase 1b закрыта
   окончательно (T013 + T016 + T014).
