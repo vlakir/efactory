@@ -61,6 +61,14 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T023** — **Измерения как отдельные bridge-инструменты (gain /
+  bandwidth / thd).** Первая содержательная задача analysis-first
+  ordering Фазы 2. Фундамент для T021 (delta) и T022 (sweep tabular).
+  Spec в Clarified (`specs/T023-measurements/spec.md`), все 10
+  clarify-вопросов разрешены «по рекомендации». Phase margin вынесен
+  в **T153** (BACKLOG, отдельный спек когда появится feedback-фикстура).
+  Acceptance — см. spec §4 Success Criteria.
+  Ветка `T023-measurements`.
 
 
 
