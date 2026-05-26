@@ -83,3 +83,14 @@ class Settings(BaseSettings):
     session_root: Path = Field(default_factory=_default_session_root)
     library_root: Path = Field(default_factory=_default_library_root)
     user_library_root: Path = Field(default_factory=_default_user_library_root)
+    # T134 — Knowledge Base directories. В runtime контейнере
+    # `/efactory/knowledge-base/{built-in,host-mutated}`; на dev-хосте
+    # переопределяется через EFACTORY_KB_BUILT_IN_DIR /
+    # EFACTORY_KB_HOST_MUTATED_DIR (например, repo docker/runtime-agent-
+    # knowledge-base/ для built-in + /tmp для host-mutated).
+    kb_built_in_dir: Path = Field(
+        default=Path('/efactory/knowledge-base/built-in'),
+    )
+    kb_host_mutated_dir: Path = Field(
+        default=Path('/efactory/knowledge-base/host-mutated'),
+    )

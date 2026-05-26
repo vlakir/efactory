@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
@@ -67,6 +68,7 @@ from application.update_project import (
 )
 from domain.application import ApplicationKind
 from domain.decision import DecisionStatus
+from domain.knowledge_base import KbConflictError, KbEntry, KbParseError
 from domain.phase import PhaseName, PhaseStatus
 from domain.simulation import (
     AcAnalysis,
@@ -106,6 +108,7 @@ if TYPE_CHECKING:
     from ports.outbound.app_manager import AppManager, RunResult
     from ports.outbound.decision_repository import DecisionRepository
     from ports.outbound.git_repository import GitRepository
+    from ports.outbound.knowledge_base import KbStore
     from ports.outbound.metadata_repository import MetadataRepository
     from ports.outbound.netlist_editor import NetlistEditor
     from ports.outbound.project_file_repository import ProjectFileRepository
@@ -197,6 +200,7 @@ def build_app(
     schematic_exporter: SchematicExporter,
     simulator: Simulator,
     netlist_editor: NetlistEditor,
+    kb_store: KbStore,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -2004,5 +2008,125 @@ def build_app(
             raise _exit_on_bridge_error(exc) from exc
 
         _emit_thd(result, output_fmt=output)
+
+    # === efactory kb {list,show,add,search} (Agent Knowledge Base, T134) ===
+
+    kb_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    app.add_typer(kb_app, name='kb')
+
+    @kb_app.command('list')
+    def kb_list_cmd() -> None:
+        """Список всех KB entries (built-in + host-mutated, host wins)."""
+        try:
+            entries = kb_store.list_all()
+        except KbParseError as exc:
+            typer.echo(f'KB scan failed: {exc}', err=True)
+            raise typer.Exit(code=2) from exc
+        if not entries:
+            typer.echo('Knowledge Base пуста (no entries).')
+            return
+        for entry in entries:
+            typer.echo(f'{entry.topic}\t[{entry.source}]\t{entry.description}')
+
+    @kb_app.command('show')
+    def kb_show_cmd(
+        topic: Annotated[
+            str,
+            typer.Argument(help='Namespaced slug (например spice.saturable)'),
+        ],
+    ) -> None:
+        """Полный markdown entry по topic."""
+        try:
+            entry = kb_store.get(topic)
+        except KbParseError as exc:
+            typer.echo(f'KB scan failed: {exc}', err=True)
+            raise typer.Exit(code=2) from exc
+        if entry is None:
+            typer.echo(f'Topic {topic!r} not found.', err=True)
+            raise typer.Exit(code=1)
+        typer.echo(f'# {entry.topic}')
+        typer.echo(f'> {entry.description}')
+        tags_str = ', '.join(entry.tags) if entry.tags else '(none)'
+        typer.echo(f'> tags: {tags_str}')
+        typer.echo(f'> source: {entry.source}')
+        typer.echo('')
+        typer.echo(entry.body)
+
+    @kb_app.command('add')
+    def kb_add_cmd(
+        topic: Annotated[str, typer.Argument(help='Namespaced slug')],
+        description: Annotated[
+            str,
+            typer.Option('--description', help='One-liner для TOC (≤200 chars)'),
+        ],
+        body_file: Annotated[
+            Path | None,
+            typer.Option(
+                '--body-file',
+                help='Файл с markdown body (либо `-` для stdin; default — stdin).',
+            ),
+        ] = None,
+        tags: Annotated[
+            str,
+            typer.Option('--tags', help='CSV (например spice,magnetics)'),
+        ] = '',
+        *,
+        force: Annotated[
+            bool,
+            typer.Option('--force', help='Overwrite existing topic'),
+        ] = False,
+    ) -> None:
+        """Добавить entry в host-mutated KB."""
+        if body_file is None or str(body_file) == '-':
+            body = sys.stdin.read()
+        else:
+            try:
+                body = body_file.read_text(encoding='utf-8')
+            except OSError as exc:
+                typer.echo(f'cannot read --body-file: {exc}', err=True)
+                raise typer.Exit(code=2) from exc
+        if not body.strip():
+            typer.echo(
+                'Body is empty; provide content via --body-file or stdin.',
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        tag_tuple: tuple[str, ...] = tuple(
+            t.strip() for t in tags.split(',') if t.strip()
+        )
+        try:
+            entry = KbEntry(
+                topic=topic,
+                description=description,
+                tags=tag_tuple,
+                source='host-mutated',
+                body=body,
+            )
+        except ValidationError as exc:
+            typer.echo(f'invalid KB entry: {exc}', err=True)
+            raise typer.Exit(code=2) from exc
+        try:
+            kb_store.add(entry, force=force)
+        except KbConflictError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(f'KB entry {topic!r} added (source=host-mutated).')
+
+    @kb_app.command('search')
+    def kb_search_cmd(
+        query: Annotated[str, typer.Argument(help='Token-AND query')],
+    ) -> None:
+        """Token-AND поиск по KB (topic + description + tags + body)."""
+        try:
+            results = kb_store.search(query)
+        except KbParseError as exc:
+            typer.echo(f'KB scan failed: {exc}', err=True)
+            raise typer.Exit(code=2) from exc
+        if not results:
+            typer.echo(f'No KB entries match {query!r}.')
+            return
+        typer.echo(f'{len(results)} match(es) for {query!r}:')
+        for entry in results:
+            typer.echo(f'  {entry.topic}\t[{entry.source}]\t{entry.description}')
 
     return app

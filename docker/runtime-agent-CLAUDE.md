@@ -25,7 +25,7 @@
   SPICE / KiCad libs пользователя).
 - **`Glob` / `Grep`** — поиск по проекту и codebase.
 
-## Custom slash-команды efactory (T014 + T023)
+## Custom slash-команды efactory (T014 + T023 + T134)
 
 Видны в `/`-menu и через `/help`. Тонкие wrapper'ы над `efactory` CLI:
 
@@ -44,11 +44,33 @@
   или ref-freq).
 - **`/measure-thd [NETLIST] --freq <Hz> --v-in-peak <V>`** —
   single-point THD (TRAN + ngspice fourier).
+- **`/kb-search <query>`** — поиск по Knowledge Base (token-AND).
+  Используй ПЕРЕД тем, как изобретать решение: «как сделать X»,
+  «pitfall с Y», «формула для Z».
+- **`/kb-add <topic>`** — добавить новый entry в host-mutated KB
+  (если нашёл важный pitfall или удачный pattern — сохрани, чтобы
+  следующая сессия не повторяла исследование).
 
 Measure-команды работают на готовом netlist'е (`.cir`), не на schematic.
 Перед измерением сгенерируй netlist через `/sim-run` (он по дороге
 вызывает `design-to-netlist`) или `efactory bridge design-to-netlist
 <PROJECT> --schematic <path>.kicad_sch` напрямую.
+
+## Knowledge Base usage (T134)
+
+Перед сложной задачей **сначала загляни в KB**: TOC в начале сессии
+(SessionStart hook) показывает доступные topic'и группированно по
+namespace. Полный body — через `Read /efactory/knowledge-base/
+{built-in,host-mutated}/<topic>.md` или `/kb-search <query>`.
+
+KB защищает от трёх типичных ловушек: (1) изобретение велосипеда
+(уже есть slash-команда / use case — найди прежде), (2) повторение
+прошлого pitfall'а (saturable XSPICE gyrator, R_dc_leak для floating
+secondary, 2D-planar gap к ZHANG), (3) рысканье в собственных
+исходниках efactory — KB обычно даёт answer быстрее.
+
+Если решил что-то непростое — `/kb-add` сохрани lesson для будущих
+сессий. Host-mutated entries persistent через bind-mount.
 
 Generic команды (`/help`, `/clear`, `/compact`, `/model`, `/save`,
 `/load`) — встроены в Claude Code, не дублируются.

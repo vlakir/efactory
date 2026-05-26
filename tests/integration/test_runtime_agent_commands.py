@@ -23,6 +23,8 @@ _EXPECTED_COMMANDS = {
     'measure-gain',
     'measure-bandwidth',
     'measure-thd',
+    'kb-search',
+    'kb-add',
 }
 _REQUIRED_FRONTMATTER = {'description', 'argument-hint', 'allowed-tools'}
 
