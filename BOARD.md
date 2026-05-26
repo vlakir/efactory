@@ -61,6 +61,28 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T134** — **Agent Knowledge Base — persistent KB для runtime-
+  агента efactory.** Решает: agent не имеет доступа к auto-memory
+  Гвидо / mem0; каждая сессия свежая, без аккумулированного опыта.
+  KB закрывает три класса знаний: (1) typical user-request → slash-
+  command mapping (защита от изобретения велосипеда / сканирования
+  собственных исходников efactory), (2) hard-won technical lessons
+  (T131/T132/T133 control examples), (3) project-specific decisions
+  (cross-link с T103 Decision Aggregate).
+
+  Markdown-based: built-in seed в `docker/runtime-agent-knowledge-
+  base/` + host-mutated `$HOME/efactory-state/knowledge-base/`,
+  bootstrap pattern T014. SessionStart hook (T016) расширен —
+  инжектирует TOC в `additionalContext`. Slash-команды `/kb-search
+  <query>` и `/kb-add <topic>`. Без vector DB / embeddings (premature
+  для scale).
+
+  Spec в Draft (`specs/T134-agent-knowledge-base/spec.md`),
+  11 clarify-вопросов. Acceptance — 10 control-example regression
+  test (9 from T131/T132/T133 BACKLOG + новый `agent.command-routing`).
+  Scope ~3-5 дней.
+
+  Ветка `T134-agent-knowledge-base`.
 
 
 

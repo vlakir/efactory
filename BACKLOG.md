@@ -38,6 +38,15 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- T094 закрыт ADR от 2026-05-19 в DECISIONS.md (вариант "в":
      /ultrareview как primary external review, CodeRabbit best-effort). -->
 
+<!-- T134 переехала в BOARD.md → Doing 2026-05-26 после Phase 1b
+     закрытия (Claude Code as frontend → KB consumer существует).
+     Spec — specs/T134-agent-knowledge-base/spec.md (Draft, 11
+     clarify-вопросов). Originally заведено 2026-05-21 в Phase E
+     T131 с 9 control examples из T131+T132+T133; в spec добавлен
+     10-й example «agent.command-routing» (typical user-request →
+     slash-command mapping). -->
+<!-- ORIGINAL T134 ENTRY (full text moved to spec §1-§2 context):
+
 - **T134** — [2026-05-21, заведено в Phase E T131] **Agent Knowledge
   Base — infrastructure для накопления technical knowledge у
   efactory CLI agent'а.**
@@ -207,6 +216,7 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
   Не зависит от: T131 (T131 уже закрыт, ADR в `DECISIONS.md` +
   docstring обогащения адресуют immediate dev-process persistence).
+-->
 
 - **T135** — [2026-05-21, заведено в Phase B T132] **FEM cross-
   validation analytical leakage Lσ (T132 Phase C primary backend).**
