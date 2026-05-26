@@ -347,9 +347,29 @@ bootstrap_claude_state() {
     fi
 }
 
+# T134: KB host-mutated директория (built-in seed запекается в образ под
+# /efactory/knowledge-base/built-in/). Bind-mount только host-mutated;
+# built-in остаётся read-only в образе. --reset-claude-state также
+# чистит host-mutated KB (с backup).
+bootstrap_kb_state() {
+    local force="${1:-0}"
+    local target_dir="$STATE_DIR/knowledge-base"
+    mkdir -p "$target_dir"
+
+    if (( force == 1 )) && [[ -d "$target_dir" ]] && [[ -n "$(ls -A "$target_dir" 2>/dev/null)" ]]; then
+        local backup_dir="$target_dir.bak-$(date +%Y-%m-%d)"
+        mkdir -p "$backup_dir"
+        cp -rf "$target_dir"/. "$backup_dir/" 2>/dev/null || true
+        log "KB host-mutated reset: backup → $backup_dir/"
+        rm -rf "$target_dir"
+        mkdir -p "$target_dir"
+    fi
+}
+
 if (( RESET_CLAUDE_STATE && ! AGENT_MODE )); then
     # Standalone сброс — не запускаем агента.
     bootstrap_claude_state 1
+    bootstrap_kb_state 1
     log "Готово. Запусти агента: ./efactory-up --agent [NAME]"
     exit 0
 fi
@@ -379,6 +399,7 @@ if (( AGENT_MODE )); then
     fi
 
     bootstrap_claude_state "$RESET_CLAUDE_STATE"
+    bootstrap_kb_state "$RESET_CLAUDE_STATE"
 
     AGENT_ENV_ARGS=()
     if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
@@ -396,6 +417,7 @@ if (( AGENT_MODE )); then
     exec docker run --rm -it \
         "${AGENT_ENV_ARGS[@]}" \
         -v "$STATE_DIR/claude:/efactory/.claude:rw" \
+        -v "$STATE_DIR/knowledge-base:/efactory/knowledge-base/host-mutated:rw" \
         -v "$PROJECTS_DIR:/workspace:rw" \
         -w "$AGENT_CWD" \
         "$IMAGE" \

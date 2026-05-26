@@ -91,6 +91,10 @@ class FileSystemKbStore:
             return []
         entries: list[KbEntry] = []
         for md_path in sorted(directory.glob(_MARKDOWN_GLOB)):
+            # KB entries имеют namespaced slug — filename содержит точку.
+            # Произвольные `.md` в той же директории (README, NOTES) — skip.
+            if '.' not in md_path.stem:
+                continue
             content = md_path.read_text(encoding='utf-8')
             try:
                 # Cast source to expected literal at call site.

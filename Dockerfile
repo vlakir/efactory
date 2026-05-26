@@ -261,6 +261,12 @@ COPY docker/runtime-agent-settings.json /opt/efactory/share/claude-defaults/sett
 # `efactory-up --agent` (тот же механизм, что settings.json). Образный
 # fallback для случая «репо отсутствует на host'е».
 COPY docker/runtime-agent-commands/ /opt/efactory/share/claude-defaults/commands/
+# T134 — built-in seed для Agent Knowledge Base. Host-mutated живёт в
+# bind-mount `/efactory/knowledge-base/host-mutated/` (mount'ится из
+# `$HOME/efactory-state/knowledge-base/` через `efactory-up`); built-in
+# остаётся read-only в образе. SessionStart hook (T016) scan'ит обе
+# директории, merge с host-wins, рендерит TOC grouped by namespace.
+COPY docker/runtime-agent-knowledge-base/ /efactory/knowledge-base/built-in/
 # scripts/ уже скопирован в stage 3 (efactory-code) для других целей
 # (gen-bracket-demo.FCMacro и т.п.); session_start_hook.py попадает
 # в `/opt/efactory/scripts/` без отдельного COPY.
