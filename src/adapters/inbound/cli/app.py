@@ -174,6 +174,47 @@ def _emit_bandwidth(result: BandwidthMeasurement, *, output_fmt: str) -> None:
     )
 
 
+def _prepare_ac_netlist(
+    *,
+    netlist_path: Path,
+    netlist_editor: NetlistEditor,
+    explicit_source: str | None,
+) -> Path:
+    """
+    Inject `AC 1` modifier на V-source перед AC analysis.
+
+    Если netlist уже содержит `AC <mag>` — ensure_ac_modifier no-op'нет.
+    Возвращает путь к prepared netlist (либо tmp, либо original если
+    в netlist'е нет V-source — без injection).
+    """
+    base_text = netlist_path.read_text()
+    if explicit_source is not None:
+        source_ref: str | None = explicit_source
+    else:
+        sources = netlist_editor.find_top_level_v_sources(base_text)
+        if len(sources) == 1:
+            source_ref = sources[0]
+        elif len(sources) == 0:
+            source_ref = None
+        else:
+            candidates = ', '.join(sources)
+            msg = (
+                f'multiple V-sources in netlist ({candidates}); '
+                f'pass --input-source explicitly.'
+            )
+            raise ValueError(msg)
+    if source_ref is None:
+        return netlist_path
+    prepared = netlist_editor.ensure_ac_modifier(
+        base_text,
+        source_ref=source_ref,
+        ac_magnitude=1.0,
+    )
+    tmp_netlist = netlist_path.with_suffix('.tmp_plot.cir')
+    tmp_netlist.write_text(prepared)
+    return tmp_netlist
+
+
 def _emit_thd(result: ThdMeasurement, *, output_fmt: str) -> None:
     if output_fmt == 'json':
         typer.echo(result.model_dump_json(indent=2))
@@ -2022,6 +2063,10 @@ def build_app(
             str,
             typer.Option('--signal', help='Trace для отрисовки (default v(load))'),
         ] = 'v(load)',
+        input_source: Annotated[
+            str | None,
+            typer.Option('--input-source', help='V-source ref (auto-detect)'),
+        ] = None,
         f_start: Annotated[
             str,
             typer.Option('--f-start', help='Начальная частота (default 1)'),
@@ -2056,9 +2101,22 @@ def build_app(
         except (SpiceNumberFormatError, ValidationError) as exc:
             raise _exit_on_bridge_error(exc) from exc
 
+        # AC analysis требует AC modifier на V-source'е, иначе ngspice
+        # видит AC=0 и магнитуда везде 0 → -inf dB (T024 follow-up fix).
+        netlist_path = Path(netlist)
+        try:
+            prepared_netlist_path = _prepare_ac_netlist(
+                netlist_path=netlist_path,
+                netlist_editor=netlist_editor,
+                explicit_source=input_source,
+            )
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+
         async def _run() -> SimulationResult:
             return await sim_run_use_case(
-                netlist=Path(netlist),
+                netlist=prepared_netlist_path,
                 analysis=analysis,
                 simulator=simulator,
                 timeout_seconds=timeout,

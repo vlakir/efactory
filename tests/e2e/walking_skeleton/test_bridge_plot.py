@@ -66,14 +66,73 @@ def test_bridge_plot_ac_rc_lowpass_renders_chart(
 
     assert result.exit_code == 0, result.output
     visible = _strip_ansi(result.output)
-    # Title contains signal name (default v(load))
     assert 'v(load)' in visible.lower()
-    # Axis labels rendered
     assert 'frequency' in visible.lower()
     assert 'magnitude' in visible.lower()
-    # Chart spans roughly width х height (allow generous tolerance for axes).
     lines = visible.splitlines()
-    assert len(lines) >= 15  # height=20 + axes
+    assert len(lines) >= 15
+    # АЧХ должна иметь реальную динамику (low-pass roll-off от 0 dB к -60 dB);
+    # до фикса bug'а с auto AC-modifier injection все точки оседали на
+    # `_DB_FLOOR=-200 dB` → assert ловит regression.
+    assert '-200' not in visible, 'all magnitudes at floor: AC modifier missing?'
+    # y-axis label '0' (для 0 dB midband) + некоторый negative tick для roll-off
+    assert any(tick in visible for tick in ('-10', '-20', '-30', '-40'))
+
+
+@needs_ngspice
+def test_bridge_plot_ac_multi_source_requires_input_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """В netlist'е с >1 V-source без --input-source — exit 2."""
+    _setup_env(tmp_path, monkeypatch)
+    netlist = tmp_path / 'multi.cir'
+    netlist.write_text(
+        '* divider with bias rail\n'
+        'V_in in 0 SIN(0 1 1k)\n'
+        'V_bias bias 0 DC 5\n'
+        'R1 in load 1k\n'
+        'R_load load 0 1k\n'
+        '.end\n',
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(
+        build_cli_app(),
+        ['bridge', 'plot', 'ac', str(netlist), '--f-start', '1', '--f-stop', '1k'],
+    )
+
+    assert result.exit_code == 2
+    assert 'multiple V-sources' in result.output
+
+
+@needs_ngspice
+def test_bridge_plot_ac_explicit_input_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """С `--input-source V_in` multi-source netlist рисуется без ошибок."""
+    _setup_env(tmp_path, monkeypatch)
+    netlist = tmp_path / 'multi.cir'
+    netlist.write_text(
+        'V_in in 0 SIN(0 1 1k)\n'
+        'V_bias bias 0 DC 5\n'
+        'R1 in load 1k\n'
+        'R_load load 0 1k\n'
+        '.end\n',
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(
+        build_cli_app(),
+        [
+            'bridge', 'plot', 'ac', str(netlist),
+            '--input-source', 'V_in',
+            '--f-start', '1', '--f-stop', '10k', '--n-points', '5',
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    visible = _strip_ansi(result.output)
+    assert '-200' not in visible
 
 
 @needs_ngspice
