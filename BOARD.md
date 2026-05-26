@@ -61,6 +61,24 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T147** — **Fix `OPT_SE_5K_8.lib`: floating ноды DCR через internal
+  nodes (`Pint`/`Sint`).** Hot-fix демо-фикстуры: и `Rp_dcr`, и
+  `Rs_dcr` подключены к floating узлам (`P3`, `S3`), что даёт singular
+  matrix при `.op` на `se-amp-demo`. Гипотеза «опечатка P3 → P» не
+  работает (получится DCR параллельно Lp вместо последовательно);
+  корректный fix — ввести internal nodes для последовательного
+  включения DCR с обмоткой.
+  Acceptance:
+  - В `data/models/transformers/generic/OPT_SE_5K_8.lib`: `Lp` идёт
+    `Pint→P2`, `Rp_dcr` — `P1→Pint`; `Ls` — `Sint→S2`, `Rs_dcr` —
+    `S1→Sint`. K1, Cps без изменений.
+  - `scripts/regenerate-templates.py` пересобирает
+    `data/templates/se-amp/models/OPT_SE_5K_8.lib`.
+  - Pre-push gates зелёные (ruff / format / mypy / pytest).
+  - Manual smoke: `ngspice -b` с `.op` на `se_amp.cir` сходится без
+    `singular matrix`; напряжения физичные (V(plate) ≈ B+ minus малое
+    падение на Rp_dcr).
+  Ветка `T147-opt-floating-node`.
 
 
 

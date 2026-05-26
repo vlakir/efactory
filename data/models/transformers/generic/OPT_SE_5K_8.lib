@@ -13,12 +13,12 @@
 *   S1, S2 — secondary (S1, S2 to load).
 .SUBCKT OPT_SE_5K_8 P1 P2 S1 S2
 * Turns ratio sqrt(5000/8) ≈ 25:1. Lp = 50 H (typical SE OPT).
-Lp P1 P2 50
-Ls S1 S2 0.08
+Lp Pint P2 50
+Ls Sint S2 0.08
 K1 Lp Ls 0.9995
 * DCR (primary winding much higher than secondary).
-Rp_dcr P1 P3 200
-Rs_dcr S1 S3 0.3
+Rp_dcr P1 Pint 200
+Rs_dcr S1 Sint 0.3
 * Inter-winding capacitance — определяет HF roll-off.
 Cps P1 S1 200p
 .ENDS OPT_SE_5K_8

@@ -580,16 +580,11 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   - На фикстурном `.lib` с floating-node — fail / warning с указанием
     конкретной ноды.
 
-- **T147** — [2026-05-26, заведено по итогам прогона 5 сценариев T016]
-  **Fix `data/templates/.../OPT_SE_5K_8.lib`: floating ноды `P3` /
-  `sec_a`.** Hot-fix демо-фикстуры: либо подключить `Rp_dcr` через
-  правильную ноду (вероятно `P` instead of `P3`, опечатка в библиотеке),
-  либо удалить unused references. Тривиально (1 строка), но без него
-  `sim-run op` на se-amp-demo не сходится. Триггер для T146 (валидатор
-  поймал бы это сам), но фикс делается раньше — иначе demo broken для
-  agent UX.
-  Acceptance: `ngspice -b` с `.op` на se_amp.cir завершается success,
-  напряжения физичные.
+<!-- T147 переехал в BOARD.md → Doing 2026-05-26. По дороге выяснилось,
+     что гипотеза «опечатка P3 вместо P, 1 строка» не работает: оба DCR
+     (Rp_dcr, Rs_dcr) подключены к floating узлам (P3, S3); корректный
+     фикс — ввести internal nodes (Pint/Sint) для последовательного
+     включения DCR с обмоткой (4 правки в .lib, +regenerate-templates). -->
 
 - **T149** — [2026-05-26, заведено по итогам round-trip T016]
   **`bootstrap_claude_settings`: auto-merge `hooks` секции в
