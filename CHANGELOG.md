@@ -292,6 +292,20 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 - **T036 (стратегия обновлений)** — re-evaluate после Phase 0.9.
   Большая часть заменяется `docker pull efactory:linux-latest`. (T036)
 
+### Fixed
+
+- **T147 — `OPT_SE_5K_8.lib` floating DCR nodes.** До фикса `Rp_dcr`
+  и `Rs_dcr` были подключены к узлам `P3` / `S3`, которые нигде
+  больше не использовались (singular matrix при `.op`-симуляции
+  на `se-amp-demo`). Корректный fix — внутренние узлы `Pint` / `Sint`
+  для последовательного включения DCR с обмоткой: `Rp_dcr` теперь
+  `P1→Pint`, `Lp` — `Pint→P2`; симметрично для secondary. Параметры
+  (200 Ω / 0.3 Ω, K=0.9995, Cps=200p) без изменений. Source —
+  `data/models/transformers/generic/OPT_SE_5K_8.lib`; template-copy
+  пересобрана через `scripts/regenerate-templates.py`. Smoke:
+  `ngspice -b` с `.op` сходится, `v(plate) ≈ B+` (DCR ≪ R_plate).
+  Acceptance T147 (BACKLOG) выполнен. (T147)
+
 ---
 
 ## [0.6.0] — 2026-05-19
