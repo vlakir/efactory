@@ -836,10 +836,6 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
 ### Фаза 3 (+2 недели)
 
-- **T028** — [2026-05-15] Бэкенд Ollama с prompt injection fallback
-  (для моделей без native tool use).
-  Acceptance: tool use работает через текстовый протокол; при
-  поддержке native — используется он.
 - **T029** — [2026-05-15] Интеграция ERC/DRC через `kicad-mcp-pro`
   quality gates в pipeline.
   Acceptance: pipeline блокирует переход к экспорту, если ERC/DRC
