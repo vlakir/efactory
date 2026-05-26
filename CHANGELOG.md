@@ -1647,3 +1647,11 @@ T-ID не переиспользуется. Полные original-спеки с�
   **Closed:** model switch внутри Claude Code не требует
   внешней конверсии (frontend сам владеет state); cross-frontend
   миграция — задача T108-преемника, если возникнет.
+- **T028** — [2026-05-15, closed 2026-05-26 as outdated by ADR
+  2026-05-19] Бэкенд Ollama с prompt injection fallback (для моделей
+  без native tool use). **Closed:** того же родителя что T017/T018 —
+  нет своего chat-клиента (Claude Code as frontend per ADR
+  2026-05-19), значит multi-backend инфраструктура отпала. Local-
+  LLM поддержка для air-gapped/cost-sensitive use cases — relevant
+  только для альтернативного frontend (см. T108 OpenCode pilot в
+  Tech Debt), не для нашего primary path.
