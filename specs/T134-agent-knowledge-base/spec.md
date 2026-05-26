@@ -1,7 +1,9 @@
 # Spec: Agent Knowledge Base — persistent KB для runtime-агента efactory
 
-**Статус:** Draft
+**Статус:** Analyzed
 **Дата создания:** 2026-05-26
+**Clarify прошёл:** 2026-05-26 (11 вопросов, все «по рекомендации»)
+**Analyze прошёл:** 2026-05-26 (issues отражены в FR/Assumptions)
 **Связанные документы:**
 - `BACKLOG.md → T134` (источник — Phase E T131, расширен 2026-05-21
   control examples из T131 / T132 / T133).
@@ -14,6 +16,10 @@
 - `T014` — pattern bootstrap'а из репо в host state
   (`docker/runtime-agent-commands/` → `$HOME/efactory-state/claude/
   commands/`). KB использует тот же механизм.
+- `T154` — follow-up T134, заведена 2026-05-26 в BACKLOG: «Full
+  migration dev-process knowledge (DECISIONS.md / CHANGELOG.md /
+  auto-memory Гвидо / mem0) в agent KB» — отдельная curation-задача
+  с поэтапным review per entry (Q-F → c).
 
 ---
 
@@ -192,6 +198,17 @@ KB закрывает три класса знаний, которые инач�
 - **Знания специфичные для конкретного проекта** идут в
   `<PROJECT>/.efactory/decisions/` (расширение существующей T103
   Decision Aggregate), не в global KB. KB — cross-project.
+- **Filename layout** (Analyze A1): flat `docker/runtime-agent-
+  knowledge-base/<slug>.md`, где `<slug>` — full namespaced string
+  с точками (`spice.saturable.md`). Subdirectory layout (`spice/
+  saturable.md`) — потенциальный refactor при >30 entries.
+- **Token-AND search complexity** (Analyze A2): O(N·M) acceptable
+  до ~100 entries; inverted index — follow-up при превышении.
+- **Bind-mount layout** (Analyze A3): новая host-side директория
+  `$HOME/efactory-state/knowledge-base/` → `/efactory/knowledge-
+  base/host-mutated/`. Built-in seed запекается в образ под
+  `/efactory/knowledge-base/built-in/`. `--reset-claude-state`
+  (T014) расширяется на KB директорию.
 
 ## 7. Out of Scope
 
@@ -210,154 +227,109 @@ KB закрывает три класса знаний, которые инач�
   decisions/`, T103).
 - **MCP-server для KB** (ADR 2026-05-24 — tool surface = filesystem).
 
+## 8. Phase plan (implementation)
+
+Каждая фаза = одна сессия, отдельный commit (squash в один при merge).
+
+- **Phase A — domain VOs + frontmatter parser.** `KbEntry`
+  (Pydantic frozen, `extra='forbid'`), `KbNamespace` helper, parser
+  для yaml-frontmatter + body split. Unit-тесты — full coverage,
+  no external deps.
+- **Phase B — `KbStore` port + `FileSystemKbStore` adapter.**
+  Outbound port (Protocol): `list`, `get`, `add`, `search`. Adapter:
+  read из built-in + host-mutated, merge с host-wins; `add` пишет
+  только в host-mutated; `KbConflictError`. Integration тесты с
+  `tmp_path` для обеих директорий.
+- **Phase C — SessionStart hook расширение + `efactory-up`
+  bind-mount.** `scripts/session_start_hook.py` extended: грузит
+  built-in + host-mutated, рендерит TOC grouped by namespace,
+  appends к existing project-context block. `efactory-up`: новый
+  bind-mount `$HOME/efactory-state/knowledge-base/` → `/efactory/
+  knowledge-base/host-mutated/`; `--reset-claude-state` расширен на
+  KB директорию (backup в `*.bak-YYYY-MM-DD/`). Integration test —
+  hook subprocess с tmp HOME, проверка TOC structure.
+- **Phase D — CLI `efactory kb {list,show,add,search}` + 2 slash-
+  команды.** Typer sub-app в `app.py` (после `bridge`); тонкий
+  wrapper над `KbStore`. Slash-команды `/kb-search <query>` и
+  `/kb-add <topic>` в `docker/runtime-agent-commands/`. `build_app`
+  signature расширен `kb_store: KbStore`; composition root
+  пробрасывает `FileSystemKbStore`. E2e тесты.
+- **Phase E — 10 initial seed entries + 10 control-example
+  regression test + CHANGELOG/README.** Содержимое seed
+  (`docker/runtime-agent-knowledge-base/*.md`): 9 lessons из T131
+  (spice.saturable-gyrator, spice.floating-secondary-leak,
+  spice.saturation-contribution-metric), T132 (magnetics.pyom-
+  leakage-broken, magnetics.interleaving-n-squared, magnetics.pyom-
+  bobbin-patch), T133 (fem.2d-planar-zhang-gap, fem.elmer-3d-mumps-
+  ceiling, fem.elmer-stranded-coil-loop) + agent.command-routing.
+  Regression test (`tests/integration/agent_kb/test_control_
+  examples.py`) — 10 testfunctions с (query, expected_topic,
+  expected_directive_term) tuples; deterministic через
+  `kb_store.search()`.
+
 ---
 
 ## Clarify (заполняется Гвидо)
 
-### Open questions
-
-**Q-A. Built-in seed location в репо — `docker/runtime-agent-
-knowledge-base/` или `data/knowledge-base/`?**
-
-- (a) `docker/runtime-agent-knowledge-base/*.md` — родственно
-  `docker/runtime-agent-commands/` (Slash-команды), bootstrap
-  механизм тот же.
-- (b) `data/knowledge-base/*.md` — родственно `data/templates/`,
-  data-side-of-the-house.
-
-Я голосую за **(a)** — KB концептуально часть runtime-agent
-configuration (как slash-команды и system prompt), не shipping
-data. Bootstrap pattern идентичный T014.
-
-**Q-B. Slug формат для `topic` — kebab-case (`saturable-spice`) или
-namespaced (`spice.saturable`)?**
-
-- (a) Flat kebab-case (как slash-команды): `saturable-spice`,
-  `floating-secondary-leak`.
-- (b) Namespaced dotted: `spice.saturable`, `magnetics.leakage`,
-  `scenarios.quick-mapping`.
-
-Я голосую за **(b)** — namespacing помогает агенту orient'ироваться
-по группам без external organisation. Поиск по prefix естественный.
-Топиков будет >30 после miграции, плоский список становится
-труднообозримым.
-
-**Q-C. SessionStart hook injection format — table или bulleted
-list?**
-
-- (a) Markdown table (5-7 cols: topic / desc / tags).
-- (b) Bulleted list (one line per topic: `- **topic** — desc
-  [tags]`).
-- (c) Grouped headings (по namespace, если Q-B → b).
-
-Я голосую за **(c)** — group by namespace, headings + bulleted
-items. Чище читается агентом, проще scan'ить по теме.
-
-**Q-D. `/kb-search` matching algorithm — substring, token-AND, или
-fuzzy?**
-
-- (a) Plain substring (case-insensitive) по body + frontmatter
-  description/tags.
-- (b) Token-AND: query split'ится whitespace, все tokens должны
-  встречаться (анти-fuzzy).
-- (c) Lite-fuzzy через difflib или rapidfuzz.
-
-Я голосую за **(b)** — predictable, deterministic, тестируемое.
-Fuzzy усложняет regression tests без proven benefit на нашем scale.
-
-**Q-E. Conflict resolution built-in seed vs host-mutated при
-рестарте контейнера (новый image versions vs накопленный host
-state) — host wins всегда?**
-
-- (a) **Host wins** для существующих topic'ов; новые built-in
-  topic'ы добавляются. (Mirror T014 settings.json policy.)
-- (b) **Built-in wins** — каждый bootstrap затирает host. Простой,
-  но теряет user-contribution'ы.
-- (c) **Three-way merge** через git-style (`built-in original`,
-  `host`, `built-in new`) — sophisticated, но overhead.
-
-Я голосую за **(a)** — protect user contribution; clean reset
-через `--reset-claude-state` (T014 механизм уже есть).
-
-**Q-F. Initial seed contains ровно 10 control examples (T131/T132/
-T133 + scenarios), или больше?**
-
-- (a) Exactly 10 (acceptance minimum).
-- (b) 10 + best-effort migration из DECISIONS.md / Гвидо auto-
-  memory (за время T134 implementation; ~30-50 entries).
-- (c) Только 10 + отдельный T-NEW для migration.
-
-Я голосую за **(c)** — T134 core scope = infrastructure +
-acceptance. Massive migration knowledge — separate concern (требует
-curation discussion с Vladimir-ом по each entry, не auto-portable).
-
-**Q-G. CLI `efactory kb {list,show,add,search}` — обязательный или
-МОЖЕТ?**
-
-- (a) Обязательный — для dev-time validation вне runtime контейнера
-  (developer может проверить KB content без `docker run`).
-- (b) Опциональный — slash-команды + filesystem-direct достаточны.
-
-Я голосую за **(a)** — низкий overhead (тонкий Typer wrapper), но
-очень полезен для dev-process (CI-validation, scripted bootstrap).
-
-**Q-H. `/kb-add` от агента — без user-confirmation, или каждый раз
-prompt?**
-
-- (a) Без confirmation — autonomous agent сам решает.
-- (b) Каждый раз prompt: «agent хочет добавить topic X — да/нет/
-  edit».
-- (c) Auto-add в quarantine namespace (`unverified.*`), Vladimir
-  later promote'ит через CLI.
-
-Я голосую за **(a)** + (c) hybrid: agent пишет напрямую в
-`host-mutated` без promotion в built-in seed. Vladimir может затем
-review через `efactory kb list --source host-mutated` и portировать
-ценное в built-in seed через PR в репо (`docker/runtime-agent-
-knowledge-base/`). Promotion — manual, не agent-decision.
-
-**Q-I. Topic-namespace для «typical scenarios mapping» (мой
-example) — `scenarios.quick-mapping` или другое?**
-
-- (a) `scenarios.quick-mapping` (per Q-B namespace).
-- (b) `agent.command-routing` — более descriptive.
-- (c) Один большой topic `scenarios.*` (split на sub-topics: audio,
-  power, fem).
-
-Я голосую за **(b)** — `agent.command-routing` точнее отражает что
-делает entry. Sub-topics по technical domain — будущие entries по
-мере накопления.
-
-**Q-J. Validation level frontmatter — strict (Pydantic) или
-permissive (warn-only)?**
-
-- (a) Strict: `KbEntry` Pydantic model с frozen, extra='forbid';
-  парсинг fail'ит на bad frontmatter.
-- (b) Permissive: warn в SessionStart hook, skip broken entries;
-  не блокирует bootstrap.
-
-Я голосую за **(a)** — consistency с slash-команд validation в
-`test_runtime_agent_commands.py`. Plus integration test ловит
-broken entries в CI до merge.
-
-**Q-K. Где живут acceptance тесты T134 — `tests/integration/test_
-agent_kb.py` или dedicated `tests/integration/agent_kb/`?**
-
-- (a) Single file `test_agent_kb.py`.
-- (b) Directory `tests/integration/agent_kb/` (по test category:
-  bootstrap / search / add / control-examples).
-
-Я голосую за **(b)** — 10 control examples + bootstrap + retrieval
-+ writer достаточно для split. Single file будет ~500 LOC.
-
 ### Resolved (с ответами)
 
-- ...
+Все 11 вопросов разрешены 2026-05-26 ответом Vladimir-а «по
+рекомендации» — выбран мой предварительный голос по каждому.
+
+| ID | Решение | Влияние |
+|----|---------|---------|
+| **Q-A** | (a) Seed `docker/runtime-agent-knowledge-base/`. | Bootstrap pattern T014; KB — runtime-agent config, не shipping data. |
+| **Q-B** | (b) Namespaced slug `<namespace>.<name>` (`spice.saturable`, `agent.command-routing`). | TOC groups по namespace (Q-C); prefix-поиск естественный. |
+| **Q-C** | (c) Grouped headings (по namespace) + bullets в SessionStart `additionalContext`. | Hook (T016) extension. |
+| **Q-D** | (b) Token-AND (whitespace split, все tokens must match). | Predictable, тестируемое без LLM-judge. |
+| **Q-E** | (a) Host wins; `--reset-claude-state` (T014) расширяется на KB. | Protects user-contribution от docker upgrade. |
+| **Q-F** | (c) Ровно 10 control examples + отдельная **T154** для massive migration. | T134 = infrastructure + acceptance; full curation массивных знаний — отдельная задача. |
+| **Q-G** | (a) CLI `efactory kb {list,show,add,search}` обязателен. | Dev-time validation; тонкий Typer wrapper. |
+| **Q-H** | (a)+(c) hybrid: agent → host-mutated без confirm; built-in promotion manual через PR. | Autonomous accumulation + quality gate на built-in seed. |
+| **Q-I** | (b) Topic `agent.command-routing` (мой пример). | Точнее описывает routing. |
+| **Q-J** | (a) Strict Pydantic (`KbEntry` frozen, `extra='forbid'`). | Consistency с slash-команд validation; CI ловит broken entries. |
+| **Q-K** | (b) Directory `tests/integration/agent_kb/` (bootstrap/search/add/control_examples). | ~500 LOC — split логичен. |
+
+**Сторонний эффект** — заведена **T154** в BACKLOG (Q-F → c).
 
 ---
 
 ## Analyze (заполняется Гвидо)
 
-<!-- После ответов на Clarify — pass на противоречия / упущения. -->
+Analyze pass 2026-05-26: 8 issues, **0 Critical**; 3 Warning отражены
+в FR/Assumptions; 5 Note — implementation guidance.
 
-- ...
+### 🔴 Critical — нет
+
+### 🟡 Warning — отражены в spec'е
+
+- **A1. Namespace в slug vs filename.** Q-B даёт slug
+  `spice.saturable`, точка в filename'е валидна на Linux/macOS/Windows
+  (`spice.saturable.md` — два dot'а ок). Subdirectory layout
+  (`spice/saturable.md`) чище для >30 entries, но требует recursive
+  scan. **Решение:** flat layout `<slug>.md` сейчас; migration в
+  subdirectories — follow-up при >30 entries.
+- **A2. `KbStore.search()` token-AND на large bodies — O(N·M).**
+  N=entries, M=tokens. На ~50 entries × 2-3 tokens = ~150 substring
+  checks per query — приемлемо. **Решение:** acceptable до 100
+  entries; при превышении — T-NEW для inverted index.
+- **A3. Host-mutated bind-mount требует расширения `efactory-up`.**
+  Существующий `$HOME/efactory-state/claude/` → `/efactory/.claude/`;
+  параллельно нужен `$HOME/efactory-state/knowledge-base/` →
+  `/efactory/knowledge-base/host-mutated/`. Зафиксировано в §6 +
+  Phase C scope.
+
+### 🟢 Note — implementation guidance
+
+- **A4. SessionStart hook (T016) backward-compat.** KB-секция
+  appended после existing project-context; пустая KB — skip section.
+- **A5. `KbStore.add()` writes only host-mutated.** Built-in seed
+  read-only runtime; conflict при existing topic → `KbConflictError`
+  с `--force` overwrite option.
+- **A6. CLI `efactory kb add` + slash-команда `/kb-add`** — обе
+  пишут в host-mutated. Built-in mutate'ится только через PR в репо.
+- **A7. Frontmatter `source` field auto-set adapter'ом** при read,
+  не пользователем. Pydantic `KbEntry.source` — `Literal['built-in',
+  'host-mutated']`, но в file отсутствует.
+- **A8. Phase plan (5 фаз)** — каждая ≈ 1 сессия = 1 commit на
+  ветке, squash в один при merge. См. §8 ниже.
