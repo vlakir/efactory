@@ -36,6 +36,96 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T023 — `efactory bridge measure <gain|bandwidth|thd>`: измерения
+  как отдельные bridge-инструменты.** Первая содержательная задача
+  Фазы 2 (analysis-first ordering); фундамент для T021 (delta-измерения
+  до/после edit'а) и T022 (parametric sweep с метриками в таблице).
+
+  **Действия после merge:**
+  1. Пересобрать образ: `docker build -t efactory:linux .` — иначе в
+     нём не будет `docker/runtime-agent-commands/measure-*.md` и
+     обновлённого `runtime-agent-CLAUDE.md`.
+  2. Однократно `./efactory-up --reset-claude-state` — bootstrap новых
+     slash-команд в host state.
+
+  - **Domain VOs** (`src/domain/measurement.py`, Clarify Q-A → b: три
+    независимых VO, без discriminated union'а):
+    - `GainMeasurement` (value_db, value_linear, frequency_hz, mode
+      'small'|'large', input/output_signal, v_in_peak). Cross-field
+      validator: `mode='large'` требует v_in_peak.
+    - `BandwidthMeasurement` (f_low_hz, f_high_hz, bandwidth_hz,
+      ref_db, midpoint_db, midpoint_source 'auto'|'ref_freq',
+      ref_freq_hz, passband/input_signal). Cross-field validators:
+      `f_high > f_low`, `bandwidth_hz == diff (±1e-9)`, ref_freq_hz
+      обязателен при midpoint_source='ref_freq'.
+    - `ThdMeasurement` (thd_percent, fundamental_hz, v_in_peak,
+      measured_power_w, dominant_harmonic_n ≥ 2,
+      dominant_harmonic_percent, signal, n_harmonics 3..20). Строится
+      из FourierResult extraction'ом (dominant — max normalized среди
+      n ≥ 2).
+  - **AnalysisType extension** (`domain/sim_results.py`): `GAIN`,
+    `BANDWIDTH` (THD уже было в T016 — переиспользуем).
+  - **Три async use case'а** (`application/measure_*.py`) с hex-DI:
+    Simulator + NetlistEditor ports. Outside-in TDD: тесты с fake
+    Simulator, real NgspiceNetlistEditor (text-mutation детерминирован).
+    - `measure_gain --mode small` — AC analysis с n_points=2 workaround
+      (Analyze A2: `f_start=f, f_stop=f*1.0001`); auto-injection
+      `AC 1` modifier через NetlistEditor.
+    - `measure_gain --mode large` — TRAN с sin amplitude `v_in_peak`,
+      RMS-based ratio output/input на settle-portion (последние 2 из
+      10 периодов); default `t_stop=10/freq, t_step=period/100`.
+    - `measure_thd` — TRAN + ngspice `fourier` → extraction. **Не
+      wrapper T131** (Q-D → b): работает на arbitrary netlist'е без
+      зависимости на `MagneticComponent` / saturable subckt.
+      Calibration loop по target-power **out of scope** — это T131
+      специализация (Analyze A1).
+    - `measure_bandwidth` — AC sweep `dec`, midpoint detection (auto
+      = max\|H\| либо ref_freq = \|H(closest)\|), endpoints через
+      linear interpolation в log-freq space.
+    - Все три: auto-detect single V-source (Q-G → c) через
+      `NetlistEditor.find_top_level_v_sources`; explicit override
+      через `--input-source`; optional SimResult persistence через T016
+      `SimResultsRepository` pattern (partial DI → ValueError).
+  - **NetlistEditor port extension** (`ports/outbound/netlist_editor.py`
+    + `adapters/outbound/ngspice/netlist_substitution.py`):
+    - `ensure_ac_modifier(source_ref, ac_magnitude=1.0)` —
+      идемпотентная injection `AC <mag>` modifier'а перед AC analysis.
+      Решает проблему: tube-amp фикстуры имеют SIN-source без AC
+      modifier'а; ngspice AC analysis возвращает 0 без injection.
+    - `find_top_level_v_sources(text)` — auto-detect V-source refs
+      (исключая subckt-internal через depth-counter).
+  - **CLI bindings** (`adapters/inbound/cli/app.py`): sub-Typer
+    `bridge measure <type>` (Q-J → a, гомогенно с `bridge sim-run
+    op|tran|ac`). Все команды поддерживают `--output json|text` для
+    programmatic consumption (T021/T022 потребители); SPICE-нотация
+    частот через `parse_spice_number`. `build_app` signature расширен
+    параметром `netlist_editor: NetlistEditor`; composition root
+    пробрасывает `NgspiceNetlistEditor()`.
+  - **Три slash-команды** (`docker/runtime-agent-commands/`):
+    `/measure-gain`, `/measure-bandwidth`, `/measure-thd` (hyphenated
+    flat naming per T014 Analyze A1). Auto-detect netlist в cwd
+    (top-level + 1 subdir). Bootstrap-механизм тот же, что T014.
+    `docker/runtime-agent-CLAUDE.md` обновлён с новыми командами и
+    note про netlist vs schematic.
+  - **Тесты** (всего +106): 37 domain (Phase A) + 9 ensure_ac +
+    6 find_v_sources + 18 measure_gain + 14 measure_thd +
+    15 measure_bandwidth (Phase B) + 7 e2e на real ngspice
+    (voltage-divider 1:2: gain -6 dB, bandwidth flat → endpoints =
+    sweep edges, thd ≈ 0, error paths). Pre-push gates все 5 зелёные
+    (1034 passed, coverage 86.03%).
+  - **T153** заведена в BACKLOG: phase margin как отдельная задача
+    (Q-B → c) — open-loop SE/PP не имеют phase margin'а в каноническом
+    смысле; feedback-схем у нас пока нет в фикстурах, для них нужен
+    собственный спек с дисциплиной loop-cut.
+  - **Out of scope T023:** target-power calibration loop для thd
+    (T131); path auto-detection `.kicad_sch` → design-to-measure
+    pipeline (только `.cir` netlist, schematic input → потенциальный
+    follow-up); phase margin (T153); визуализация (T024/T025); sweep
+    (T022); delta (T021).
+  - Spec — `specs/T023-measurements/spec.md` (Analyzed, 10 clarify +
+    12 analyze issues — 1 Critical разрешён in-spec, 4 Warning
+    отражены в FR/Assumptions, 7 Note guidance'ы).
+
 - **T014 — efactory custom slash-команды для Claude Code +
   template-инфраструктура.** Phase 1b закрыта окончательно (T013 +
   T016 + T014).

@@ -25,7 +25,7 @@
   SPICE / KiCad libs пользователя).
 - **`Glob` / `Grep`** — поиск по проекту и codebase.
 
-## Custom slash-команды efactory (T014)
+## Custom slash-команды efactory (T014 + T023)
 
 Видны в `/`-menu и через `/help`. Тонкие wrapper'ы над `efactory` CLI:
 
@@ -37,6 +37,18 @@
 - **`/sim-run [SCHEMATIC] [--analysis op|tran|ac]`** — запустить
   SPICE-симуляцию (auto-detect единственного `.kicad_sch` в cwd
   при отсутствии аргумента).
+- **`/measure-gain [NETLIST] --freq <Hz> [--mode small|large]`** —
+  измерить gain (default small AC, опционально large TRAN RMS).
+- **`/measure-bandwidth [NETLIST] [--f-low Hz] [--f-high Hz]`** —
+  полоса пропускания по `-3 dB` (default) от midband (auto = max\|H\|
+  или ref-freq).
+- **`/measure-thd [NETLIST] --freq <Hz> --v-in-peak <V>`** —
+  single-point THD (TRAN + ngspice fourier).
+
+Measure-команды работают на готовом netlist'е (`.cir`), не на schematic.
+Перед измерением сгенерируй netlist через `/sim-run` (он по дороге
+вызывает `design-to-netlist`) или `efactory bridge design-to-netlist
+<PROJECT> --schematic <path>.kicad_sch` напрямую.
 
 Generic команды (`/help`, `/clear`, `/compact`, `/model`, `/save`,
 `/load`) — встроены в Claude Code, не дублируются.

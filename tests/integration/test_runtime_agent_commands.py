@@ -16,7 +16,14 @@ import yaml
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _COMMANDS_DIR = _REPO_ROOT / 'docker' / 'runtime-agent-commands'
 
-_EXPECTED_COMMANDS = {'project-create', 'project-use', 'sim-run'}
+_EXPECTED_COMMANDS = {
+    'project-create',
+    'project-use',
+    'sim-run',
+    'measure-gain',
+    'measure-bandwidth',
+    'measure-thd',
+}
 _REQUIRED_FRONTMATTER = {'description', 'argument-hint', 'allowed-tools'}
 
 
