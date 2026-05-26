@@ -171,13 +171,15 @@ credentials, разные projects/sessions, разные системные pro
 - **`efactory-up`** (корень репо) — реализует mount'ы из таблицы выше.
   Режимы: дефолтный (KiCad GUI), `--demo` / `--demo-freecad` (демо-
   фикстуры), `--headless` (CI/pytest), **`--agent [NAME]` (runtime
-  Claude Code, T013 + T016)** — отключает X11 pre-flight и libs
+  Claude Code, T013 + T014 + T016)** — отключает X11 pre-flight и libs
   mount, выделяет TTY (`-it`), запускает `claude --dangerously-skip-
   permissions` с cwd=`/workspace/[NAME]` (при заданном NAME) или
-  `/workspace` (default). При первом запуске и `--reset-claude-
-  settings` материализует `$HOME/efactory-state/claude/settings.json`
-  из embedded template'а (репо: `docker/runtime-agent-settings.json`,
-  fallback из образа: `/opt/efactory/share/claude-defaults/settings.json`).
+  `/workspace` (default). При первом запуске и `--reset-claude-state`
+  материализует `$HOME/efactory-state/claude/{settings.json,
+  commands/*.md}` из embedded template'ов (репо: `docker/runtime-
+  agent-{settings.json,commands/}`, fallback из образа:
+  `/opt/efactory/share/claude-defaults/{settings.json,commands/}`).
+  Deprecated alias `--reset-claude-settings` ещё работает с warning'ом.
 - **Dockerfile** (корень репо) — создаёт mount-points
   (`/efactory/.claude`, `/efactory/.Xauthority`) с правами
   `0755 root:root`; runtime-юзер читает/пишет через mount.
@@ -190,6 +192,9 @@ credentials, разные projects/sessions, разные системные pro
   `/opt/efactory/share/claude-defaults/settings.json` (T016) —
   embedded template settings.json (read-only fallback для bootstrap'а
   на хосте, если репо отсутствует).
+  `/opt/efactory/share/claude-defaults/commands/*.md` (T014) — три
+  custom slash-команды (`project-create`, `project-use`, `sim-run`),
+  тот же bootstrap-механизм.
 - **`Dockerfile.libs`** (корень репо) — собирает `efactory-libs`
   image, из которого `bootstrap_libs` копирует KiCad libraries.
 
@@ -205,5 +210,8 @@ credentials, разные projects/sessions, разные системные pro
   агента в контейнере.
 - `specs/T016-project-context/spec.md` — спецификация dynamic project
   context (SessionStart hook) и sim-results infrastructure.
+- `specs/T014-claude-code-slash/spec.md` — спецификация custom
+  slash-команд (`/project-create`, `/project-use`, `/sim-run`) и
+  template-инфраструктуры.
 - `README.md` § «Запуск KiCad GUI из контейнера» / «Запуск runtime-
   агента» — пользовательский quick start.

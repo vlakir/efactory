@@ -36,6 +36,91 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T014 — efactory custom slash-команды для Claude Code +
+  template-инфраструктура.** Phase 1b закрыта окончательно (T013 +
+  T016 + T014).
+
+  **Действия после merge:**
+  1. Пересобрать образ: `docker build -t efactory:linux .` — иначе
+     в нём не будет ни `docker/runtime-agent-commands/`, ни
+     запечённого шаблона `data/templates/se-amp/`.
+  2. Однократно `./efactory-up --reset-claude-state` — bootstrap
+     commands в host state (`$HOME/efactory-state/claude/commands/`).
+     Backup старого state — `*.bak-YYYY-MM-DD/`.
+
+  - **Custom slash-команды** (`docker/runtime-agent-commands/*.md`):
+    `/project-create <NAME>` (wrapper над `efactory project create
+    --template se-amp --name NAME`), `/project-use <NAME>` (display-
+    only: запускает SessionStart hook с `CLAUDE_PROJECT_DIR=
+    /workspace/<NAME>` через `python3 .../session_start_hook.py
+    | json.load(...)['hookSpecificOutput']['additionalContext']`),
+    `/sim-run [SCHEMATIC] [--analysis op|tran|ac]` (wrapper над
+    `efactory bridge sim-run` с auto-detect единственного
+    `.kicad_sch` в cwd при отсутствии аргумента). Frontmatter:
+    `description` + `argument-hint` + `allowed-tools: Bash`.
+    Bootstrap-механизм тот же, что для `runtime-agent-settings.json`
+    из T016 (приоритет: репо → fallback image
+    `/opt/efactory/share/claude-defaults/commands/`).
+  - **CLI расширение** (`efactory project create --template <name>
+    [--target-dir DIR]`): новый optional `--template` flag (без него
+    поведение прежнее — пустой проект); `--target-dir` перекрывает
+    `settings.projects_root` для разовой инвокации; `EFACTORY_
+    PROJECTS_ROOT` уже выставлен в `/workspace` в образе.
+  - **TemplateMaterializer** (`src/adapters/inbound/cli/template_
+    materializer.py`): helper-функция (Q4 «по рекомендации» — без
+    отдельного outbound port'а), overlay шаблона на existing
+    target_dir (создан `create_project` use case'ом, `project.yaml`
+    пишет он сам). Filename substitution `{{PROJECT_NAME}}` →
+    sanitized name (`spaces → _`, `/ → _`); content substitution в
+    `.kicad_sch/.kicad_pro/.md/.yaml/.yml/.txt/.cir`. Pre-scan на
+    конфликты с existing files в target — fail до записи.
+    `template.yaml` + `README.md` шаблона НЕ копируются в проект
+    (metadata самого шаблона).
+  - **Шаблон `se-amp`** (`data/templates/se-amp/`): запечённый
+    artefact от `_build_se_amp` в integration-тесте (6П14П SE-amp
+    + OPT 5kΩ:8Ω + R_load 8Ω), `{{PROJECT_NAME}}.kicad_sch/pro`,
+    `models/6P14P.lib`, `models/OPT_SE_5K_8.lib`, `template.yaml`
+    (description/summary), `README.md`. Force-included в wheel через
+    pyproject (рядом с уже существующим `data/models`).
+  - **`scripts/regenerate-templates.py`** — ручной пересбор при
+    изменении builder'а (`_build_se_amp` динамически импортируется
+    из integration-теста, аналог `scripts/gen-se-amp-demo.py`).
+  - **Snapshot test** (`tests/integration/test_template_se_amp_
+    snapshot.py`): регенерирует во временный каталог, нормализует
+    non-deterministic content (UUID v4 в обоих формах: `(uuid "...")`
+    и `(path "/UUID"...)`), полностью удаляет блок `(lib_symbols ...)`
+    (его order зависит от PYTHONHASHSEED — internal KiCad cache, не
+    семантическая часть; семантические изменения детектируются через
+    `(symbol "ref:lib_id" ...)` references в body). Fail-сообщение
+    «run `uv run python scripts/regenerate-templates.py`».
+  - **`efactory-up` rename:** `--reset-claude-settings` →
+    `--reset-claude-state` (bootstrap'ит и settings.json, и
+    commands/). Deprecated alias `--reset-claude-settings` сохранён
+    с stderr warning, удаление — в следующем minor. Backup при reset
+    — в `$STATE_DIR/claude.bak-YYYY-MM-DD/` (один каталог вместо
+    отдельных `*.bak` файлов).
+  - **Dockerfile:** новый `COPY docker/runtime-agent-commands/
+    /opt/efactory/share/claude-defaults/commands/` рядом с
+    `settings.json`-COPY.
+  - **System prompt** (`docker/runtime-agent-CLAUDE.md`): секция
+    «Custom slash-команды efactory» с описанием трёх команд и note
+    про cwd-instability + «использовать абсолютные пути».
+  - **Тесты:** 13 unit (materializer), 4 e2e (CLI с/без template,
+    unknown template, --target-dir override), 2 integration
+    (snapshot + script CLI smoke), 1 e2e regression-fix
+    (`test_git_init_and_session_log`: payload теперь содержит
+    `'template': None`). Pre-push gates все 5 зелёные
+    (ruff/format/mypy/lint-imports 3/3 KEPT/pytest): 920 passed,
+    9 skipped, coverage 86.14%.
+  - **Out of scope:** `/export-production` — отдельная задача T150
+    (BACKLOG); CI snapshot-enforcement follow-up — T151; дополнительные
+    шаблоны (`pp-amp`, `preamp`, `filter`) — отдельные задачи в
+    BACKLOG follow-ups.
+  - Spec — `specs/T014-claude-code-slash/spec.md` (Analyzed, 10
+    clarify resolved «по рекомендации», 12 analyze issues — 2
+    Critical resolved: A1 hyphenated naming + A2 display-only
+    `/project-use`).
+
 - **T016 — Dynamic project context в Claude Code (SessionStart hook
   + sim-results infrastructure).** Phase 1b завершена: runtime-агент
   при старте сессии получает динамическую project-сводку (название,

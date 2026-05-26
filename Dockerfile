@@ -256,6 +256,11 @@ COPY docker/runtime-agent-CLAUDE.md /CLAUDE.md
 # `/usr/bin/python3` (3.12 в Ubuntu 24.04 base), не зависит от
 # editable venv: cold-start ~30-50 ms.
 COPY docker/runtime-agent-settings.json /opt/efactory/share/claude-defaults/settings.json
+# T014 — кастомные slash-команды efactory (project-create, project-use,
+# sim-run). Bootstrap'ятся в `/efactory/.claude/commands/` через
+# `efactory-up --agent` (тот же механизм, что settings.json). Образный
+# fallback для случая «репо отсутствует на host'е».
+COPY docker/runtime-agent-commands/ /opt/efactory/share/claude-defaults/commands/
 # scripts/ уже скопирован в stage 3 (efactory-code) для других целей
 # (gen-bracket-demo.FCMacro и т.п.); session_start_hook.py попадает
 # в `/opt/efactory/scripts/` без отдельного COPY.
