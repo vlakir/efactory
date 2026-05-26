@@ -54,3 +54,40 @@ class NetlistEditor(Protocol):
 
         """
         ...
+
+    def ensure_ac_modifier(
+        self,
+        netlist_text: str,
+        *,
+        source_ref: str,
+        ac_magnitude: float = 1.0,
+    ) -> str:
+        """
+        Добавить `AC <magnitude>` modifier к V-source'у, если его ещё нет.
+
+        Идемпотентно: при наличии любого `AC ...` параметра возвращает
+        netlist без изменений (текущая magnitude сохраняется). Нужен для
+        AC-based use case'ов (T023 measure_gain --mode small,
+        measure_bandwidth) на фикстурах, где V-source изначально
+        SIN-only / DC-only без AC modifier'а.
+
+        Raises:
+            ValueError: если source с таким ref не найден / empty ref /
+                non-positive magnitude.
+
+        """
+        ...
+
+    def find_top_level_v_sources(self, netlist_text: str) -> tuple[str, ...]:
+        """
+        Найти top-level V-source refs в netlist'е (исключая subckt-internal).
+
+        Используется для auto-detect input source в T023 measure_*
+        use case'ах (Clarify Q-G → c): если ровно один V-source —
+        берётся он; иначе — caller обязан указать через `--input-source`.
+
+        Returns:
+            Tuple V-source refs в порядке появления (пустой если нет).
+
+        """
+        ...

@@ -201,6 +201,15 @@ Any]` (T016 — Any, не float) для всех VO-полей включая st
   берём первый результат (Analyze A2). Альтернатива — ослабить
   validator (≥), но трогать существующий contract без других нужд не
   оправдано.
+- **AC source modifier auto-injection.** ngspice AC analysis требует
+  чтобы V-source имел `AC <magnitude>` модификатор; наши tube-amp
+  фикстуры (включая `_build_se_amp`) имеют только `SIN(...)`-form для
+  TRAN, без AC modifier. Решение (Phase B mid-decision 2026-05-26,
+  вариант 1): **`NetlistEditor` port extended** методом
+  `ensure_ac_modifier(source_ref, ac_magnitude=1.0)` — идемпотентная
+  injection. Use case'ы `measure_gain --mode small` и
+  `measure_bandwidth` auto-инжектируют `AC 1` перед запуском AC analysis.
+  Фикстуры не трогаем; semantics «small-signal = AC analysis» сохранена.
 - **TRAN default'ы для large-gain и thd:** `t_stop = 10 / freq`
   (10 циклов, settle time), `t_step = (1 / freq) / 100` (Nyquist
   100× oversample). Caller перекрывает `--t-stop` / `--t-step`
