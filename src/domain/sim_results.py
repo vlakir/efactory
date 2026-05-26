@@ -37,6 +37,8 @@ class AnalysisType(StrEnum):
     OP = 'op'
     FOUR = 'four'
     THD = 'thd'
+    GAIN = 'gain'
+    BANDWIDTH = 'bandwidth'
     FEM_FIELD = 'fem_field'
     LEAKAGE = 'leakage'
     BRACKET_SHEET_METAL = 'bracket_sheet_metal'
