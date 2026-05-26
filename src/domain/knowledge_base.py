@@ -20,8 +20,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 SourceKind = Literal['built-in', 'host-mutated']
 
-_TOPIC_PATTERN = r'^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]+)+$'
-_TAG_PATTERN = r'^[a-z][a-z0-9-]*$'
+# Namespace (часть до первой точки) — должен начинаться с буквы (semantic
+# domain marker: spice, magnetics, fem, agent, project). После точки —
+# может начинаться с цифры (technical terms: `2d-planar`, `3d-mumps`).
+_TOPIC_PATTERN = r'^[a-z][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)+$'
+# Tags также разрешают цифру-начало (`3d`, `2d`).
+_TAG_PATTERN = r'^[a-z0-9][a-z0-9-]*$'
 
 _FROZEN = ConfigDict(frozen=True, extra='forbid')
 

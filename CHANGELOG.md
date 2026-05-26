@@ -36,6 +36,81 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T134 — Agent Knowledge Base — persistent KB для runtime-агента.**
+  Решает: agent в `efactory:linux` не имеет доступа к auto-memory
+  Гвидо / mem0; каждая сессия свежая. KB закрывает 3 класса знаний:
+  (1) typical user-request → slash-command mapping (защита от
+  изобретения велосипеда / scan собственных исходников efactory);
+  (2) hard-won technical lessons (T131/T132/T133 control examples);
+  (3) project-specific decisions (cross-link с T103).
+
+  **Действия после merge:**
+  1. `docker build -t efactory:linux .` — запекает 10 seed entries
+     в образ под `/efactory/knowledge-base/built-in/`.
+  2. `./efactory-up --reset-claude-state` — bootstrap host KB
+     `$HOME/efactory-state/knowledge-base/`.
+
+  Архитектура (без MCP / без vector DB):
+  - Markdown с frontmatter (унифицировано со slash-командами T014),
+    namespaced slug `<ns>.<name>`.
+  - Built-in seed запекается в образ; host-mutated через bind-mount
+    (как `.claude` state в T140). Host wins при conflict (Q-E → a).
+  - Retrieval: SessionStart hook (T016 extension) инжектирует TOC
+    grouped by namespace; полный body — через `Read` или
+    `/kb-search`. Markdown + grep + Read достаточны на годы вперёд.
+
+  Domain + adapters (Phase A+B):
+  - `domain/knowledge_base.py` — `KbEntry` frozen Pydantic, strict
+    `extra='forbid'`, namespaced topic pattern, цифра-начало
+    разрешена после первой точки и в tags (`3d`, `2d`).
+  - `adapters/outbound/knowledge_base_filesystem/{parser,store}.py` —
+    yaml frontmatter parser + render; `FileSystemKbStore` с host-
+    wins merge; `KbConflictError` на add без `--force`; filter
+    `'.' in stem` пропускает README/NOTES.
+
+  CLI + slash-команды (Phase D):
+  - `efactory kb {list,show,add,search}` (Q-G → a обязательный).
+  - `/kb-search <query>`, `/kb-add <topic> --description ...`
+    (hyphenated flat per T014 A1).
+  - `build_app` signature +`kb_store: KbStore`; composition root
+    пробрасывает `FileSystemKbStore(built_in_dir, host_mutated_dir)`
+    с EFACTORY_KB_{BUILT_IN,HOST_MUTATED}_DIR env overrides.
+
+  Hook + efactory-up extension (Phase C):
+  - `render_kb_section()` — TOC grouped by namespace; stdlib-only
+    frontmatter parser (без pyyaml, cold-start ~30-50 ms).
+  - `bootstrap_kb_state()` — host KB dir + backup/reset.
+  - Новый bind-mount `$STATE_DIR/knowledge-base:/efactory/
+    knowledge-base/host-mutated:rw`.
+  - Dockerfile: `COPY docker/runtime-agent-knowledge-base/ →
+    /efactory/knowledge-base/built-in/`.
+
+  10 initial seed entries (Phase E, acceptance gate Q-F → c минимум):
+  - **T131 (3)**: `spice.saturable-gyrator-cap`, `spice.floating-
+    secondary-leak`, `spice.saturation-contribution-metric`.
+  - **T132 (3)**: `magnetics.pyom-leakage-broken`, `magnetics.
+    interleaving-n-squared`, `magnetics.pyom-bobbin-patch`.
+  - **T133 (3)**: `fem.2d-planar-zhang-gap`, `fem.elmer-3d-mumps-
+    ceiling`, `fem.elmer-stranded-coil-loop`.
+  - **`agent.command-routing`** (Q-I → b, новый): mapping table
+    «user формулировка → slash-команда» — защита от изобретения
+    велосипеда / scan собственных исходников efactory. Расширяет
+    runtime-agent-CLAUDE.md секцией «Knowledge Base usage».
+
+  **Тесты** (+66): 19 domain + 16 parser + 19 KbStore integration
+  + 9 hook KB extension + 4 frontmatter + 12 control-example
+  regression (parametrized 10 cases + 2 sanity).
+
+  Pre-push gates все 5 зелёные (1119 passed, +66, coverage 85.50%).
+
+  **T154 spin-off** (BACKLOG): full migration dev-process knowledge
+  (DECISIONS / CHANGELOG / auto-memory / mem0) — отдельная 4-phased
+  curation-задача с manual review per entry.
+
+  Spec — `specs/T134-agent-knowledge-base/spec.md` (Analyzed, 11
+  clarify + 8 analyze issues — 0 Critical, 3 Warning в spec, 5
+  Note guidance).
+
 - **T023 — `efactory bridge measure <gain|bandwidth|thd>`: измерения
   как отдельные bridge-инструменты.** Первая содержательная задача
   Фазы 2 (analysis-first ordering); фундамент для T021 (delta-измерения
