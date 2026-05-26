@@ -66,6 +66,55 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T023** — [closed 2026-05-26, PR #76] **Измерения как отдельные
+  bridge-инструменты (gain / bandwidth / thd).** Первая содержательная
+  задача analysis-first ordering Фазы 2; фундамент для T021 (delta)
+  и T022 (sweep tabular).
+  - **Domain** — три независимых frozen Pydantic VO (Q-A → b: без
+    discriminated union'а): `GainMeasurement`, `BandwidthMeasurement`,
+    `ThdMeasurement` (валидаторы: large mode требует v_in_peak;
+    bandwidth f_high>f_low и bandwidth==diff; dominant_n≥2 для thd).
+    `AnalysisType` enum +`GAIN`, `BANDWIDTH` (THD из T016).
+  - **Use cases** (`application/measure_{gain,bandwidth,thd}.py`,
+    hex-DI Simulator + NetlistEditor):
+    - `measure_gain`: small AC (n_points=2 workaround) с auto-injection
+      `AC 1` modifier'а; large TRAN + RMS на settle-portion (последние
+      2 из 10 периодов).
+    - `measure_thd`: независимый use case (Q-D → b), не wrapper T131.
+      TRAN + ngspice `fourier` → extraction (dominant = max normalized
+      n ≥ 2); calibration loop out of scope.
+    - `measure_bandwidth`: AC sweep dec; midpoint auto (max|H|) или
+      ref_freq; endpoints через linear interp в log-freq space.
+    - Все три: auto-detect single V-source (Q-G → c); optional
+      SimResult persistence (T016 pattern).
+  - **NetlistEditor port extension** (Phase B mid-decision вариант 1):
+    `ensure_ac_modifier` (идемпотентная injection) + `find_top_level_
+    v_sources` (depth-counter исключает subckt-internal).
+  - **CLI** `bridge measure <gain|bandwidth|thd>` sub-Typer (Q-J → a);
+    `--output json|text`; SPICE-нотация частот через
+    `parse_spice_number`. `build_app(... netlist_editor=...)`;
+    composition root пробрасывает `NgspiceNetlistEditor()`.
+  - **Slash-команды** `/measure-gain`, `/measure-bandwidth`,
+    `/measure-thd` в `docker/runtime-agent-commands/` (hyphenated
+    flat per T014 A1); `runtime-agent-CLAUDE.md` обновлён.
+  - **Тесты:** 37 domain + 9 ensure_ac + 6 find_v_sources + 18+14+15
+    use cases + 7 e2e (real ngspice на voltage divider 1:2: gain
+    -6.02 dB, bandwidth flat → endpoints, thd ≈ 0%) + 6 slash-команд
+    frontmatter. Pre-push gates все 5 зелёные (1040 passed, coverage
+    86.03%).
+  - **T153 spin-off** (BACKLOG, Q-B → c): phase margin отдельной
+    задачей когда появится feedback-фикстура.
+  - **Out of scope:** target-power calibration loop для thd (T131);
+    schematic input → design-to-measure pipeline (только `.cir`);
+    phase margin (T153); визуализация (T024/T025); sweep (T022);
+    delta (T021).
+  - **Owner manual smoke (после merge):** `docker build` +
+    `./efactory-up --reset-claude-state`; `/measure-*` на
+    `se-amp-demo` после `/sim-run`.
+  - Spec — `specs/T023-measurements/spec.md` (Analyzed: 10 clarify
+    «по рекомендации» + 12 analyze issues — 1 Critical разрешён
+    in-spec, 4 Warning отражены, 7 Note guidance'ы).
+
 - **T147** — [closed 2026-05-26, PR #74] **Fix `OPT_SE_5K_8.lib`:
   floating ноды DCR через internal nodes (`Pint`/`Sint`).** Hot-fix
   демо-фикстуры: `Rp_dcr`/`Rs_dcr` подключались к floating узлам

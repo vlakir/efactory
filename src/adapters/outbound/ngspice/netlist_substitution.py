@@ -180,6 +180,127 @@ def _g(value: float) -> str:
     return f'{value:.9g}'
 
 
+_AC_MODIFIER_RE = re.compile(r'\bAC\b\s+\S+', re.IGNORECASE)
+_SIN_RE = re.compile(r'\bSIN\s*\(', re.IGNORECASE)
+_V_SOURCE_REF_RE = re.compile(r'^V[A-Za-z0-9_]*$')
+
+
+def find_top_level_v_sources(netlist_text: str) -> tuple[str, ...]:
+    """
+    Найти все top-level V-source refs в netlist'е (исключая subckt-internal).
+
+    Возвращает tuple ref-string'ов в порядке появления. Используется
+    для auto-detect input source в T023 measure_* use case'ах (Q-G → c).
+
+    Args:
+        netlist_text: исходный текст netlist'а.
+
+    Returns:
+        Tuple V-source refs (например, ``('V_in', 'V_bplus')``). Пустой
+        tuple — если top-level V-source'ов нет.
+
+    """
+    sources: list[str] = []
+    subckt_depth = 0
+    for line in netlist_text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith('*'):
+            continue
+        upper = stripped.upper()
+        if upper.startswith('.SUBCKT'):
+            subckt_depth += 1
+            continue
+        if upper.startswith('.ENDS'):
+            subckt_depth = max(0, subckt_depth - 1)
+            continue
+        if subckt_depth > 0:
+            continue
+        if stripped.startswith('.'):
+            continue
+        tokens = stripped.split()
+        if not tokens:
+            continue
+        ref = tokens[0]
+        if _V_SOURCE_REF_RE.match(ref):
+            sources.append(ref)
+    return tuple(sources)
+
+
+def ensure_ac_modifier(
+    netlist_text: str,
+    *,
+    source_ref: str,
+    ac_magnitude: float = 1.0,
+) -> str:
+    """
+    Добавить `AC <magnitude>` модификатор к V-source'у, если его ещё нет.
+
+    Идемпотентно: если у source'а уже есть `AC ...` параметр — возвращает
+    netlist без изменений (текущая magnitude сохраняется).
+
+    Для SIN-source'а AC modifier вставляется **перед** `SIN(...)` token'ом
+    (стандартная позиция ngspice). Для DC-only / no-SIN source'а — в конец
+    строки.
+
+    Args:
+        netlist_text: исходный текст netlist'а.
+        source_ref: ref voltage source'а (например, ``'V_in'``, ``'V1'``).
+        ac_magnitude: AC stimulus magnitude (V), default 1.0 — стандарт
+            для transfer function H = V_out / V_in (T023 measure_gain
+            small-mode, measure_bandwidth).
+
+    Returns:
+        Текст netlist'а с добавленным AC modifier'ом (или без изменений,
+        если AC уже был).
+
+    Raises:
+        ValueError: если source с таким ref не найден / empty ref /
+            non-positive magnitude.
+
+    """
+    if not source_ref.strip():
+        msg = 'source_ref не может быть пустым'
+        raise ValueError(msg)
+    if ac_magnitude <= 0.0:
+        msg = f'ac_magnitude должен быть > 0, получено {ac_magnitude!r}'
+        raise ValueError(msg)
+
+    target = source_ref.upper()
+    lines = netlist_text.splitlines(keepends=True)
+    found = False
+
+    for idx, line in enumerate(lines):
+        stripped = line.lstrip()
+        if not stripped:
+            continue
+        tokens = stripped.split(maxsplit=1)
+        if not tokens or tokens[0].upper() != target:
+            continue
+        if _AC_MODIFIER_RE.search(stripped):
+            return netlist_text
+        ac_token = f'AC {_g(ac_magnitude)}'
+        sin_match = _SIN_RE.search(line)
+        if sin_match is not None:
+            new_line = (
+                line[: sin_match.start()].rstrip()
+                + ' '
+                + ac_token
+                + ' '
+                + line[sin_match.start() :]
+            )
+        else:
+            trailing_newline = '\n' if line.endswith('\n') else ''
+            new_line = line.rstrip() + ' ' + ac_token + trailing_newline
+        lines[idx] = new_line
+        found = True
+        break
+
+    if not found:
+        msg = f'voltage source {source_ref!r} not found in netlist'
+        raise ValueError(msg)
+    return ''.join(lines)
+
+
 class NgspiceNetlistEditor:
     """
     `NetlistEditor` port implementation поверх ngspice text conventions
@@ -219,9 +340,27 @@ class NgspiceNetlistEditor:
             offset=offset,
         )
 
+    def ensure_ac_modifier(
+        self,
+        netlist_text: str,
+        *,
+        source_ref: str,
+        ac_magnitude: float = 1.0,
+    ) -> str:
+        return ensure_ac_modifier(
+            netlist_text,
+            source_ref=source_ref,
+            ac_magnitude=ac_magnitude,
+        )
+
+    def find_top_level_v_sources(self, netlist_text: str) -> tuple[str, ...]:
+        return find_top_level_v_sources(netlist_text)
+
 
 __all__ = [
     'NgspiceNetlistEditor',
+    'ensure_ac_modifier',
+    'find_top_level_v_sources',
     'set_sin_source_amplitude',
     'substitute_subckt_library',
 ]

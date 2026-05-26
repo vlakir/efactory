@@ -809,10 +809,11 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 - **T022** — [2026-05-15] Параметрический sweep (`bridge_sweep`)
   с визуализацией.
   Acceptance: sweep по 1-2 параметрам строит таблицу + график.
-- **T023** — [2026-05-15] Измерения: THD, gain, bandwidth,
-  phase margin как отдельные инструменты bridge.
-  Acceptance: каждый инструмент возвращает значение + точку/диапазон,
-  где оно измерено.
+<!-- T023 переехала в BOARD.md → Doing 2026-05-26 после clarify
+     прохода (10 вопросов, все «по рекомендации»). Phase margin
+     вынесен в T153 (Q-B → c) — отдельный спек, когда появится
+     feedback-фикстура. Spec — specs/T023-measurements/spec.md
+     (Clarified, готова к Analyze). -->
 - **T024** — [2026-05-15] ASCII-графики через `plotext`.
   Acceptance: график АЧХ выводится в терминал, читаемый на ширине 80.
 - **T025** — [2026-05-15] Визуализация схем: Sixel/Kitty protocol
@@ -828,6 +829,18 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   filter — в `templates/`.
   Acceptance: `/project create --template se-amp NAME` создаёт
   работающий проект с предзаполненной схемой и моделями.
+- **T153** — [2026-05-26, deferred from T023 Clarify Q-B] **`bridge
+  measure phase-margin` как отдельная задача.** Отделён от T023 потому
+  что: (1) open-loop SE/PP усилители (наш базовый use case Фазы 2)
+  phase margin не имеют — концепция применима только к feedback-loop
+  схемам; (2) loop-cutting требует caller-side hint'а на break node и
+  собственной дисциплины (AC stimulus + return measurement); (3) у
+  efactory пока нет feedback-фикстур в `data/templates/`. Триггер:
+  появление первой feedback-схемы (NFB tube amp / op-amp фикстура).
+  Acceptance: `efactory bridge measure phase-margin <schematic>
+  --loop-break-node <node>` возвращает `(margin_deg: float,
+  crossover_hz: float)`; собственный spec по полному ритуалу
+  (spec → clarify → analyze).
 
 ### Фаза 3 (+2 недели)
 
