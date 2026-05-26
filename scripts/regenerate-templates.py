@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""regenerate-templates.py — пересобрать shipping templates из текущих builders.
+
+Запускается вручную перед merge при изменении builder'а (например,
+``_build_se_amp`` в ``tests/integration/.../test_se_amp_facade.py``) либо
+при обновлении ``data/models/*``. Snapshot-test
+(``tests/integration/test_template_se_amp_snapshot.py``) сравнивает
+baked content с свежим прогоном (UUID/timestamp нормализуются) — при
+расхождении ругается «run this script».
+
+Usage:
+    uv run python scripts/regenerate-templates.py [--template NAME]
+
+Без ``--template`` — пересобирает все шаблоны.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import shutil
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_TEMPLATES_DIR = _REPO_ROOT / 'data' / 'templates'
+_MODELS_DIR = _REPO_ROOT / 'data' / 'models'
+
+PROJECT_NAME_PLACEHOLDER = '{{PROJECT_NAME}}'
+
+_SE_AMP_BUILDER_PATH = (
+    _REPO_ROOT
+    / 'tests'
+    / 'integration'
+    / 'adapters'
+    / 'schematic_kicad'
+    / 'test_se_amp_facade.py'
+)
+
+
+def _import_se_amp_builder() -> object:
+    sys.path.insert(0, str(_REPO_ROOT / 'src'))
+    spec = importlib.util.spec_from_file_location(
+        'se_amp_builder', _SE_AMP_BUILDER_PATH
+    )
+    if spec is None or spec.loader is None:
+        msg = f'Cannot import builder from {_SE_AMP_BUILDER_PATH}'
+        raise RuntimeError(msg)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module._build_se_amp  # type: ignore[attr-defined]  # noqa: SLF001
+
+
+def _bake_se_amp(target_dir: Path) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    sch_path = target_dir / f'{PROJECT_NAME_PLACEHOLDER}.kicad_sch'
+    build = _import_se_amp_builder()
+    build(sch_path)  # type: ignore[operator]
+
+    pro_name = f'{PROJECT_NAME_PLACEHOLDER}.kicad_pro'
+    pro_path = target_dir / pro_name
+    pro_path.write_text(
+        json.dumps(
+            {
+                'board': {'design_settings': {}},
+                'meta': {'filename': pro_name, 'version': 3},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+
+    models_target = target_dir / 'models'
+    models_target.mkdir(exist_ok=True)
+    shutil.copy(
+        _MODELS_DIR / 'tubes' / 'custom' / '6P14P.lib',
+        models_target / '6P14P.lib',
+    )
+    shutil.copy(
+        _MODELS_DIR / 'transformers' / 'generic' / 'OPT_SE_5K_8.lib',
+        models_target / 'OPT_SE_5K_8.lib',
+    )
+
+    (target_dir / 'template.yaml').write_text(
+        'name: se-amp\n'
+        'description: |\n'
+        '  Single-ended pentode amp на 6П14П (EL84-аналог)\n'
+        '  с выходным трансформатором 5kΩ:8Ω и нагрузкой 8 Ω.\n'
+        'summary: SE 6П14П + OPT 5k:8Ω — готовая фикстура для SPICE/THD.\n',
+        encoding='utf-8',
+    )
+
+    (target_dir / 'README.md').write_text(
+        f'# se-amp template\n\n'
+        f'Single-ended pentode amplifier на 6П14П (EL84-аналог), выходной\n'
+        f'трансформатор 5kΩ:8Ω, нагрузка 8 Ω.\n\n'
+        f'## Файлы\n\n'
+        f'- `{PROJECT_NAME_PLACEHOLDER}.kicad_sch` — схема\n'
+        f'  (после материализации: `<имя_проекта>.kicad_sch`).\n'
+        f'- `{PROJECT_NAME_PLACEHOLDER}.kicad_pro` — KiCad project (нужен для\n'
+        f'  GUI Simulator).\n'
+        f'- `models/6P14P.lib` — лампа.\n'
+        f'- `models/OPT_SE_5K_8.lib` — выходной трансформатор.\n\n'
+        f'## Запуск симуляции\n\n'
+        f'    /sim-run\n'
+        f'    # или напрямую:\n'
+        f'    efactory bridge sim-run --schematic <имя_проекта>.kicad_sch\n',
+        encoding='utf-8',
+    )
+
+
+_BAKERS: dict[str, object] = {'se-amp': _bake_se_amp}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description='Rebake shipping templates.')
+    parser.add_argument(
+        '--template',
+        choices=list(_BAKERS),
+        default=None,
+        help='Конкретный шаблон (по умолчанию — все).',
+    )
+    args = parser.parse_args()
+
+    names = [args.template] if args.template else list(_BAKERS)
+    for name in names:
+        target = _TEMPLATES_DIR / name
+        if target.exists():
+            shutil.rmtree(target)
+        baker = _BAKERS[name]
+        baker(target)  # type: ignore[operator]
+        print(f'Baked {name}: {target}')
+
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

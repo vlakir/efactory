@@ -1,0 +1,5 @@
+name: se-amp
+description: |
+  Single-ended pentode amp на 6П14П (EL84-аналог)
+  с выходным трансформатором 5kΩ:8Ω и нагрузкой 8 Ω.
+summary: SE 6П14П + OPT 5k:8Ω — готовая фикстура для SPICE/THD.

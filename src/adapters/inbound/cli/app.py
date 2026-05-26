@@ -14,6 +14,12 @@ from adapters.inbound.cli.spice_units import (
     SpiceNumberFormatError,
     parse_spice_number,
 )
+from adapters.inbound.cli.template_materializer import (
+    TemplateConflictError,
+    TemplateNotFoundError,
+    list_templates,
+    materialize_template,
+)
 from application.add_decision import add_decision as add_decision_use_case
 from application.bridge_sweep import SweepRun, bridge_sweep
 from application.create_project import create_project as create_project_use_case
@@ -151,11 +157,29 @@ def build_app(
     @project_app.command('create')
     def create(
         name: str = typer.Option(..., '--name', help='Имя нового проекта'),
+        template: str | None = typer.Option(
+            None,
+            '--template',
+            help=(
+                f'Шаблон проекта. Доступно: {", ".join(list_templates()) or "(none)"}.'
+            ),
+        ),
+        target_dir: Path | None = typer.Option(
+            None,
+            '--target-dir',
+            help=(
+                'Override корневого каталога для этой инвокации '
+                '(по умолчанию — settings.projects_root '
+                'из EFACTORY_PROJECTS_ROOT).'
+            ),
+        ),
     ) -> None:
+        effective_root = target_dir if target_dir is not None else projects_root
+
         async def _run() -> CreateProjectResult:
             return await create_project_use_case(
                 name=name,
-                projects_root=projects_root,
+                projects_root=effective_root,
                 repo=metadata_repository,
                 file_repo=file_repository,
                 manifest_repo=manifest_repository,
@@ -168,7 +192,7 @@ def build_app(
                     session_logger,
                     'project.create',
                     project=name,
-                    payload={'name': name},
+                    payload={'name': name, 'template': template},
                     fn=_run,
                 ),
             )
@@ -182,7 +206,22 @@ def build_app(
         except GitOperationError as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=2) from exc
+
         project = result.project
+        if template is not None:
+            try:
+                materialize_template(
+                    template_name=template,
+                    target_dir=project.path,
+                    project_name=name,
+                )
+            except TemplateNotFoundError as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(code=2) from exc
+            except TemplateConflictError as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(code=2) from exc
+
         if not result.git_initialized:
             asyncio.run(
                 session_logger.log_event(
@@ -192,8 +231,10 @@ def build_app(
                     error='git not found on PATH (skipped)',
                 ),
             )
+        suffix = f' (template: {template})' if template else ''
         typer.echo(
-            f'Created project {project.name} at {project.path} (id={project.id})',
+            f'Created project {project.name} at {project.path} '
+            f'(id={project.id}){suffix}',
         )
 
     @project_app.command('list')

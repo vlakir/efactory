@@ -25,6 +25,27 @@
   SPICE / KiCad libs пользователя).
 - **`Glob` / `Grep`** — поиск по проекту и codebase.
 
+## Custom slash-команды efactory (T014)
+
+Видны в `/`-menu и через `/help`. Тонкие wrapper'ы над `efactory` CLI:
+
+- **`/project-create <NAME>`** — создать новый проект из шаблона
+  `se-amp` (single-ended 6П14П amp + OPT 5kΩ:8Ω); материализуется в
+  `/workspace/<NAME>/`.
+- **`/project-use <NAME>`** — показать project-context для другого
+  проекта (display-only, cwd сессии **не меняется**, см. note ниже).
+- **`/sim-run [SCHEMATIC] [--analysis op|tran|ac]`** — запустить
+  SPICE-симуляцию (auto-detect единственного `.kicad_sch` в cwd
+  при отсутствии аргумента).
+
+Generic команды (`/help`, `/clear`, `/compact`, `/model`, `/save`,
+`/load`) — встроены в Claude Code, не дублируются.
+
+**Важно про cwd:** Bash cwd между tool calls в Claude Code
+нестабилен. Используй **абсолютные пути** для `Read`/`Edit`/`Write`/
+`Bash` (например, `/workspace/<NAME>/se_amp.kicad_sch` вместо
+`./se_amp.kicad_sch`).
+
 **Не используется:** MCP-серверы (см. ADR 2026-05-24 «Tool surface =
 Bash + efactory CLI + filesystem, не MCP» в репозитории efactory).
 
@@ -51,6 +72,7 @@ Bash + efactory CLI + filesystem, не MCP» в репозитории efactory)
 При запуске долгих симуляций (FEM, sweep, advisor) — предупреждай,
 сколько примерно займёт.
 
-Это — stub-prompt (T013). Полноценный системный prompt с
-детальным workflow и acceptance criteria — следующая итерация,
-после T014 (`efactory` CLI) и T016 (dynamic project context).
+Это — stub-prompt (T013 + T014 + T016 закрыты, slash-команды и
+project context работают). Полноценный системный prompt с детальным
+workflow / acceptance criteria — следующая итерация после
+Phase 1b закрытия.

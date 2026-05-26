@@ -630,6 +630,49 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   - DB-регистрация — опциональная (lazy, при первом decision /
     artefact, который должен куда-то persist'иться).
 
+- **T150** — [2026-05-26, вынесено из T014] **`/export-production` +
+  use case + CLI: production-package для проекта.** Полный пакет
+  документации per CONCEPT §7.1.
+  Состав минимально-достаточного пакета (Phase A):
+  - **BOM** (Bill of Materials) — CSV + markdown: designator,
+    тип, value, qty, manufacturer-пометки если есть.
+  - **PDF schematic** — `kicad-cli sch export pdf` для каждого
+    `.kicad_sch` проекта.
+  - **Sim results summary** — последняя запись из
+    `.efactory/sim-results/` каждого `analysis_type`, краткая
+    таблица метрик.
+  - **`README-production.md`** — sanity-context (имя проекта,
+    revision, дата сборки, список артефактов).
+  - **ZIP-упаковка** — `<PROJECT>-<TIMESTAMP>.zip` в
+    `<PROJECT>/exports/`.
+  Опционально (Phase B): Gerber/drill для PCB-проектов
+  (`kicad-cli pcb export gerbers/drill`), assembly drawing, BOM
+  для JLCPCB-формата.
+  Acceptance:
+  - `efactory export production <PROJECT>` создаёт `<PROJECT>/
+    exports/<PROJECT>-<TIMESTAMP>.zip` с BOM + PDF + summary +
+    README.
+  - `/export-production` в Claude Code TUI — тонкий wrapper.
+  - Тест: пилотный прогон на `se-amp-demo`, ZIP открывается,
+    содержит ≥ 4 файла.
+  Не блокирует Phase 1b завершение (T014 без `/export-production`
+  закрывает Phase 1b полностью).
+
+- **T151** — [2026-05-26, follow-up T014 Analyze A5] **CI enforcement
+  для template snapshot.** В T014 Phase A — pytest snapshot test
+  (regenerate + diff). В CI workflow добавить explicit job, который
+  падает на staleness шаблонов (отдельный visibility, не только
+  внутри pytest). Triggers: `_build_se_amp` изменили, регенерацию
+  забыли.
+  Acceptance: GitHub Actions step «template-snapshot-check» с явным
+  fail-сообщением «run `uv run python scripts/regenerate-templates.py`».
+
+<!-- T152 не заведён: при имплементации T014 обнаружил, что
+     pyproject.toml уже содержит `[tool.hatch.build.targets.wheel.
+     force-include] "data/models" = "data/models"` — общего gap нет,
+     Analyze A3 был ошибкой. T014 добавляет рядом
+     `"data/templates" = "data/templates"`. -->
+
 
 ### Фаза 1a — MVP-ядро (3–4 недели)
 
@@ -744,19 +787,12 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      auth + entrypoint». Spec — specs/T013-claude-code-runtime/spec.md
      (Analyzed). -->
 
-- **T014** — [2026-05-15, reformulated 2026-05-22] **efactory custom
-  slash-команды для Claude Code.** Реализация через `.claude/
-  commands/<name>.md` в репозитории efactory: `/project create`
-  (создать новый проект из шаблона), `/project use NAME`
-  (переключить активный проект, обновить context), `/sim run`
-  (запустить ngspice pipeline на текущей схеме), `/export-production`
-  (полный пакет документации per §7.1 концепта). Generic команды
-  (`/model`, `/tools`, `/save`, `/load`, `/compact`) — встроены в
-  Claude Code, не дублируем.
-  Acceptance: `/project create --template se-amp NAME` создаёт
-  работающий проект с предзаполненной схемой и моделями; список
-  efactory-команд виден через `/help`; каждая показывает usage при
-  невалидных аргументах.
+<!-- T014 переехала в BOARD.md → Doing 2026-05-26 после clarify+analyze
+     прохода. Реальный синтаксис slash-команд — hyphenated flat
+     (`/project-create`, `/project-use`, `/sim-run`); `/project-use`
+     — display-only (Bash cwd persistence нестабильна между tool
+     calls); `/export-production` вынесен в T150. Spec —
+     specs/T014-claude-code-slash/spec.md (Analyzed). -->
 <!-- T016 переехала в BOARD.md → Doing 2026-05-25 после clarify-прохода.
      Механизм выбран — SessionStart hook + cwd-based project detection
      (vs `/project use NAME` остаётся за T014). Spec —

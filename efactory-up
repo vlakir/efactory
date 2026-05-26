@@ -46,11 +46,15 @@
 #                       hook генерирует динамический project context. Если NAME
 #                       не указан — стартует в /workspace/ без активного
 #                       проекта (агент увидит "No active project").
-#     --reset-claude-settings
-#                       Перезаписать $HOME/efactory-state/claude/settings.json
-#                       embedded template'ом из образа (с backup *.bak-DATE).
-#                       Использовать после upgrade образа, если SessionStart
-#                       hook перестал работать (T016 mitigation для A1).
+#     --reset-claude-state
+#                       Перезаписать host state Claude Code (settings.json
+#                       + commands/) embedded template'ом из образа (с
+#                       backup *.bak-DATE/). Использовать после upgrade
+#                       образа, если SessionStart hook (T016) перестал
+#                       работать или новые slash-команды (T014) не
+#                       появляются.
+#     --reset-claude-settings  (deprecated alias of --reset-claude-state;
+#                       будет удалён в следующем минорном релизе)
 #     -h, --help        Показать help и выйти.
 #
 # Env:
@@ -84,7 +88,7 @@ DEMO_MODE=0
 DEMO_FREECAD_MODE=0
 AGENT_MODE=0
 AGENT_PROJECT=""
-RESET_CLAUDE_SETTINGS=0
+RESET_CLAUDE_STATE=0
 PASS_ARGS=()
 
 log() { printf '[efactory-up] %s\n' "$*" >&2; }
@@ -116,8 +120,12 @@ while (( $# )); do
                 shift
             fi
             ;;
+        --reset-claude-state)
+            RESET_CLAUDE_STATE=1; shift ;;
         --reset-claude-settings)
-            RESET_CLAUDE_SETTINGS=1; shift ;;
+            # Deprecated alias (T014 rename). Удалим в следующем minor релизе.
+            log "WARNING: --reset-claude-settings deprecated, use --reset-claude-state"
+            RESET_CLAUDE_STATE=1; shift ;;
         -h|--help)       usage ;;
         --)              shift; PASS_ARGS+=("$@"); break ;;
         *)               PASS_ARGS+=("$1"); shift ;;
@@ -134,14 +142,14 @@ fi
 
 # T016 — `--reset-claude-settings` без `--agent` допустим как standalone
 # команда: сбросить settings.json embedded template'ом и выйти.
-if (( RESET_CLAUDE_SETTINGS && DEMO_MODE )); then
-    fail "--reset-claude-settings и --demo несовместимы (--reset работает только в context'е --agent или standalone)"
+if (( RESET_CLAUDE_STATE && DEMO_MODE )); then
+    fail "--reset-claude-state и --demo несовместимы (--reset работает только в context'е --agent или standalone)"
 fi
-if (( RESET_CLAUDE_SETTINGS && DEMO_FREECAD_MODE )); then
-    fail "--reset-claude-settings и --demo-freecad несовместимы"
+if (( RESET_CLAUDE_STATE && DEMO_FREECAD_MODE )); then
+    fail "--reset-claude-state и --demo-freecad несовместимы"
 fi
-if (( RESET_CLAUDE_SETTINGS && HEADLESS )); then
-    fail "--reset-claude-settings и --headless несовместимы"
+if (( RESET_CLAUDE_STATE && HEADLESS )); then
+    fail "--reset-claude-state и --headless несовместимы"
 fi
 
 # `--dangerously-skip-permissions` (Claude Code CLI) отказывается работать
@@ -273,56 +281,75 @@ if (( HEADLESS )); then
     exec docker run --rm "$IMAGE" "${cmd[@]}"
 fi
 
-# ── Claude Code settings.json bootstrap (T016) ─────────────────────────────
-# Bootstrap-step для AGENT_MODE и standalone --reset-claude-settings.
-# settings.json содержит SessionStart hook, который генерирует project
-# context. Persist mount $STATE_DIR/claude:/efactory/.claude/ означает,
-# что запечённый в образе файл (по `/efactory/.claude/settings.json`)
-# перетрётся пустой host-директорией; материализуем дефолт **на хосте**.
+# ── Claude Code state bootstrap (T016 settings + T014 commands) ────────────
+# Bootstrap-step для AGENT_MODE и standalone --reset-claude-state.
+# Materializes на хосте:
+#   - settings.json (SessionStart hook → project context, T016)
+#   - commands/*.md (efactory custom slash-команды, T014)
+# Persist mount $STATE_DIR/claude:/efactory/.claude/ перетрёт запечённые
+# в образе пути; материализуем дефолты **на хосте** при первом запуске
+# или при --reset-claude-state (с backup).
 #
 # Источник дефолта (приоритет):
-#   1) $REPO_ROOT/docker/runtime-agent-settings.json — если есть (dev: репо
-#      под рукой, никаких docker run).
-#   2) /opt/efactory/share/claude-defaults/settings.json в образе — fallback
-#      когда репо отсутствует (production: распространяем только image).
-bootstrap_claude_settings() {
+#   1) $REPO_ROOT/docker/runtime-agent-{settings.json,commands/} — если
+#      есть (dev: репо под рукой, никаких docker run).
+#   2) /opt/efactory/share/claude-defaults/{settings.json,commands/} в
+#      образе — fallback когда репо отсутствует (production: distribute
+#      только image).
+bootstrap_claude_state() {
     local force="${1:-0}"
     local target_dir="$STATE_DIR/claude"
-    local target_file="$target_dir/settings.json"
+    local target_settings="$target_dir/settings.json"
+    local target_commands="$target_dir/commands"
     mkdir -p "$target_dir"
 
-    if [[ -f "$target_file" && "$force" -eq 0 ]]; then
+    local need_bootstrap=0
+    if [[ ! -f "$target_settings" ]] || [[ ! -d "$target_commands" ]]; then
+        need_bootstrap=1
+    fi
+    if (( force == 0 && need_bootstrap == 0 )); then
         return 0
     fi
 
-    local source_in_repo="$REPO_ROOT/docker/runtime-agent-settings.json"
-    if [[ -f "$target_file" && "$force" -eq 1 ]]; then
-        local backup="$target_file.bak-$(date +%Y-%m-%d)"
-        cp -f "$target_file" "$backup"
-        log "settings.json reset: backup → $backup"
+    if (( force == 1 )); then
+        local backup_dir="$target_dir.bak-$(date +%Y-%m-%d)"
+        mkdir -p "$backup_dir"
+        [[ -f "$target_settings" ]] && cp -f "$target_settings" "$backup_dir/"
+        [[ -d "$target_commands" ]] && cp -rf "$target_commands" "$backup_dir/"
+        log "Claude state reset: backup → $backup_dir/"
+        rm -rf "$target_commands"
     fi
 
-    if [[ -f "$source_in_repo" ]]; then
-        cp -f "$source_in_repo" "$target_file"
-        log "Claude Code settings.json bootstrapped из репо ($source_in_repo)"
+    local src_settings_repo="$REPO_ROOT/docker/runtime-agent-settings.json"
+    local src_commands_repo="$REPO_ROOT/docker/runtime-agent-commands"
+    if [[ -f "$src_settings_repo" && -d "$src_commands_repo" ]]; then
+        cp -f "$src_settings_repo" "$target_settings"
+        mkdir -p "$target_commands"
+        cp -f "$src_commands_repo"/*.md "$target_commands/"
+        log "Claude state bootstrapped из репо (settings.json + $(ls "$src_commands_repo" | wc -l) команд)"
     else
-        # Fallback: docker run + cp из образа.
+        # Fallback: docker create + cp из образа.
         local container
         container="$(docker create "$IMAGE")"
-        if ! docker cp \
+        local ok=1
+        docker cp \
                 "$container:/opt/efactory/share/claude-defaults/settings.json" \
-                "$target_file" 2>/dev/null; then
-            docker rm "$container" >/dev/null 2>&1 || true
-            fail "Не удалось материализовать settings.json (репо отсутствует, в образе тоже нет /opt/efactory/share/claude-defaults/settings.json — пересобери image)"
+                "$target_settings" 2>/dev/null || ok=0
+        mkdir -p "$target_commands"
+        docker cp \
+                "$container:/opt/efactory/share/claude-defaults/commands/." \
+                "$target_commands/" 2>/dev/null || ok=0
+        docker rm "$container" >/dev/null 2>&1 || true
+        if (( ok == 0 )); then
+            fail "Не удалось материализовать Claude state (репо отсутствует, в образе тоже нет /opt/efactory/share/claude-defaults/ — пересобери image)"
         fi
-        docker rm "$container" >/dev/null
-        log "Claude Code settings.json bootstrapped из образа ($IMAGE)"
+        log "Claude state bootstrapped из образа ($IMAGE)"
     fi
 }
 
-if (( RESET_CLAUDE_SETTINGS && ! AGENT_MODE )); then
+if (( RESET_CLAUDE_STATE && ! AGENT_MODE )); then
     # Standalone сброс — не запускаем агента.
-    bootstrap_claude_settings 1
+    bootstrap_claude_state 1
     log "Готово. Запусти агента: ./efactory-up --agent [NAME]"
     exit 0
 fi
@@ -351,7 +378,7 @@ if (( AGENT_MODE )); then
         AGENT_CWD="/workspace/$AGENT_PROJECT"
     fi
 
-    bootstrap_claude_settings "$RESET_CLAUDE_SETTINGS"
+    bootstrap_claude_state "$RESET_CLAUDE_STATE"
 
     AGENT_ENV_ARGS=()
     if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then

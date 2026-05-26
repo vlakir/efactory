@@ -186,7 +186,7 @@ XWayland-bridge без изменений. Native Wayland-passthrough
 (`-v /run/user/$UID/wayland-0:/run/user/$UID/wayland-0`) пока не
 добавлен — пилим, когда появится Wayland-only сценарий.
 
-### Запуск runtime-агента (Claude Code в контейнере, T013 + T016)
+### Запуск runtime-агента (Claude Code в контейнере, T013 + T016 + T014)
 
 ```bash
 # В контексте конкретного проекта:
@@ -211,13 +211,13 @@ cwd=`/workspace/<PROJECT>/` (если NAME задан) или `/workspace/`
 смене проекта (новый `efactory-up --agent OTHER`) старый контекст
 не утекает — каждая сессия читает cwd заново.
 
-> **После апгрейда до T016 — обязательно пересобрать образ:**
+> **После апгрейда до T016/T014 — обязательно пересобрать образ:**
 > `docker build -t efactory:linux .` (или `docker pull` из GHCR
-> после T115 publish). Без rebuild hook script отсутствует в образе,
-> и SessionStart hook silently no-op'ит (graceful degradation).
+> после T115 publish). Без rebuild hook script (T016) и slash-команды
+> (T014) отсутствуют в образе, и bootstrap не материализует их.
 > Если у тебя ранее существовал `$HOME/efactory-state/claude/
 > settings.json` от ручной настройки — однократно запусти
-> `./efactory-up --reset-claude-settings` (backup *.bak-YYYY-MM-DD
+> `./efactory-up --reset-claude-state` (backup `*.bak-YYYY-MM-DD/`
 > рядом). Авто-merge без затирания user-prefs — follow-up T149.
 
 Sim-результаты пишутся use cases (например, `sim_run`) в
@@ -225,9 +225,29 @@ Sim-результаты пишутся use cases (например, `sim_run`) 
 `SimResult` schema (см. `src/domain/sim_results.py`). Часть проектной
 директории, путешествует вместе с проектом.
 
-После апгрейда образа hook может перестать работать (settings.json
-запечатан в host-state и не обновляется): сбросить можно явно
-`./efactory-up --reset-claude-settings` — с backup'ом старого файла.
+После апгрейда образа hook или команды могут устареть (settings.json
++ commands запечатаны в host-state и не обновляются автоматически):
+сбросить можно явно `./efactory-up --reset-claude-state` — с
+backup'ом старого state в `*.bak-YYYY-MM-DD/`.
+
+**Custom slash-команды (T014).** Внутри runtime-агента доступны три
+efactory-команды (`/`-menu или `/help`):
+
+- **`/project-create <NAME>`** — `efactory project create --name
+  <NAME> --template se-amp`. Материализует SE-amp 6П14П demo в
+  `/workspace/<NAME>/`.
+- **`/project-use <NAME>`** — display-only: печатает свежий
+  project-context (имя, файлы, sim-results) для проекта `<NAME>`,
+  не меняя cwd. Для полного refresh — `/clear` или exit +
+  `./efactory-up --agent <NAME>`.
+- **`/sim-run [SCHEMATIC] [--analysis op|tran|ac]`** — `efactory
+  bridge sim-run`; auto-detect единственного `.kicad_sch` в cwd
+  при отсутствии аргумента.
+
+Команды живут в `docker/runtime-agent-commands/*.md`, bootstrap'ятся
+в `$HOME/efactory-state/claude/commands/` тем же механизмом, что и
+settings.json. Generic команды (`/help`, `/clear`, `/compact`,
+`/model`, `/save`, `/load`) — встроены в Claude Code, не дублируются.
 
 Альтернатива subscription — usage-based через API-key:
 
