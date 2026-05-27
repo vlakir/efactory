@@ -156,6 +156,28 @@ T-ID между релизами — `CHANGELOG.md` единственное per
   - Spec — `specs/T022-bridge-sweep/spec.md` (Analyzed: 10 Clarify
     Q + 14 Analyze issues — 2 Critical разрешены in-spec, 6
     Warning с predeclared resolutions, 6 Note).
+- **T149 — `bootstrap_claude_state`: auto-merge `hooks` секции в
+  existing host settings.json (без `--reset-claude-state`).** UX rough
+  fix из T016 round-trip 2026-05-26: pre-T016 settings.json с
+  user-prefs (`theme` / `skipDangerousModePermissionPrompt`) →
+  bootstrap no-op'ил → hooks не появлялись → SessionStart hook не
+  engaged → agent работал без project context. Workaround
+  `--reset-claude-state` затирал user-prefs.
+  - `scripts/merge_claude_settings.py` — stdlib-only Python helper
+    (~80 LOC, без `pyyaml`/`jq` deps): merge `hooks` если у host
+    нет своего `hooks` ключа; сохраняет user-keys (incl. nested
+    `mcpServers` / `experimental`). Idempotent. RC 0/1/2
+    (merged/skipped/error).
+  - `efactory-up` функция `try_merge_claude_hooks` вызывается из
+    `bootstrap_claude_state` после need_bootstrap=0 check'а. Dev path
+    — repo helper + template; production fallback — `docker create`
+    + cp helper/template из образа в tmp.
+  - +11 unit tests: theme-only merge, nested user keys preserved,
+    idempotency, invalid JSON / missing files / template без `hooks`,
+    CLI subprocess exit-codes.
+  - Compact (~80 LOC + 11 tests), без spec'и (проектный CLAUDE.md
+    разрешает skip для small fix).
+  - Pre-push gates все 5 зелёные (1151 passed, coverage 85.38%).
 
 - **T156 — `efactory kb add --body "..."` inline body option.** UX
   fix обнаружен в smoke validation T134 2026-05-27: agent в

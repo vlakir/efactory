@@ -296,6 +296,53 @@ fi
 #   2) /opt/efactory/share/claude-defaults/{settings.json,commands/} в
 #      образе — fallback когда репо отсутствует (production: distribute
 #      только image).
+# T149: in-place merge `hooks` секции в существующий settings.json
+# без `--reset-claude-state`. Сохраняет user-prefs (theme, skipPrompts).
+# Делегирует Python-хелперу `scripts/merge_claude_settings.py` (stdlib-
+# only, без jq dep). Идёт before `bootstrap_claude_state` поскольку
+# нужно знать template source.
+try_merge_claude_hooks() {
+    local target_settings="$1"
+    local helper_repo="$REPO_ROOT/scripts/merge_claude_settings.py"
+    local helper_image="/opt/efactory/scripts/merge_claude_settings.py"
+    local template_repo="$REPO_ROOT/docker/runtime-agent-settings.json"
+
+    if [[ ! -f "$target_settings" ]]; then
+        return 0
+    fi
+
+    # 1) Try repo helper (dev path).
+    if [[ -f "$helper_repo" && -f "$template_repo" ]]; then
+        local rc=0
+        python3 "$helper_repo" "$target_settings" "$template_repo" \
+            > >(while IFS= read -r line; do log "$line"; done) \
+            2> >(while IFS= read -r line; do log "$line"; done) \
+            || rc=$?
+        # rc 0 = merged, 1 = skipped, 2 = error.
+        if (( rc == 2 )); then
+            log "WARNING: merge_claude_settings.py failed (rc=2); hooks могут отсутствовать. Используй --reset-claude-state для reset."
+        fi
+        return 0
+    fi
+
+    # 2) Fallback: docker create + cp helper из образа.
+    local container template_extract
+    container="$(docker create "$IMAGE" 2>/dev/null)" || return 0
+    template_extract="$(mktemp -d)/runtime-agent-settings.json"
+    local helper_extract="$(mktemp -d)/merge_claude_settings.py"
+    docker cp "$container:/opt/efactory/share/claude-defaults/settings.json" \
+              "$template_extract" 2>/dev/null || true
+    docker cp "$container:$helper_image" "$helper_extract" 2>/dev/null || true
+    docker rm "$container" >/dev/null 2>&1 || true
+    if [[ -f "$helper_extract" && -f "$template_extract" ]]; then
+        python3 "$helper_extract" "$target_settings" "$template_extract" \
+            > >(while IFS= read -r line; do log "$line"; done) \
+            2> >(while IFS= read -r line; do log "$line"; done) \
+            || true
+    fi
+}
+
+
 bootstrap_claude_state() {
     local force="${1:-0}"
     local target_dir="$STATE_DIR/claude"
@@ -307,7 +354,11 @@ bootstrap_claude_state() {
     if [[ ! -f "$target_settings" ]] || [[ ! -d "$target_commands" ]]; then
         need_bootstrap=1
     fi
+    # T149: settings.json существует, но без `hooks` — попробовать
+    # in-place merge (preserve user-prefs theme/skipPrompts/etc.) без
+    # принудительного reset.
     if (( force == 0 && need_bootstrap == 0 )); then
+        try_merge_claude_hooks "$target_settings"
         return 0
     fi
 
