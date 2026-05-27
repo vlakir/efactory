@@ -36,6 +36,25 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T156 — `efactory kb add --body "..."` inline body option.** UX
+  fix обнаружен в smoke validation T134 2026-05-27: agent в
+  scenario 5 (`/kb-add` round-trip) корректно self-correct'нул
+  `--body "..."` → fallback на stdin / `--body-file`, но это была
+  лишняя итерация в типичном «agent сам пополняет KB» сценарии.
+
+  Compact UX fix:
+  - `--body "markdown text"` для коротких inline bodies (одна
+    Bash-команда без heredoc / stdin gymnastics) — рекомендовано
+    для agent-use.
+  - Priority: `--body` (inline) > `--body-file` > stdin (fallback).
+  - Mutually exclusive `--body` / `--body-file` (exit 2 если оба).
+  - `/kb-add` slash-команда обновлена с примером compact form +
+    long-form через `--body-file` для multi-line.
+
+  Pre-push gates все 5 зелёные (1140 passed, без regression).
+  Acceptance: после next image rebuild — manual smoke с `--body`
+  flag.
+
 - **T134 — Agent Knowledge Base — persistent KB для runtime-агента.**
   Решает: agent в `efactory:linux` не имеет доступа к auto-memory
   Гвидо / mem0; каждая сессия свежая. KB закрывает 3 класса знаний:
