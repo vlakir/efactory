@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# efactory-build-libs-dev — wrapper для `docker buildx build` поверх
+# Dockerfile.libs (T141 optional часть).
+#
+# Build'ит две варианта (slim / 3d) через ARG INCLUDE_3DMODELS:
+#   ./scripts/efactory-build-libs-dev              # slim ~450 MB
+#   ./scripts/efactory-build-libs-dev --with-3d   # +3dmodels ~4 GB
+#
+# Cache: $HOME/efactory-libs-buildcache/ (отдельный от main image).
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DOCKERFILE="$REPO_ROOT/Dockerfile.libs"
+CACHE_DIR="${EFACTORY_LIBS_BUILD_CACHE_DIR:-$HOME/efactory-libs-buildcache}"
+IMAGE_TAG="${EFACTORY_LIBS_IMAGE:-efactory-libs:linux-dev}"
+BUILDER_NAME="${EFACTORY_BUILDX_BUILDER:-efactory-buildx}"
+INCLUDE_3D=0
+
+log() { printf '[efactory-build-libs-dev] %s\n' "$*" >&2; }
+fail() { printf '[efactory-build-libs-dev] FATAL: %s\n' "$*" >&2; exit 1; }
+
+while (( $# > 0 )); do
+    case "$1" in
+        --with-3d)
+            INCLUDE_3D=1
+            IMAGE_TAG="${EFACTORY_LIBS_IMAGE:-efactory-libs:linux-dev-3d}"
+            shift
+            ;;
+        --image)
+            [[ $# -ge 2 ]] || fail "--image requires a value"
+            IMAGE_TAG="$2"
+            shift 2
+            ;;
+        -h|--help)
+            sed -n '/^# efactory-build-libs-dev/,/^$/p' "$0" | sed 's/^# \?//'
+            exit 0
+            ;;
+        *)
+            fail "Unknown argument: $1 (use --help)"
+            ;;
+    esac
+done
+
+command -v docker >/dev/null || fail "docker not on PATH"
+if ! docker buildx version >/dev/null 2>&1; then
+    fail "buildx plugin not installed.
+   Install: sudo apt install docker-buildx-plugin  (Ubuntu/Debian)
+   Без buildx fallback:
+            docker build -f Dockerfile.libs -t $IMAGE_TAG --build-arg INCLUDE_3DMODELS=$INCLUDE_3D ."
+fi
+
+if ! docker buildx inspect "$BUILDER_NAME" >/dev/null 2>&1; then
+    log "creating buildx builder: $BUILDER_NAME"
+    docker buildx create --name "$BUILDER_NAME" --use --driver docker-container >/dev/null
+else
+    docker buildx use "$BUILDER_NAME" >/dev/null
+fi
+
+mkdir -p "$CACHE_DIR"
+log "Dockerfile: $DOCKERFILE"
+log "image: $IMAGE_TAG (3d=$INCLUDE_3D)"
+log "cache: $CACHE_DIR"
+
+exec docker buildx build \
+    --builder "$BUILDER_NAME" \
+    --load \
+    -f "$DOCKERFILE" \
+    --build-arg "INCLUDE_3DMODELS=$INCLUDE_3D" \
+    -t "$IMAGE_TAG" \
+    --cache-from "type=local,src=$CACHE_DIR" \
+    --cache-to "type=local,dest=$CACHE_DIR,mode=max" \
+    "$REPO_ROOT"

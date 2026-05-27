@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# efactory-build-dev — dev-only wrapper для `docker buildx build` с
+# локальным persistent layer cache (T141).
+#
+# Назначение: ускорить повторные builds на dev-машине разработчика без
+# изменений Dockerfile (он остаётся portable для обычного `docker
+# build` — пользователь, скачивающий efactory впервые, не должен
+# зависеть от buildx). Cache хранится локально в
+# `$EFACTORY_BUILD_CACHE_DIR` (default `$HOME/efactory-buildcache/`).
+#
+# После первого «прогревочного» build (длинный, как обычный) повторный
+# build без изменений Dockerfile + context проходит за секунды (только
+# поменявшиеся layers).
+#
+# Использование:
+#   ./scripts/efactory-build-dev                # main Dockerfile → efactory:linux
+#   ./scripts/efactory-build-dev --no-cache     # игнорировать cache (свежий build)
+#   ./scripts/efactory-build-dev --image foo:bar  # custom tag
+#   EFACTORY_BUILD_CACHE_DIR=/tmp/cache ./scripts/efactory-build-dev
+#
+# Pre-requisites:
+#   - Docker daemon (`/usr/bin/docker`).
+#   - buildx plugin: `sudo apt install docker-buildx-plugin` (Ubuntu/Debian).
+#     На других дистрибутивах см. https://docs.docker.com/build/install-buildx/
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DOCKERFILE="${EFACTORY_DOCKERFILE:-$REPO_ROOT/Dockerfile}"
+CACHE_DIR="${EFACTORY_BUILD_CACHE_DIR:-$HOME/efactory-buildcache}"
+IMAGE_TAG="${EFACTORY_IMAGE:-efactory:linux}"
+BUILDER_NAME="${EFACTORY_BUILDX_BUILDER:-efactory-buildx}"
+
+log() { printf '[efactory-build-dev] %s\n' "$*" >&2; }
+fail() { printf '[efactory-build-dev] FATAL: %s\n' "$*" >&2; exit 1; }
+
+# CLI parsing — `--no-cache` / `--image <TAG>` / `-- <extra buildx args>`.
+NO_CACHE=0
+EXTRA_ARGS=()
+while (( $# > 0 )); do
+    case "$1" in
+        --no-cache)
+            NO_CACHE=1
+            shift
+            ;;
+        --image)
+            [[ $# -ge 2 ]] || fail "--image requires a value"
+            IMAGE_TAG="$2"
+            shift 2
+            ;;
+        --)
+            shift
+            EXTRA_ARGS+=("$@")
+            break
+            ;;
+        -h|--help)
+            sed -n '/^# efactory-build-dev/,/^$/p' "$0" | sed 's/^# \?//'
+            exit 0
+            ;;
+        *)
+            fail "Unknown argument: $1 (use --help)"
+            ;;
+    esac
+done
+
+# Pre-flight: docker + buildx availability.
+command -v docker >/dev/null || fail "docker not on PATH"
+if ! docker buildx version >/dev/null 2>&1; then
+    fail "buildx plugin not installed.
+   Install: sudo apt install docker-buildx-plugin  (Ubuntu/Debian)
+            https://docs.docker.com/build/install-buildx/ (other distros)
+   Without buildx — fallback на обычный docker build:
+            docker build -t $IMAGE_TAG ."
+fi
+
+# Ensure builder instance exists и selected. `docker buildx create
+# --name X --use` не идемпотентна — создаст ошибку если builder exists;
+# проверяем явно через inspect.
+if ! docker buildx inspect "$BUILDER_NAME" >/dev/null 2>&1; then
+    log "creating buildx builder: $BUILDER_NAME"
+    docker buildx create --name "$BUILDER_NAME" --use --driver docker-container >/dev/null
+else
+    docker buildx use "$BUILDER_NAME" >/dev/null
+fi
+
+mkdir -p "$CACHE_DIR"
+log "Dockerfile: $DOCKERFILE"
+log "image: $IMAGE_TAG"
+log "cache: $CACHE_DIR (no-cache=$NO_CACHE)"
+
+# Build args:
+#   --load — материализовать image в локальный docker daemon (иначе
+#     buildx с container driver складывает в registry / выгружает только
+#     в OCI tarball).
+#   --cache-from + --cache-to local — persistent layer cache.
+#   --cache-to mode=max — сохраняет ВСЕ intermediate layers (не только
+#     final image layers), что даёт максимальную скорость повторного
+#     build при cache hit.
+CACHE_ARGS=()
+if (( NO_CACHE == 0 )); then
+    CACHE_ARGS+=(
+        --cache-from "type=local,src=$CACHE_DIR"
+        --cache-to "type=local,dest=$CACHE_DIR,mode=max"
+    )
+else
+    CACHE_ARGS+=(--no-cache)
+fi
+
+exec docker buildx build \
+    --builder "$BUILDER_NAME" \
+    --load \
+    -f "$DOCKERFILE" \
+    -t "$IMAGE_TAG" \
+    "${CACHE_ARGS[@]}" \
+    "${EXTRA_ARGS[@]}" \
+    "$REPO_ROOT"

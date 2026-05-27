@@ -133,6 +133,28 @@ docker build -f Dockerfile.libs -t efactory-libs:linux-dev .  # ~450 MB
 #     -t efactory-libs:linux-dev-3d .
 ```
 
+**Dev-only ускорение** (T141): для частых пересборок на той же
+машине есть wrapper над `docker buildx` с локальным persistent
+layer cache. Первый build столько же; повторный без изменений
+Dockerfile — секунды.
+
+```bash
+# Pre-requisites (Ubuntu/Debian):
+sudo apt install docker-buildx-plugin
+
+# Прогревочный build (как обычный docker build по времени):
+./scripts/efactory-build-dev                # → efactory:linux
+./scripts/efactory-build-libs-dev           # → efactory-libs:linux-dev
+./scripts/efactory-build-libs-dev --with-3d # → efactory-libs:linux-dev-3d
+
+# Повторный build без изменений — секунды (cache hit).
+# Cache: $HOME/efactory-buildcache/ (override через EFACTORY_BUILD_CACHE_DIR).
+```
+
+Dockerfile **остаётся portable** — пользователь, скачивающий
+efactory впервые, использует обычный `docker build` без зависимости
+на buildx (см. ADR 2026-05-24 «пользователь должен честно тянуть»).
+
 Дальше — `efactory-up` сам делает остальное:
 
 ```bash

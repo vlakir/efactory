@@ -483,6 +483,34 @@ T-ID между релизами — `CHANGELOG.md` единственное per
   6.96 H vs FEM linear μ_r=8000 23.78 H) — voiced как BACKLOG T128
   (nonlinear B-H curve в .pro template). (T113)
 
+- **T141 — Dev-only build acceleration через `docker buildx
+  --cache-from/-to type=local`.** Compact wrapper'ы для частых
+  пересборок на dev-машине. Dockerfile остаётся portable —
+  пользователь использует обычный `docker build` (ADR 2026-05-24
+  «пользователь должен честно тянуть»). Ускорение только для
+  efactory dev-цикла.
+
+  - `scripts/efactory-build-dev` — main Dockerfile → `efactory:linux`.
+    Pre-flight (docker daemon + buildx plugin); auto-create builder
+    instance `efactory-buildx` (idempotent); `--cache-from/-to
+    type=local mode=max`; `--load` в local daemon. Args:
+    `--no-cache`, `--image <TAG>`; env `EFACTORY_BUILD_CACHE_DIR`
+    (default `$HOME/efactory-buildcache/`).
+  - `scripts/efactory-build-libs-dev` — `Dockerfile.libs` →
+    `efactory-libs:linux-dev[-3d]`. Arg `--with-3d` для
+    `INCLUDE_3DMODELS=1`; cache отдельный
+    (`$HOME/efactory-libs-buildcache/`).
+  - **Pre-requisites:** `sudo apt install docker-buildx-plugin`
+    (Ubuntu/Debian). Без buildx — script даёт actionable error
+    с install instruction и fallback на обычный `docker build`.
+  - **Acceptance** (после buildx install): первый прогревочный
+    build — как обычный (~40-60 мин); повторный без изменений
+    Dockerfile + context — секунды (cache hit на final layers).
+  - `README.md` «Быстрый старт» расширен разделом про dev-only
+    ускорение.
+  - **Триггер**: build T024+T134 (2026-05-27) идёт ~40-60 мин —
+    Vladimir захотел инфраструктуру для следующих builds. (T141)
+
 ### Changed
 
 - **T110 ADR — Distribution efactory переходит на Linux Docker image
