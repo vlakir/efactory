@@ -490,6 +490,12 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   → ряд правок → save с сохранением состояния между
   tool-call'ами).
 
+<!-- T141 переехала в BOARD.md → Doing 2026-05-27 (триггер — текущий
+     build T024+T134 идёт ~40-60 мин; Vladimir захотел инфраструктуру
+     для ускорения параллельно). Реализован напрямую без spec'и:
+     ≤2 ч, 2 bash-wrapper'а + README note. -->
+<!-- ORIGINAL T141 ENTRY (full text moved to BOARD + CHANGELOG):
+
 - **T141** — [2026-05-24, заведено по дороге в T013] **Dev-only
   build acceleration: `efactory-build-dev` wrapper с
   `docker buildx --cache-from/-to type=local`.**
@@ -537,6 +543,8 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   Не блокирует: текущий `docker build` работает (T013 closed).
   Триггер: следующий долгий build, когда захочется выиграть
   20+ минут.
+-->
+
 
 - **T142** — [2026-05-25, заведено по дороге в T016] **Sim-results
   rotation / cleanup policy.** `.efactory/sim-results/` сейчас
