@@ -88,6 +88,12 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         '/plot-ac',
     ),
+    # T022 Phase D Level 2 — KB sync regression для /sweep.
+    (
+        'параметрический sweep варьировать Rk таблица gain',
+        'agent.command-routing',
+        '/sweep',
+    ),
 ]
 
 
