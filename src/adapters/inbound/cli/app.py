@@ -1028,6 +1028,7 @@ def build_app(
                 f'occurs {f.occurrences} time(s) (expected ≥ 2)',
             )
         raise typer.Exit(code=1)
+
     # T142: sim-results retention policy (`efactory sim-results prune ...`).
     sim_results_app = typer.Typer(no_args_is_help=True, add_completion=False)
     app.add_typer(sim_results_app, name='sim-results')
