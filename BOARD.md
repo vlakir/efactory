@@ -90,6 +90,16 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
   - **Owner manual smoke (после `sudo apt install docker-buildx-
     plugin`):** прогревочный build как обычный; повторный — секунды.
 
+- **T156** — [closed 2026-05-27, PR #80] **`efactory kb add --body
+  "..."` inline body option** — UX fix обнаружен в smoke validation
+  T134. Compact для agent autonomous KB writes.
+  - Body source priority: `--body` (inline) > `--body-file` > stdin.
+  - Mutually exclusive `--body` / `--body-file` (exit 2).
+  - `/kb-add` slash-команда обновлена.
+  - Validated через retry smoke с rebuilt image (2026-05-27 14:54):
+    agent сделал call `--body` одной Bash-командой без stdin.
+  - Pre-push gates все 5 зелёные (1140 passed, без regression).
+
 - **T134** — [closed 2026-05-26, PR #78] **Agent Knowledge Base —
   persistent KB для runtime-агента efactory.** 5-phase implementation
   по полному методическому ритуалу (spec → A domain → B store → C

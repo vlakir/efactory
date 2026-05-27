@@ -2104,11 +2104,21 @@ def build_app(
             str,
             typer.Option('--description', help='One-liner для TOC (≤200 chars)'),
         ],
+        body: Annotated[
+            str | None,
+            typer.Option(
+                '--body',
+                help=(
+                    'Inline markdown body (для коротких entries / автономного '
+                    'agent-use). Mutually exclusive с --body-file.'
+                ),
+            ),
+        ] = None,
         body_file: Annotated[
             Path | None,
             typer.Option(
                 '--body-file',
-                help='Файл с markdown body (либо `-` для stdin; default — stdin).',
+                help='Файл с markdown body (либо `-` для stdin).',
             ),
         ] = None,
         tags: Annotated[
@@ -2121,18 +2131,27 @@ def build_app(
             typer.Option('--force', help='Overwrite existing topic'),
         ] = False,
     ) -> None:
-        """Добавить entry в host-mutated KB."""
-        if body_file is None or str(body_file) == '-':
-            body = sys.stdin.read()
+        """
+        Добавить entry в host-mutated KB.
+
+        Body source priority: --body (inline) > --body-file > stdin (default).
+        """
+        if body is not None and body_file is not None:
+            typer.echo('--body and --body-file are mutually exclusive.', err=True)
+            raise typer.Exit(code=2)
+        if body is not None:
+            body_text = body
+        elif body_file is None or str(body_file) == '-':
+            body_text = sys.stdin.read()
         else:
             try:
-                body = body_file.read_text(encoding='utf-8')
+                body_text = body_file.read_text(encoding='utf-8')
             except OSError as exc:
                 typer.echo(f'cannot read --body-file: {exc}', err=True)
                 raise typer.Exit(code=2) from exc
-        if not body.strip():
+        if not body_text.strip():
             typer.echo(
-                'Body is empty; provide content via --body-file or stdin.',
+                'Body is empty; provide content via --body, --body-file, or stdin.',
                 err=True,
             )
             raise typer.Exit(code=2)
@@ -2145,7 +2164,7 @@ def build_app(
                 description=description,
                 tags=tag_tuple,
                 source='host-mutated',
-                body=body,
+                body=body_text,
             )
         except ValidationError as exc:
             typer.echo(f'invalid KB entry: {exc}', err=True)

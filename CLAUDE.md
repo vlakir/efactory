@@ -202,12 +202,70 @@ PR #N]`, а не placeholder `PR current`.
 
 ## Проект-специфичные правила
 
-<!-- Например:
-- Все скрипты должны работать на Raspberry Pi Zero W (ARMv6).
-- Никаких внешних зависимостей кроме stdlib.
-- БД — SQLite, единый файл, без миграций.
-- Стиль коммитов: Conventional Commits.
--->
+### Дисциплина sync с Agent Knowledge Base (T134, 2026-05-27)
+
+KB runtime-агента (`docker/runtime-agent-knowledge-base/`) — primary
+канал передачи знаний о возможностях efactory от dev-цикла к
+production-агенту в `efactory:linux`. Если KB отстаёт от
+имплементации — agent не знает о новых slash-командах / CLI
+функционале, изобретает велосипед, сканирует свои собственные
+исходники efactory. Поэтому при добавлении нового **user-facing
+функционала** в efactory — обязательная **трёхуровневая дисциплина**:
+
+**Уровень 1 — KB sync (обязательно, секунды).**
+
+- **Новая slash-команда** → обновить mapping table в KB topic
+  `agent.command-routing` (одна строка `| user phrase | /slash |`).
+  Если команда имеет неочевидную семантику (pitfall'ы, специфический
+  workflow) — дополнительно завести свой topic.
+- **Новая use case / adapter с non-obvious gotcha** (pitfall,
+  workaround, дисциплина использования) → завести KB topic в
+  подходящем namespace (`spice.*`, `magnetics.*`, `fem.*`,
+  `agent.*`, `project.*` или новый осмысленный).
+- **Тривиальный функционал** (CLI flag без surprise, helper-функция,
+  bug-fix без lesson) — НЕ требует KB update; достаточно `--help` /
+  docstring / commit-message.
+
+**Уровень 2 — deterministic regression test (обязательно, секунды).**
+
+Новая KB entry → добавить parametrized case в
+`tests/integration/agent_kb/test_control_examples.py` — `(query,
+expected_topic, expected_directive_keyword)`. Проверяется через
+`FileSystemKbStore.search()` / `.get()`, без LLM-judge. Это **fast**
+(<1s в pytest), без image rebuild — заменяет per-PR smoke в
+большинстве случаев и страхует от silent regression на следующих
+изменениях infrastructure.
+
+**Уровень 3 — full smoke с реальным agent (recommended, ~25-30 мин).**
+
+Делать **не на каждом PR**, а:
+
+- При изменении KB infrastructure (`scripts/session_start_hook.py`
+  hook output, `FileSystemKbStore` semantics, `agent.command-routing`
+  table).
+- Перед версионным release milestone (как milestone acceptance gate).
+- При подозрении на regression в agent behaviour (например, agent
+  начал хуже выбирать команды).
+
+Стандартный smoke pattern — 5+ scenarios через `docker run efactory:
+linux claude -p "..."` headless с bind-mount существующего auth
+state. Acceptance — agent правильно использует KB hits, не
+изобретает велосипеды, persistence через bind-mount работает между
+сессиями.
+
+**Стоимость pyramid:** Уровень 1 (секунды) → Уровень 2 (секунды) →
+Уровень 3 (~30 мин). Каждый уровень даёт нарастающую уверенность
+без излишних затрат на typical change. Уровень 1+2 — every PR с
+user-facing функционалом; Уровень 3 — на milestone / infrastructure
+change / sanity check.
+
+**Запрещено:** merge user-facing функционала **без** Уровней 1+2 для
+не-тривиального изменения. Это создаёт «KB debt» — agent отстаёт от
+кода, и через несколько milestone'ов KB становится бесполезной.
+
+Если функционал заведомо тривиальный (one-line CLI flag без
+semantics) — явно проговаривать в PR description: «KB sync не
+требуется, потому что …». Это явное решение, не silent skip.
 
 ## Что в этом проекте обычно идёт в BACKLOG.md, а не в текущую правку
 

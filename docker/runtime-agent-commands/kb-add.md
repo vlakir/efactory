@@ -1,6 +1,6 @@
 ---
 description: Добавить entry в host-mutated KB (agent learns in production).
-argument-hint: <topic> --description "..." [--tags csv]
+argument-hint: <topic> --description "..." --body "..." [--tags csv]
 allowed-tools: Bash
 ---
 
@@ -11,9 +11,14 @@ Args: `$ARGUMENTS` должен содержать:
 - Позиционный `<topic>` — namespaced slug (например
   `spice.new-pitfall`, `agent.workflow-trick`).
 - `--description "..."` — one-liner для TOC (≤200 chars).
+- Body — одним из трёх способов (priority `--body` > `--body-file` >
+  stdin):
+  - `--body "markdown text"` — **рекомендованный** для коротких
+    entries и для тебя как агента (одна Bash-команда без heredoc /
+    stdin gymnastics).
+  - `--body-file <path>` — для длинных, заранее подготовленных в файле.
+  - stdin — fallback если ни `--body`, ни `--body-file` не переданы.
 - Опционально `--tags spice,magnetics` (CSV).
-
-Body передаётся через stdin (multi-line markdown).
 
 Алгоритм:
 
@@ -27,10 +32,13 @@ Body передаётся через stdin (multi-line markdown).
    - Anchor (если есть): `См. DECISIONS.md 2026-XX-XX «...»` или
      `См. specs/TNNN-*/spec.md §X`.
 
-3. Запусти:
+3. Запусти (compact form, рекомендованная):
    ```bash
-   echo "$BODY_MULTILINE" | efactory kb add <topic> \
-       --description "..." --tags <csv>
+   efactory kb add <topic> --description "..." --body "<markdown>" --tags <csv>
+   ```
+   Или для длинного multi-line body:
+   ```bash
+   efactory kb add <topic> --description "..." --tags <csv> --body-file <path>
    ```
 
 4. Если успех — entry в `/efactory/knowledge-base/host-mutated/
