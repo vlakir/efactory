@@ -308,3 +308,111 @@ class TestMain:
         payload = json.loads(buf.getvalue())
         assert payload['hookSpecificOutput']['hookEventName'] == 'SessionStart'
         assert 'No active project' in payload['hookSpecificOutput']['additionalContext']
+
+
+# ---------------------------- T134 Knowledge Base section ----------------
+
+
+def _write_kb_md(directory: Path, slug: str, *, description: str, body: str = 'Body.') -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    content = (
+        '---\n'
+        f'topic: {slug}\n'
+        f'description: {description}\n'
+        '---\n'
+        f'{body}\n'
+    )
+    (directory / f'{slug}.md').write_text(content, encoding='utf-8')
+
+
+def test_render_kb_section_empty_returns_empty_string(tmp_path: Path) -> None:
+    """Empty KB → секция skip (Analyze A4)."""
+    result = hook.render_kb_section(
+        built_in_dir=tmp_path / 'built-in',
+        host_mutated_dir=tmp_path / 'host-mutated',
+    )
+    assert result == ''
+
+
+def test_render_kb_section_groups_by_namespace(tmp_path: Path) -> None:
+    _write_kb_md(tmp_path / 'built-in', 'spice.saturable', description='XSPICE gyrator-cap')
+    _write_kb_md(tmp_path / 'built-in', 'magnetics.leakage', description='Erickson sandwich')
+    _write_kb_md(tmp_path / 'built-in', 'agent.command-routing', description='Map request to command')
+
+    result = hook.render_kb_section(
+        built_in_dir=tmp_path / 'built-in',
+        host_mutated_dir=tmp_path / 'host-mutated',
+    )
+
+    assert '## Agent Knowledge Base' in result
+    assert '### agent' in result
+    assert '### magnetics' in result
+    assert '### spice' in result
+    assert 'spice.saturable' in result
+    assert 'XSPICE gyrator-cap' in result
+    # Namespaces sorted alphabetically: agent < magnetics < spice.
+    assert result.index('### agent') < result.index('### magnetics') < result.index('### spice')
+
+
+def test_render_kb_section_host_wins(tmp_path: Path) -> None:
+    _write_kb_md(tmp_path / 'built-in', 'spice.saturable', description='Built-in desc')
+    _write_kb_md(tmp_path / 'host-mutated', 'spice.saturable', description='Host desc')
+
+    result = hook.render_kb_section(
+        built_in_dir=tmp_path / 'built-in',
+        host_mutated_dir=tmp_path / 'host-mutated',
+    )
+
+    assert 'Host desc' in result
+    assert 'Built-in desc' not in result
+
+
+def test_render_kb_section_count_in_intro(tmp_path: Path) -> None:
+    _write_kb_md(tmp_path / 'built-in', 'spice.saturable', description='x')
+    _write_kb_md(tmp_path / 'built-in', 'magnetics.leakage', description='y')
+
+    result = hook.render_kb_section(
+        built_in_dir=tmp_path / 'built-in',
+        host_mutated_dir=tmp_path / 'host-mutated',
+    )
+
+    assert '2 topic(s) available' in result
+
+
+def test_render_kb_section_missing_dirs_safe(tmp_path: Path) -> None:
+    """Несуществующие директории → пустая KB, не error."""
+    result = hook.render_kb_section(
+        built_in_dir=tmp_path / 'nonexistent-built-in',
+        host_mutated_dir=tmp_path / 'nonexistent-host',
+    )
+    assert result == ''
+
+
+def test_parse_kb_frontmatter_minimal_extracts_topic_and_description() -> None:
+    content = (
+        '---\n'
+        'topic: foo.bar\n'
+        'description: My description\n'
+        'tags:\n'
+        '  - one\n'
+        '  - two\n'
+        '---\n'
+        'body\n'
+    )
+    fields = hook._parse_kb_frontmatter_minimal(content)
+    assert fields == {'topic': 'foo.bar', 'description': 'My description'}
+
+
+def test_parse_kb_frontmatter_minimal_no_frontmatter() -> None:
+    assert hook._parse_kb_frontmatter_minimal('body only\n') == {}
+
+
+def test_parse_kb_frontmatter_minimal_unclosed() -> None:
+    assert hook._parse_kb_frontmatter_minimal('---\ntopic: x\n# no close\n') == {}
+
+
+def test_parse_kb_frontmatter_minimal_quoted_values_unwrapped() -> None:
+    content = '---\ntopic: "spice.saturable"\ndescription: \'XSPICE\'\n---\nbody\n'
+    fields = hook._parse_kb_frontmatter_minimal(content)
+    assert fields['topic'] == 'spice.saturable'
+    assert fields['description'] == 'XSPICE'

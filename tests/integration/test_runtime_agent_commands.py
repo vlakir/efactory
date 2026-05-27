@@ -25,6 +25,8 @@ _EXPECTED_COMMANDS = {
     'measure-thd',
     'plot-ac',
     'plot-tran',
+    'kb-search',
+    'kb-add',
 }
 _REQUIRED_FRONTMATTER = {'description', 'argument-hint', 'allowed-tools'}
 

@@ -66,6 +66,50 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T134** — [closed 2026-05-26, PR #78] **Agent Knowledge Base —
+  persistent KB для runtime-агента efactory.** 5-phase implementation
+  по полному методическому ритуалу (spec → A domain → B store → C
+  hook+bind-mount → D CLI+slash+DI → E 10 seed+regression+CHANGELOG).
+  - **Архитектура** (без MCP / vector DB): markdown с frontmatter,
+    namespaced slug `<ns>.<name>`. Built-in seed в `docker/runtime-
+    agent-knowledge-base/` запекается в образ; host-mutated через
+    bind-mount `$HOME/efactory-state/knowledge-base/`. Host wins
+    при conflict; `--reset-claude-state` расширен. SessionStart hook
+    (T016) injection TOC grouped by namespace в `additionalContext`;
+    полный body через `Read` / `/kb-search` (никакого RAG).
+  - **Domain + adapters** (Phase A+B): `KbEntry` Pydantic strict
+    (extra='forbid', namespaced topic pattern, цифра-начало после
+    точки разрешена для `3d`/`2d`); `FileSystemKbStore` с host-wins
+    merge, `KbConflictError` на add без `--force`, filter `'.' in
+    stem` пропускает README.
+  - **CLI** (Phase D): `efactory kb {list,show,add,search}` + 2
+    slash-команды `/kb-search`, `/kb-add`. `build_app` signature
+    +`kb_store`; composition пробрасывает `FileSystemKbStore`.
+  - **Hook + efactory-up** (Phase C): `render_kb_section()` stdlib-
+    only frontmatter parser (без pyyaml, cold-start ~30-50 ms);
+    `bootstrap_kb_state()` + новый bind-mount; Dockerfile COPY seed.
+  - **10 seed entries** (Phase E): 3 из T131 + 3 из T132 + 3 из
+    T133 + новый `agent.command-routing` (mapping user-request →
+    slash-command для защиты от изобретения велосипеда / scan
+    собственных исходников).
+  - **Тесты** (+66): 19 domain + 16 parser + 19 KbStore integration
+    + 9 hook KB + 4 frontmatter + 12 control-example regression.
+    Pre-push gates все 5 зелёные (1119 passed, coverage 85.50%).
+  - **T154 spin-off** (BACKLOG, Q-F → c): full migration dev-process
+    knowledge (DECISIONS/CHANGELOG/auto-memory/mem0) → KB как
+    отдельная 4-phased curation-задача.
+  - **Out of scope:** vector DB / RAG, multi-agent KB, project-
+    specific knowledge (T103), subdirectory layout (>30 entries),
+    inverted index (>100 entries).
+  - **Owner manual smoke (после merge):** `docker build` +
+    `./efactory-up --reset-claude-state`; в TUI запрос
+    «построй график АЧХ» — agent должен использовать KB hit
+    `agent.command-routing` → выбрать `/plot-ac` без изобретения
+    велосипеда.
+  - Spec — `specs/T134-agent-knowledge-base/spec.md` (Analyzed:
+    11 clarify «по рекомендации» + 8 analyze issues — 0 Critical,
+    3 Warning отражены, 5 Note guidance).
+
 - **T024** — [closed 2026-05-26, PR #77] **ASCII-графики через
   plotext (`bridge plot ac|tran`).** Второй шаг analysis-first
   ordering Фазы 2; фундамент для T022 sweep visualization.

@@ -26,6 +26,7 @@ from adapters.outbound.git_subprocess.git_repository import (
 from adapters.outbound.kicad_cli.schematic_exporter import (
     KicadCliSchematicExporter,
 )
+from adapters.outbound.knowledge_base_filesystem.store import FileSystemKbStore
 from adapters.outbound.manifest_yaml.project_manifest_repository import (
     FilesystemProjectManifestRepository,
 )
@@ -117,6 +118,10 @@ def build_cli_app() -> typer.Typer:
         schematic_exporter=KicadCliSchematicExporter(app_manager),
         simulator=NgspiceSimulator(app_manager),
         netlist_editor=NgspiceNetlistEditor(),
+        kb_store=FileSystemKbStore(
+            built_in_dir=settings.kb_built_in_dir,
+            host_mutated_dir=settings.kb_host_mutated_dir,
+        ),
     )
 
 

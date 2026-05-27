@@ -38,6 +38,15 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- T094 закрыт ADR от 2026-05-19 в DECISIONS.md (вариант "в":
      /ultrareview как primary external review, CodeRabbit best-effort). -->
 
+<!-- T134 переехала в BOARD.md → Doing 2026-05-26 после Phase 1b
+     закрытия (Claude Code as frontend → KB consumer существует).
+     Spec — specs/T134-agent-knowledge-base/spec.md (Draft, 11
+     clarify-вопросов). Originally заведено 2026-05-21 в Phase E
+     T131 с 9 control examples из T131+T132+T133; в spec добавлен
+     10-й example «agent.command-routing» (typical user-request →
+     slash-command mapping). -->
+<!-- ORIGINAL T134 ENTRY (full text moved to spec §1-§2 context):
+
 - **T134** — [2026-05-21, заведено в Phase E T131] **Agent Knowledge
   Base — infrastructure для накопления technical knowledge у
   efactory CLI agent'а.**
@@ -207,6 +216,39 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
   Не зависит от: T131 (T131 уже закрыт, ADR в `DECISIONS.md` +
   docstring обогащения адресуют immediate dev-process persistence).
+-->
+
+- **T154** — [2026-05-26, заведена в T134 Clarify Q-F → c]
+  **Full migration dev-process knowledge → agent KB.**
+  T134 core scope = infrastructure + 10 control examples. После
+  его merge — отдельная curation-задача: пройти `DECISIONS.md`,
+  `CHANGELOG.md`, ключевые `feedback_*` auto-memory Гвидо и
+  релевантные mem0-entries; выделить те, что нужны runtime-агенту
+  (не dev-process); сформировать заявку KB-entries в built-in seed
+  (`docker/runtime-agent-knowledge-base/`).
+
+  Не auto-portable: каждый entry требует review Vladimir + Гвидо
+  на «нужно ли это агенту в проде» (vs «нужно только разработчику
+  efactory»). Скоринг pessimistic: ~30-50 entries после фильтрации
+  из сотен existing artefact'ов.
+
+  **Phased:**
+  - Phase 1 — `DECISIONS.md` ADR'ы, релевантные для проектирования
+    (не «как мы выбрали Kùzu»): 6П14П SE-amp specific decisions,
+    saturable backend choice, FEM-tool selection.
+  - Phase 2 — `CHANGELOG.md` retrospectives (что зашло / что не
+    зашло) — extract «lesson learned» nuggets.
+  - Phase 3 — auto-memory Гвидо `feedback_*` files — те, что
+    domain knowledge (KiCad pitfalls, FEM gotchas), не dev-process.
+  - Phase 4 — mem0 review — что из приватной памяти cross-applicable
+    в agent KB.
+
+  Acceptance: ≥30 entries в built-in seed после migration; каждый
+  cross-reviewed на «нужно агенту»; обновлены existing 10 control
+  examples если применимо.
+
+  Не блокирует: продукт работает с 10 control examples + agent сам
+  пополняет в проде через `/kb-add`.
 
 - **T135** — [2026-05-21, заведено в Phase B T132] **FEM cross-
   validation analytical leakage Lσ (T132 Phase C primary backend).**

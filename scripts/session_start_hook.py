@@ -44,6 +44,10 @@ MAX_FILES_PER_CATEGORY = 20
 MAX_SIM_RESULTS = 3
 SIM_RESULTS_SUBDIR = '.efactory/sim-results'
 
+# T134 Knowledge Base extension: built-in seed + host-mutated bind-mount.
+KB_BUILT_IN_DIR = Path('/efactory/knowledge-base/built-in')
+KB_HOST_MUTATED_DIR = Path('/efactory/knowledge-base/host-mutated')
+
 
 def resolve_project_root(cwd: Path, *, workspace_root: Path) -> Path | None:
     """Вернуть ``<workspace_root>/<NAME>/`` для ``cwd`` под ним, иначе ``None``.
@@ -255,7 +259,117 @@ def render_context(
             f'No sim results yet in `{project_root}/{SIM_RESULTS_SUBDIR}/`.'
         )
 
+    kb_section = render_kb_section(
+        built_in_dir=KB_BUILT_IN_DIR,
+        host_mutated_dir=KB_HOST_MUTATED_DIR,
+    )
+    if kb_section:
+        lines.append('')
+        lines.append(kb_section)
+
     return '\n'.join(lines)
+
+
+def render_kb_section(
+    *,
+    built_in_dir: Path,
+    host_mutated_dir: Path,
+) -> str:
+    """T134: TOC секция для Knowledge Base (grouped by namespace, Q-C → c).
+
+    stdlib-only frontmatter parsing — hook не зависит от efactory venv;
+    парсим только `topic` + `description` (TOC fields), tags игнорируем.
+    Возвращает пустую строку если KB пуста (skip section, Analyze A4).
+    """
+    entries = _load_kb_toc_entries(built_in_dir, host_mutated_dir)
+    if not entries:
+        return ''
+
+    by_namespace: dict[str, list[tuple[str, str]]] = {}
+    for topic, desc in entries:
+        ns = topic.split('.', 1)[0]
+        by_namespace.setdefault(ns, []).append((topic, desc))
+
+    lines = [
+        '## Agent Knowledge Base',
+        '',
+        (
+            f'{len(entries)} topic(s) available. Read full body через '
+            '`Read /efactory/knowledge-base/{built-in,host-mutated}/'
+            '<topic>.md` либо `/kb-search <query>`. Add new entries '
+            'через `/kb-add <topic>`.'
+        ),
+        '',
+    ]
+    for ns in sorted(by_namespace):
+        lines.append(f'### {ns}')
+        for topic, desc in sorted(by_namespace[ns]):
+            lines.append(f'- **{topic}** — {desc}')
+        lines.append('')
+    return '\n'.join(lines).rstrip()
+
+
+def _load_kb_toc_entries(
+    built_in_dir: Path,
+    host_mutated_dir: Path,
+) -> list[tuple[str, str]]:
+    """Загрузить TOC entries (topic, description) merged with host-wins."""
+    by_topic: dict[str, str] = {}
+    for directory in (built_in_dir, host_mutated_dir):
+        for topic, desc in _scan_kb_dir(directory):
+            by_topic[topic] = desc  # later overrides earlier (host wins)
+    return sorted(by_topic.items())
+
+
+def _scan_kb_dir(directory: Path) -> list[tuple[str, str]]:
+    """List (topic, description) — bare frontmatter parser, stdlib only."""
+    if not directory.is_dir():
+        return []
+    out: list[tuple[str, str]] = []
+    try:
+        for md_path in sorted(directory.glob('*.md')):
+            # KB entries имеют namespaced slug — filename содержит точку.
+            # README.md / NOTES.md и прочие — skip.
+            if '.' not in md_path.stem:
+                continue
+            try:
+                content = md_path.read_text(encoding='utf-8')
+            except OSError:
+                continue
+            fields = _parse_kb_frontmatter_minimal(content)
+            topic = fields.get('topic') or md_path.stem
+            desc = fields.get('description') or '(no description)'
+            out.append((topic, desc))
+    except OSError:
+        return out
+    return out
+
+
+def _parse_kb_frontmatter_minimal(content: str) -> dict[str, str]:
+    """Минимальный frontmatter parser (`key: value` пары) без yaml-deps.
+
+    Hook должен работать на голом Python 3 stdlib (`/usr/bin/python3`),
+    pyyaml там нет. Извлекаем только `topic` и `description` — других
+    полей для TOC не нужно. Списки (tags) пропускаем.
+    """
+    if not content.startswith('---\n'):
+        return {}
+    end = content.find('\n---\n', 4)
+    if end == -1:
+        return {}
+    raw = content[4:end]
+    fields: dict[str, str] = {}
+    for line in raw.splitlines():
+        if not line or line.startswith((' ', '\t', '#', '-')):
+            continue
+        if ':' not in line:
+            continue
+        key, _, value = line.partition(':')
+        key = key.strip()
+        value = value.strip().strip('\'"')
+        if key in ('topic', 'description'):
+            fields[key] = value
+    return fields
 
 
 def _count_category(project_root: Path, exts: tuple[str, ...]) -> int:
