@@ -20,9 +20,9 @@ import itertools
 import shutil
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, Self
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from application.edit_component_value import edit_component_value
 from application.sim_run import sim_run
@@ -36,6 +36,83 @@ if TYPE_CHECKING:
     from ports.outbound.simulator import Simulator
 
 
+MetricKind = Literal['op', 'gain', 'bandwidth', 'thd']
+AnalysisKind = Literal['op', 'tran', 'ac']
+GainMode = Literal['small', 'large']
+
+
+# T022 Analyze A1: строгий список валидных (metric, analysis, mode) пар.
+# Любая другая комбинация → ValidationError 'incompatible'.
+_REQUIRED_ANALYSIS: dict[tuple[MetricKind, GainMode | None], AnalysisKind] = {
+    ('op', None): 'op',
+    ('gain', 'small'): 'ac',
+    ('gain', 'large'): 'tran',
+    ('bandwidth', None): 'ac',
+    ('thd', None): 'tran',
+}
+
+
+class SweepConfig(BaseModel):
+    """
+    Конфиг одного `bridge_sweep` запуска (T022, Analyze A1).
+
+    Combo `(metric, analysis, mode)` валидируется по строгому списку
+    `_REQUIRED_ANALYSIS`. Если `analysis` не указан явно — выводится
+    из `(metric, mode)`. Required-поля per metric проверяются
+    отдельно (frequency_hz, v_in_peak, f_low/f_high).
+    """
+
+    model_config = ConfigDict(frozen=True, extra='forbid')
+
+    metric: MetricKind = 'op'
+    analysis: AnalysisKind | None = None
+    mode: GainMode | None = None
+    frequency_hz: float | None = None
+    v_in_peak: float | None = None
+    f_low_hz: float = Field(default=1.0)
+    f_high_hz: float = Field(default=1e6)
+    output_signal: str = 'v(load)'
+
+    @model_validator(mode='after')
+    def _validate_compat_and_required(self) -> Self:
+        # Auto-fill mode для metric='gain' (default small).
+        if self.metric == 'gain' and self.mode is None:
+            object.__setattr__(self, 'mode', 'small')
+
+        # Auto-clear mode для non-gain.
+        if self.metric != 'gain' and self.mode is not None:
+            msg = (
+                f'incompatible: --mode применим только к --metric=gain, '
+                f'получен metric={self.metric!r}'
+            )
+            raise ValueError(msg)
+
+        # Auto-mapping analysis из metric (+ mode для gain).
+        mode_key: GainMode | None = self.mode if self.metric == 'gain' else None
+        expected = _REQUIRED_ANALYSIS[(self.metric, mode_key)]
+        if self.analysis is None:
+            object.__setattr__(self, 'analysis', expected)
+        elif self.analysis != expected:
+            msg = (
+                f'incompatible combination: --metric={self.metric}'
+                f'{f" --mode={self.mode}" if self.mode else ""} '
+                f'--analysis={self.analysis}; expected --analysis={expected}'
+            )
+            raise ValueError(msg)
+
+        # Required fields per metric.
+        if self.metric in ('gain', 'thd') and self.frequency_hz is None:
+            msg = f'frequency_hz обязателен для --metric={self.metric}'
+            raise ValueError(msg)
+        if self.metric == 'thd' and self.v_in_peak is None:
+            msg = 'v_in_peak обязателен для --metric=thd'
+            raise ValueError(msg)
+        if self.metric == 'gain' and self.mode == 'large' and self.v_in_peak is None:
+            msg = 'v_in_peak обязателен для --metric=gain --mode=large'
+            raise ValueError(msg)
+        return self
+
+
 class SweepRun(BaseModel):
     """Один прогон sweep'а: фиксированные параметры + результат симуляции."""
 
@@ -43,6 +120,10 @@ class SweepRun(BaseModel):
 
     parameters: dict[str, str]
     result: SimulationResult | None  # None если симуляция failed
+    # T022 A4: опциональное поле — derived от result (op) или Measurement VO
+    # (gain/bandwidth/thd). None означает «values не собраны» (либо failure,
+    # либо legacy call-path).
+    values: dict[str, float | str | None] | None = None
     error: str | None = None  # сообщение об ошибке (если result=None)
 
 

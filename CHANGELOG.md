@@ -34,6 +34,21 @@ T-ID между релизами — `CHANGELOG.md` единственное per
      версию `[N.M.0]`. При закрытии milestone — переименовывается
      в очередную версию, ниже создаётся новая пустая `[Unreleased]`. -->
 
+### Fixed
+
+- **T144 (absorbed by T022) — `bridge sweep` numerical output gap.**
+  KiCad SPICE export встраивал Simulator-card директиву из
+  `.kicad_sch` (`.tran 10u 80m 10m uic` и т.п.) в netlist; wrapper
+  добавлял свою (`.OP` при `OpAnalysis`) поверх, но ngspice `run`
+  без аргумента запускал **первую** в queue — встроенную `.tran` —
+  а appended `.OP` оставался в queue и `write all` писал результаты
+  не той analysis → `operating_points={}` для tube-схем (включая
+  `se-amp-demo`). Fix: `build_wrapper` стрипит все top-level analysis
+  directives (`_EMBEDDED_ANALYSIS_RE`) из netlist перед вставкой своей.
+  Smoke post-fix: sweep по `R2` на `se-amp-demo` теперь печатает все
+  22 v/i traces per combination. +15 regression-тестов в
+  `test_ngspice_simulator.py`.
+
 ### Added
 
 - **T156 — `efactory kb add --body "..."` inline body option.** UX

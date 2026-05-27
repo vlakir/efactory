@@ -58,7 +58,12 @@ def test_bridge_sweep_two_param_combinations(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """bridge sweep --param R1=1k,10k --param C1=100n,1u → 4 combinations."""
+    """bridge sweep --param R1=1k,10k --param C1=100n,1u → 4 combinations.
+
+    T022 Phase C new format: aligned tabular output. Header = `R1 C1 <op
+    nodes...>`, далее 4 строки с значениями. Заменяет старый
+    `[R1=X C1=Y] op_voltages` (A2).
+    """
     projects_root = _setup_env(tmp_path, monkeypatch)
     runner = CliRunner()
     _seed_rc_project(rc_filter_schematic_path, projects_root, runner)
@@ -76,11 +81,39 @@ def test_bridge_sweep_two_param_combinations(
 
     assert result.exit_code == 0, result.output
     assert 'Sweep complete: 4 combinations' in result.output
-    # Каждая combination печатается как [R1=X C1=Y] op_voltages
-    assert '[R1=1k C1=1u]' in result.output
-    assert '[R1=1k C1=10u]' in result.output
-    assert '[R1=10k C1=1u]' in result.output
-    assert '[R1=10k C1=10u]' in result.output
+    # Tabular header содержит параметры sweep'а первой колонкой.
+    lines = result.output.splitlines()
+    header_idx = next(
+        (i for i, ln in enumerate(lines) if ln.startswith('R1')),
+        None,
+    )
+    assert header_idx is not None, (
+        f'No header line starting with R1 found:\n{result.output}'
+    )
+    header = lines[header_idx]
+    assert 'R1' in header
+    assert 'C1' in header
+    # ≥4 строк после header'а с данными (один на combination).
+    data_lines = [
+        ln for ln in lines[header_idx + 1 :]
+        if ln.strip() and not ln.startswith('Sweep')
+    ]
+    assert len(data_lines) >= 4, (
+        f'Expected ≥4 data rows after header, got {len(data_lines)}:\n'
+        f'{result.output}'
+    )
+    # Каждая ожидаемая combination присутствует в одной из data row'ов
+    # (parameter values как column entries, не bracket-prefix).
+    for r1 in ('1k', '10k'):
+        for c1 in ('1u', '10u'):
+            matching = [
+                ln for ln in data_lines
+                if r1 in ln.split() and c1 in ln.split()
+            ]
+            assert matching, (
+                f'Combination R1={r1} C1={c1} not in any data row:\n'
+                f'{chr(10).join(data_lines)}'
+            )
 
 
 @needs_kicad
