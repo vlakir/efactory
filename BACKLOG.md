@@ -625,30 +625,9 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      фикс — ввести internal nodes (Pint/Sint) для последовательного
      включения DCR с обмоткой (4 правки в .lib, +regenerate-templates). -->
 
-- **T149** — [2026-05-26, заведено по итогам round-trip T016]
-  **`bootstrap_claude_settings`: auto-merge `hooks` секции в
-  существующий host settings.json.** Сейчас функция в `efactory-up`
-  проверяет «файл есть → не трогать», что ломается у пользователей с
-  pre-T016 `$HOME/efactory-state/claude/settings.json` (например, с
-  user-prefs `theme`/`skipDangerousModePermissionPrompt`): bootstrap
-  no-op'ит, hooks секция не появляется, SessionStart hook не
-  engaged — agent виден агенту только cwd, но без project block.
-  Единственный workaround сейчас — `--reset-claude-settings`,
-  затирающий user-prefs.
-  Acceptance:
-  - Если host settings.json существует и **не** содержит `hooks`
-    ключа — мерджить hooks из embedded template (`docker/runtime-
-    agent-settings.json`), сохраняя остальные user keys.
-  - Если host settings.json содержит `hooks` секцию (пусть даже
-    кастомную) — НЕ трогать без `--reset-claude-settings` (явное
-    решение user'а).
-  - Корректный merge для SessionStart matcher arrays: append без
-    дублирования.
-  - Тесты: pre-T016 settings.json (theme only) → после bootstrap
-    содержит и theme, и hooks с правильным matcher.
-  Триггер: текущая T016 версия без T149 требует ручного
-  `--reset-claude-settings` после upgrade, что затирает user
-  preferences. T149 закрывает этот UX-rough.
+<!-- T149 переехал в BOARD.md → Done 2026-05-27 одной сессией
+     (compact, без spec'и; project CLAUDE.md разрешает skip ритуала
+     для small fix). См. BOARD.md → Done. -->
 
 - **T148** — [2026-05-26, заведено по итогам прогона 5 сценариев T016]
   **Inplace-проект: `efactory bridge edit/sweep/sim-run` без

@@ -129,6 +129,33 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
   - **Owner manual smoke (опционально)**: cold build retry — но
     проблема probabilistic, не каждый build репродуцирует HTTP/2
     race (т.е. signal только через серии rebuilds).
+- **T149** — [closed 2026-05-27, PR #83] **`bootstrap_claude_state`:
+  auto-merge `hooks` секции в существующий host settings.json (без
+  `--reset-claude-state`).** UX rough из T016 round-trip 2026-05-26:
+  pre-T016 settings.json с user-prefs (`theme` /
+  `skipDangerousModePermissionPrompt`) → bootstrap no-op'ил → hooks
+  не появлялись → SessionStart hook не engaged → agent работал без
+  project context. Workaround `--reset-claude-state` затирал
+  user-prefs.
+  - `scripts/merge_claude_settings.py` — stdlib-only Python helper
+    (~80 LOC, без `pyyaml`/`jq` deps): merge `hooks` если у host нет
+    своего `hooks` ключа; сохраняет user-keys (incl. nested
+    `mcpServers` / `experimental`). Idempotent. RC 0/1/2
+    (merged/skipped/error).
+  - `efactory-up` функция `try_merge_claude_hooks` вызывается из
+    `bootstrap_claude_state` после need_bootstrap=0 check'а. Dev
+    path — repo helper + template; production fallback —
+    `docker create` + cp helper/template из образа в tmp.
+  - **Тесты** (+11 unit): theme-only merge, nested user keys
+    preserved, idempotency, invalid JSON / missing files / template
+    без `hooks`, CLI subprocess exit-codes.
+  - Compact (~80 LOC + 11 tests), без spec'и (проектный CLAUDE.md
+    разрешает skip ритуала для small fix).
+  - Pre-push gates все 5 зелёные (1151 passed, coverage 85.38%).
+  - **Owner manual smoke (после merge)**: `./efactory-up --agent
+    se-amp-demo` с pre-existing `$HOME/efactory-state/claude/
+    settings.json` (e.g. theme only) → файл содержит и theme, и
+    hooks; SessionStart hook engages в TUI без `--reset-claude-state`.
 
 - **T141** — [closed 2026-05-27, PR #79] **Dev-only build
   acceleration: `efactory-build-dev` / `efactory-build-libs-dev`
