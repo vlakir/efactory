@@ -178,6 +178,26 @@ T-ID между релизами — `CHANGELOG.md` единственное per
   - Compact (~80 LOC + 11 tests), без spec'и (проектный CLAUDE.md
     разрешает skip для small fix).
   - Pre-push gates все 5 зелёные (1151 passed, coverage 85.38%).
+- **T146 — `efactory lib validate <file>`: SPICE-models static
+  validator (floating-node detection).** Каждая нода `.SUBCKT`-блока
+  должна встречаться ≥ 2 раз (external pin + internal touch). Ноды
+  с count == 1 — floating, как `P3` / `S3` в pre-T147 `OPT_SE_5K_8.lib`.
+  - **`application/validate_lib.py`** — pure heuristic parser
+    (~190 LOC): regex для `.SUBCKT`/`.ENDS` блоков, per-element
+    node-count table (R/L/C/V/I/D/E/F/G/H/Q/J/M/S/W/T/O), ground
+    special-case (`0`/`GND`), X-subckt → `skipped_subckts`.
+  - **CLI** `efactory lib validate <file>` (new top-level `lib`
+    subapp); exit codes 0/1/2 (OK / floating detected / file error).
+  - **Тесты** (+17 unit): valid RC / post-T147 OPT / pre-T147 OPT
+    floating P3/S3 / dangling resistor / ground special-case /
+    BJT 3-node / MOSFET 4-node / K-coupling refs / X-subckt skip
+    / multiple subckts / comments / lowercase / errors.
+  - **Immediate ROI**: validator на real `data/models/transformers/
+    generic/OPT_PP_6K6_8.lib` **сразу обнаружил 3 floating nodes**
+    (`PC1`, `PC2`, `S3`) — pre-existing bug аналогичный T147 SE-fix,
+    заведено T158 в BACKLOG для PP transformer fix.
+  - Compact (~190 LOC + 17 tests + CLI), без spec'и. Pre-push
+    gates все 5 зелёные.
 
 - **T156 — `efactory kb add --body "..."` inline body option.** UX
   fix обнаружен в smoke validation T134 2026-05-27: agent в
