@@ -601,19 +601,33 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   Триггер задачи: на se-amp-demo баг `OPT_SE_5K_8.lib` (T147)
   ломает direct `.op`, fallback решил бы UX без ручной правки моделей.
 
-- **T146** — [2026-05-26, заведено по итогам прогона 5 сценариев T016]
-  **SPICE-models validation при импорте в `/libs/custom/`.** Простой
-  static check: каждая внутренняя нода subckt должна встречаться
-  как минимум 2 раза (один раз — как pin компонента, один раз — на
-  другом компоненте). Floating ноды (как `P3` в `OPT_SE_5K_8.lib` —
-  туда подключён `Rp_dcr`, но больше нигде не используется → DCR
-  висит на воздухе → singular matrix при `.op`) ловились бы до
-  интеграции в проект.
+<!-- T146 переехал в BOARD.md → Done 2026-05-27 одной сессией
+     (compact, ~190 LOC + 17 tests + CLI без spec'и). См. BOARD.md
+     → Done. -->
+
+- **T158** — [2026-05-27, заведено proactive по итогам T146 validator
+  на real `data/models/transformers/generic/OPT_PP_6K6_8.lib`]
+  **Fix OPT_PP_6K6_8.lib floating nodes (PC1, PC2, S3).** Push-pull
+  OPT subckt имеет тот же класс bug что pre-T147 SE-OPT —
+  3 floating internal nodes:
+  ```
+  PC1: occurs 1 time (expected ≥ 2)
+  PC2: occurs 1 time (expected ≥ 2)
+  S3:  occurs 1 time (expected ≥ 2)
+  ```
+  Использование этой фикстуры в реальных проектах → singular matrix
+  при `.op` (тот же sympom что T147 на se-amp-demo).
   Acceptance:
-  - `efactory model validate <file.lib>` или auto-check при
-    `kicad-cli` netlist-генерации с warning'ом.
-  - На фикстурном `.lib` с floating-node — fail / warning с указанием
-    конкретной ноды.
+  - Аналогичный T147 паттерн: ввести internal nodes для
+    последовательного включения DCR-резисторов с обмотками primary
+    half-coils (PC1/PC2 — center-tap leads) и secondary (S3 — third
+    secondary winding или ошибочная нода).
+  - `efactory lib validate OPT_PP_6K6_8.lib` → `result: OK`.
+  - Опционально: regenerate template'ы если этот OPT используется
+    в каких-то template'ах.
+  - Smoke на минимальном PP testbench с `.op` → convergence.
+  Hot-fix, без spec'и (≤ 2 ч). Триггер — first PP project в
+  efactory.
 
 <!-- T155 переехал в BOARD.md → Done 2026-05-27 одной сессией (3 LOC
      Dockerfile + 2 regression tests, без spec'и). curl --http1.1 +
