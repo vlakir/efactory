@@ -110,8 +110,22 @@ T-ID между релизами — `CHANGELOG.md` единственное per
     `.options`/`temp`/model parameters, adaptive sweep / golden-
     section. T021 (delta) — следующая Фаза 2 задача, использует
     T022 как фундамент.
-  - **Pre-push gates** все 5 зелёные. Pytest: 1228 passed, 9
-    skipped, coverage ~85%. Smoke на `se-amp-demo`: aligned
+  - **Phase D follow-up: `--input-source <REF>`** — обнаружено в
+    Level 3 smoke на se-amp-demo: measure_* auto-detect падает
+    ambiguity'ем на multi-V netlist'ах (SE amp с V1=B+ и V2=input).
+    Добавлен `SweepConfig.input_source` поле + CLI флаг + проброс
+    в все три measure_* use cases. Slash-pitfalls дополнен
+    multi-V примером.
+  - **Level 3 smoke (3/3 scenarios на real agent через docker run
+    headless с bind-mount overlay)**: (1) gain vs Rk на multi-V
+    schematic — `--input-source V2` пробрасывается без ambiguity;
+    (2) clean op sweep + RFC-4180 CSV → файл; (3) bandwidth vs
+    Cin + ASCII plot — agent использует `/sweep --metric bandwidth
+    --plot`, не velociped'ит, корректная physics-interpretation
+    (LF limit от OPT primary L, не Cin). KB sync действительно
+    работает — agent выбирает efactory tools.
+  - **Pre-push gates** все 5 зелёные. Pytest: 1230 passed, 9
+    skipped, coverage 85.32%. Smoke на `se-amp-demo`: aligned
     tabular output × 22 OP signals per combination.
   - Spec — `specs/T022-bridge-sweep/spec.md` (Analyzed: 10 Clarify
     Q + 14 Analyze issues — 2 Critical разрешены in-spec, 6
