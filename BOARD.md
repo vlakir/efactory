@@ -61,33 +61,34 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T141** — **Dev-only build acceleration: `efactory-build-dev` /
-  `efactory-build-libs-dev` wrappers с `docker buildx --cache-
-  from/-to type=local`.** Compact задача (≤2 ч), без spec'и.
-  - 2 bash wrappers в `scripts/`: pre-flight (docker + buildx),
-    auto-create builder instance (idempotent), `--cache-from/-to
-    type=local mode=max`, `--load` в local daemon.
-  - `efactory-build-dev`: main Dockerfile. Args `--no-cache`,
-    `--image <TAG>`. Env override `EFACTORY_BUILD_CACHE_DIR` (default
-    `$HOME/efactory-buildcache/`).
-  - `efactory-build-libs-dev`: Dockerfile.libs. Arg `--with-3d` для
-    INCLUDE_3DMODELS=1; cache отдельный (`$HOME/efactory-libs-
-    buildcache/`).
-  - README.md «Быстрый старт» — раздел про dev-only ускорение
-    (install buildx + usage). Dockerfile остаётся portable
-    (ADR 2026-05-24 «пользователь должен честно тянуть» сохранён).
-  - **Pre-flight verification:** `--help` работает; без buildx
-    plugin script выдаёт actionable error с install instruction.
-  - **Acceptance** (после установки buildx на dev-host): первый
-    «прогревочный» build — как обычный по времени; повторный без
-    изменений Dockerfile + контекста — секунды (cache hit).
-  - Триггер: текущий build T024+T134 идёт ~40-60 мин (2026-05-27),
-    Vladimir захотел инфраструктуру для следующих builds.
-  - Ветка `T141-buildx-cache`.
 
 
 
 ## Done
+
+- **T141** — [closed 2026-05-27, PR #79] **Dev-only build
+  acceleration: `efactory-build-dev` / `efactory-build-libs-dev`
+  wrappers с `docker buildx --cache-from/-to type=local`.** Compact
+  задача (≤2 ч), без spec'и. Триггер — build T024+T134 идёт
+  ~40-60 мин на dev-host; хочется ускорить следующие пересборки.
+  - 2 bash wrappers в `scripts/`: pre-flight (docker + buildx),
+    auto-create builder instance (idempotent), `--cache-from/-to
+    type=local mode=max`, `--load` в local daemon.
+  - `efactory-build-dev` для main Dockerfile; args `--no-cache`,
+    `--image <TAG>`, env `EFACTORY_BUILD_CACHE_DIR`
+    (default `$HOME/efactory-buildcache/`).
+  - `efactory-build-libs-dev` для Dockerfile.libs; `--with-3d`
+    для `INCLUDE_3DMODELS=1`; cache отдельный
+    (`$HOME/efactory-libs-buildcache/`).
+  - Без buildx → actionable error с install instruction +
+    fallback на обычный docker build.
+  - README «Быстрый старт» расширен dev-only ускорением.
+  - Dockerfile **остаётся portable** (ADR 2026-05-24
+    «пользователь должен честно тянуть»).
+  - Pre-push gates все 5 зелёные (1140 passed, без изменений vs
+    T134 baseline).
+  - **Owner manual smoke (после `sudo apt install docker-buildx-
+    plugin`):** прогревочный build как обычный; повторный — секунды.
 
 - **T134** — [closed 2026-05-26, PR #78] **Agent Knowledge Base —
   persistent KB для runtime-агента efactory.** 5-phase implementation
