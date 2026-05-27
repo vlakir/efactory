@@ -856,8 +856,10 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      вынесен в T153 (Q-B → c) — отдельный спек, когда появится
      feedback-фикстура. Spec — specs/T023-measurements/spec.md
      (Clarified, готова к Analyze). -->
-- **T024** — [2026-05-15] ASCII-графики через `plotext`.
-  Acceptance: график АЧХ выводится в терминал, читаемый на ширине 80.
+<!-- T024 переехала в BOARD.md → Doing 2026-05-26 (analysis-first
+     ordering Фазы 2, шаг 2 после T023). Реализован напрямую без
+     spec'и: ≤1 день, plotext + 2 CLI sub-команды + 2 slash-команды. -->
+
 - **T025** — [2026-05-15] Визуализация схем: Sixel/Kitty protocol
   + fallback на `xdg-open` (Linux) / `start` (Windows).
   Acceptance: при поддержке терминала схема рендерится прямо в чат;

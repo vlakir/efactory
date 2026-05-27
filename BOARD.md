@@ -110,6 +110,32 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
     11 clarify «по рекомендации» + 8 analyze issues — 0 Critical,
     3 Warning отражены, 5 Note guidance).
 
+- **T024** — [closed 2026-05-26, PR #77] **ASCII-графики через
+  plotext (`bridge plot ac|tran`).** Второй шаг analysis-first
+  ordering Фазы 2; фундамент для T022 sweep visualization.
+  - `plotext==5.3.2` — новая runtime dep.
+  - **CLI** `bridge plot <ac|tran>` sub-Typer (гомогенно с
+    `sim-run`/`measure`): `plot ac` (АЧХ магнитуда dB vs log-частота),
+    `plot tran` (waveform vs time). `--width 80 --height 20` defaults.
+  - **Renderer** (`adapters/inbound/cli/plot_renderer.py`):
+    `render_ac_sweep` / `render_time_series` возвращают строку через
+    `plotext.build()` — testable без захвата stdout. Case-insensitive
+    lookup; floor `_DB_FLOOR = -200 dB` (plotext не умеет infinity).
+  - **Slash-команды**: `/plot-ac`, `/plot-tran` (hyphenated flat).
+  - **Тесты** (+19): 12 unit renderer + 3 e2e на real ngspice (RC
+    low-pass: AC plot, TRAN plot, missing signal exit 2) + 4
+    frontmatter (2 per slash command). Pre-push gates все 5 зелёные
+    (1059 passed, coverage 86.07%).
+  - **Out of scope:** `--plot` flag в `measure_bandwidth` (с f_low/
+    f_high markers) — follow-up при необходимости; multi-signal
+    subplot'ы; schematic-render (T025).
+  - Реализован без spec'и: ≤1 день, проектный CLAUDE.md разрешает
+    skip ритуала для «мелких задач». Acceptance T024 BACKLOG
+    выполнен (default `--width 80`).
+  - **Owner manual smoke (после merge):** `docker build` +
+    `./efactory-up --reset-claude-state`; `/plot-ac` + `/plot-tran`
+    на `se-amp-demo` после `/sim-run`.
+
 - **T023** — [closed 2026-05-26, PR #76] **Измерения как отдельные
   bridge-инструменты (gain / bandwidth / thd).** Первая содержательная
   задача analysis-first ordering Фазы 2; фундамент для T021 (delta)

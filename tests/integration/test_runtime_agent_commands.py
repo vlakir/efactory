@@ -23,6 +23,8 @@ _EXPECTED_COMMANDS = {
     'measure-gain',
     'measure-bandwidth',
     'measure-thd',
+    'plot-ac',
+    'plot-tran',
     'kb-search',
     'kb-add',
 }

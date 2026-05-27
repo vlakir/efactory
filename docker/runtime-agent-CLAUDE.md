@@ -25,7 +25,7 @@
   SPICE / KiCad libs пользователя).
 - **`Glob` / `Grep`** — поиск по проекту и codebase.
 
-## Custom slash-команды efactory (T014 + T023 + T134)
+## Custom slash-команды efactory (T014 + T023 + T024 + T134)
 
 Видны в `/`-menu и через `/help`. Тонкие wrapper'ы над `efactory` CLI:
 
@@ -44,6 +44,10 @@
   или ref-freq).
 - **`/measure-thd [NETLIST] --freq <Hz> --v-in-peak <V>`** —
   single-point THD (TRAN + ngspice fourier).
+- **`/plot-ac [NETLIST] [--signal v(...)] [--f-start Hz --f-stop Hz]`** —
+  ASCII-график АЧХ (магнитуда vs log-частота) через plotext.
+- **`/plot-tran [NETLIST] --t-step <step> --t-stop <stop>
+  [--signal v(...)]`** — ASCII-график waveform (signal vs time).
 - **`/kb-search <query>`** — поиск по Knowledge Base (token-AND).
   Используй ПЕРЕД тем, как изобретать решение: «как сделать X»,
   «pitfall с Y», «формула для Z».
@@ -51,10 +55,10 @@
   (если нашёл важный pitfall или удачный pattern — сохрани, чтобы
   следующая сессия не повторяла исследование).
 
-Measure-команды работают на готовом netlist'е (`.cir`), не на schematic.
-Перед измерением сгенерируй netlist через `/sim-run` (он по дороге
-вызывает `design-to-netlist`) или `efactory bridge design-to-netlist
-<PROJECT> --schematic <path>.kicad_sch` напрямую.
+Measure- и plot-команды работают на готовом netlist'е (`.cir`), не на
+schematic. Перед использованием сгенерируй netlist через `/sim-run`
+(он по дороге вызывает `design-to-netlist`) или `efactory bridge
+design-to-netlist <PROJECT> --schematic <path>.kicad_sch` напрямую.
 
 ## Knowledge Base usage (T134)
 

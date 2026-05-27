@@ -11,6 +11,10 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 from pydantic import ValidationError
 
+from adapters.inbound.cli.plot_renderer import (
+    render_ac_sweep,
+    render_time_series,
+)
 from adapters.inbound.cli.spice_units import (
     SpiceNumberFormatError,
     parse_spice_number,
@@ -171,6 +175,47 @@ def _emit_bandwidth(result: BandwidthMeasurement, *, output_fmt: str) -> None:
         f'midpoint={result.midpoint_db:.2f} dB '
         f'[{result.midpoint_source}])',
     )
+
+
+def _prepare_ac_netlist(
+    *,
+    netlist_path: Path,
+    netlist_editor: NetlistEditor,
+    explicit_source: str | None,
+) -> Path:
+    """
+    Inject `AC 1` modifier на V-source перед AC analysis.
+
+    Если netlist уже содержит `AC <mag>` — ensure_ac_modifier no-op'нет.
+    Возвращает путь к prepared netlist (либо tmp, либо original если
+    в netlist'е нет V-source — без injection).
+    """
+    base_text = netlist_path.read_text()
+    if explicit_source is not None:
+        source_ref: str | None = explicit_source
+    else:
+        sources = netlist_editor.find_top_level_v_sources(base_text)
+        if len(sources) == 1:
+            source_ref = sources[0]
+        elif len(sources) == 0:
+            source_ref = None
+        else:
+            candidates = ', '.join(sources)
+            msg = (
+                f'multiple V-sources in netlist ({candidates}); '
+                f'pass --input-source explicitly.'
+            )
+            raise ValueError(msg)
+    if source_ref is None:
+        return netlist_path
+    prepared = netlist_editor.ensure_ac_modifier(
+        base_text,
+        source_ref=source_ref,
+        ac_magnitude=1.0,
+    )
+    tmp_netlist = netlist_path.with_suffix('.tmp_plot.cir')
+    tmp_netlist.write_text(prepared)
+    return tmp_netlist
 
 
 def _emit_thd(result: ThdMeasurement, *, output_fmt: str) -> None:
@@ -2128,5 +2173,193 @@ def build_app(
         typer.echo(f'{len(results)} match(es) for {query!r}:')
         for entry in results:
             typer.echo(f'  {entry.topic}\t[{entry.source}]\t{entry.description}')
+
+    # === bridge plot <ac|tran> (ASCII chart, T024) ===
+
+    plot_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    bridge_app.add_typer(plot_app, name='plot')
+
+    @plot_app.command('ac')
+    def plot_ac_cmd(
+        netlist: Annotated[str, typer.Argument(help='Путь к SPICE netlist (.cir)')],
+        *,
+        signal: Annotated[
+            str,
+            typer.Option('--signal', help='Trace для отрисовки (default v(load))'),
+        ] = 'v(load)',
+        input_source: Annotated[
+            str | None,
+            typer.Option('--input-source', help='V-source ref (auto-detect)'),
+        ] = None,
+        f_start: Annotated[
+            str,
+            typer.Option('--f-start', help='Начальная частота (default 1)'),
+        ] = '1',
+        f_stop: Annotated[
+            str,
+            typer.Option('--f-stop', help='Конечная частота (default 1Meg)'),
+        ] = '1Meg',
+        n_points: Annotated[
+            int,
+            typer.Option('--n-points', help='Точек на декаду (default 10)'),
+        ] = 10,
+        sweep: Annotated[
+            str,
+            typer.Option('--sweep', help='dec | lin | oct (default dec)'),
+        ] = 'dec',
+        width: Annotated[
+            int,
+            typer.Option('--width', help='Ширина графика в символах'),
+        ] = 80,
+        height: Annotated[
+            int,
+            typer.Option('--height', help='Высота графика в строках'),
+        ] = 20,
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
+        ] = 60.0,
+    ) -> None:
+        try:
+            analysis = _make_ac(sweep, n_points, f_start, f_stop)
+        except (SpiceNumberFormatError, ValidationError) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        # AC analysis требует AC modifier на V-source'е, иначе ngspice
+        # видит AC=0 и магнитуда везде 0 → -inf dB (T024 follow-up fix).
+        netlist_path = Path(netlist)
+        try:
+            prepared_netlist_path = _prepare_ac_netlist(
+                netlist_path=netlist_path,
+                netlist_editor=netlist_editor,
+                explicit_source=input_source,
+            )
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+
+        async def _run() -> SimulationResult:
+            return await sim_run_use_case(
+                netlist=prepared_netlist_path,
+                analysis=analysis,
+                simulator=simulator,
+                timeout_seconds=timeout,
+            )
+
+        try:
+            result = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'bridge.plot.ac',
+                    project=None,
+                    payload={'netlist': netlist, 'signal': signal},
+                    fn=_run,
+                ),
+            )
+        except (
+            SimulationFailedError,
+            SimulatorUnavailableError,
+            SpiceNumberFormatError,
+            ValidationError,
+        ) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        if result.ac_sweep is None:
+            typer.echo('Simulator returned no ac_sweep result.', err=True)
+            raise typer.Exit(code=2)
+        try:
+            chart = render_ac_sweep(
+                result.ac_sweep,
+                signal=signal,
+                width=width,
+                height=height,
+            )
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        typer.echo(chart)
+
+    @plot_app.command('tran')
+    def plot_tran_cmd(
+        netlist: Annotated[str, typer.Argument(help='Путь к SPICE netlist (.cir)')],
+        *,
+        signal: Annotated[
+            str,
+            typer.Option('--signal', help='Trace для отрисовки (default v(load))'),
+        ] = 'v(load)',
+        t_step: Annotated[
+            str,
+            typer.Option('--t-step', help='Шаг по времени (1u, 10n)'),
+        ],
+        t_stop: Annotated[
+            str,
+            typer.Option('--t-stop', help='Длительность (1m, 20m)'),
+        ],
+        t_start: Annotated[
+            str,
+            typer.Option('--t-start', help='Начало записи (default 0)'),
+        ] = '0',
+        uic: Annotated[
+            bool,
+            typer.Option('--uic', help='Use Initial Conditions'),
+        ] = False,
+        width: Annotated[
+            int,
+            typer.Option('--width', help='Ширина графика в символах'),
+        ] = 80,
+        height: Annotated[
+            int,
+            typer.Option('--height', help='Высота графика в строках'),
+        ] = 20,
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
+        ] = 60.0,
+    ) -> None:
+        try:
+            analysis = _make_tran(t_step, t_stop, t_start, uic=uic)
+        except (SpiceNumberFormatError, ValidationError) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        async def _run() -> SimulationResult:
+            return await sim_run_use_case(
+                netlist=Path(netlist),
+                analysis=analysis,
+                simulator=simulator,
+                timeout_seconds=timeout,
+            )
+
+        try:
+            result = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'bridge.plot.tran',
+                    project=None,
+                    payload={'netlist': netlist, 'signal': signal},
+                    fn=_run,
+                ),
+            )
+        except (
+            SimulationFailedError,
+            SimulatorUnavailableError,
+            SpiceNumberFormatError,
+            ValidationError,
+        ) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        if result.time_series is None:
+            typer.echo('Simulator returned no time_series result.', err=True)
+            raise typer.Exit(code=2)
+        try:
+            chart = render_time_series(
+                result.time_series,
+                signal=signal,
+                width=width,
+                height=height,
+            )
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        typer.echo(chart)
 
     return app
