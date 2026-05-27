@@ -49,6 +49,17 @@ T-ID между релизами — `CHANGELOG.md` единственное per
   22 v/i traces per combination. +15 regression-тестов в
   `test_ngspice_simulator.py`.
 
+- **T155 — FreeCAD AppImage download resilience (BuildKit HTTP/2
+  flakiness на github.com releases).** Dockerfile stage
+  `freecad-appimage`: `curl -fsSL --http1.1 --retry 3 --retry-delay 5`
+  для AppImage download. `--http1.1` обходит BuildKit HTTP/2 race
+  (intermittent TLS resets / connection drops); `--retry 3` —
+  defensive против transient network errors. Regression-тест
+  `tests/integration/test_dockerfile_freecad_resilience.py` (+2)
+  проверяет flags присутствуют в Dockerfile (lockdown против
+  случайного отката). Compact (3 LOC Dockerfile + 2 tests), без
+  spec'и. Pre-push gates все 5 зелёные (1142 passed).
+
 ### Added
 
 - **T022 — `bridge sweep` generalised: tabular output + ASCII plot

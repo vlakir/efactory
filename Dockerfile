@@ -191,7 +191,10 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 WORKDIR /tmp/freecad
-RUN curl -fsSL -o fc.AppImage \
+# T155: BuildKit HTTP/2 на github.com releases — flaky (intermittent
+# TLS resets / connection drops). `--http1.1` обходит HTTP/2 race;
+# `--retry 3 --retry-delay 5` — defensive против transient errors.
+RUN curl -fsSL --http1.1 --retry 3 --retry-delay 5 -o fc.AppImage \
       "https://github.com/FreeCAD/FreeCAD/releases/download/${FREECAD_VERSION}/FreeCAD_${FREECAD_VERSION}-Linux-x86_64-py311.AppImage" \
  && echo "${FREECAD_SHA256}  fc.AppImage" | sha256sum -c - \
  && chmod +x fc.AppImage \
