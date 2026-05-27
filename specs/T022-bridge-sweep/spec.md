@@ -1,7 +1,12 @@
 # Spec: Параметрический sweep (`bridge_sweep`) с tabular output + ASCII plot
 
-**Статус:** Draft
+**Статус:** Analyzed
 **Дата создания:** 2026-05-27
+**Clarify прошёл:** 2026-05-27 (10 вопросов; 9 «по рекомендации» +
+Q-H → a auto-detect log/linear)
+**Analyze прошёл:** 2026-05-27 (14 issues: 2 Critical разрешены
+in-spec, 6 Warning с predeclared resolutions, 6 Note —
+реализационные guidance)
 **Связанные документы:**
 - `BACKLOG.md → ### Фаза 2 → T022`.
 - `BACKLOG.md → T144` (absorbed 2026-05-27): sweep tabular numerical
@@ -93,8 +98,10 @@ T022 — третий шаг analysis-first ordering Фазы 2:
 
 - **ДОЛЖНА** расширить `bridge sweep` CLI subcommand следующими
   флагами:
-  - `--analysis <op|tran|ac|four>` (default `op`) — определяет
-    физический SPICE-прогон per combination.
+  - `--analysis <op|tran|ac>` (default `op`) — определяет
+    физический SPICE-прогон per combination. **FOUR из списка
+    исключён** (Q-B → c): он — внутренний механизм для
+    `--metric thd`, наружу не торчит.
   - `--metric <op|gain|bandwidth|thd>` (default `op`) — определяет,
     как извлекаются числа в строку таблицы.
   - `--output <text|csv|json>` (default `text`).
@@ -105,6 +112,11 @@ T022 — третий шаг analysis-first ordering Фазы 2:
   - `--plot-y <field>` — какую колонку использовать как Y (для
     metric — auto: `gain_db` / `bandwidth_hz` / `thd_percent`; для
     raw OP — обязательный явный signal name).
+  - `--plot-x-scale <auto|linear|log>` (default `auto`) — Q-H → a +
+    Analyze A8: log-space detection алгоритм.
+  - `--output-signal <name>` (default `v(load)`, Analyze A6) —
+    для metric mode pass-through в `measure_*`. Для `--metric op`
+    игнорируется.
   - `--max-combinations <N>` (default 100) — override hard cap.
   - `--freq <Hz>` — обязательный для `--metric gain` и `--metric thd`.
   - `--f-low <Hz>`, `--f-high <Hz>` — для `--metric bandwidth`
@@ -116,14 +128,16 @@ T022 — третий шаг analysis-first ordering Фазы 2:
     `--timeout`) — без изменений.
 
 - **ДОЛЖНА** auto-mapping `--metric` → `--analysis`, если последний
-  не указан явно:
-  - `--metric op` → `op`;
-  - `--metric gain --mode small` → `ac`;
-  - `--metric gain --mode large` → `tran`;
-  - `--metric bandwidth` → `ac`;
-  - `--metric thd` → `tran` + ngspice `fourier`.
-  При **явном** `--analysis` несовместимом с `--metric` — error с
-  объяснением.
+  не указан явно (Analyze A1 — список **строго** валидных пар):
+  - `--metric op` ⇔ `--analysis op` (единственная пара для `op`);
+  - `--metric gain --mode small` ⇔ `--analysis ac`;
+  - `--metric gain --mode large` ⇔ `--analysis tran`;
+  - `--metric bandwidth` ⇔ `--analysis ac`;
+  - `--metric thd` ⇔ `--analysis tran` (+ ngspice `fourier` internal).
+  Любая другая комбинация при **явно** указанном `--analysis` →
+  `typer.Exit(code=2)` с понятным сообщением:
+  `incompatible combination: --metric=X --analysis=Y;
+  expected --analysis=Z`.
 
 - **ДОЛЖНА** при `--metric op` использовать
   `result.operating_points` напрямую (обратная совместимость T004b
@@ -137,27 +151,61 @@ T022 — третий шаг analysis-first ordering Фазы 2:
 
 - **ДОЛЖНА** генерировать tabular output по правилам:
   - **Колонки**: сначала параметры sweep'а (по порядку `--param`),
-    потом колонки метрики.
+    потом колонки метрики (Analyze A5, фиксированный mapping):
+    - **`gain`**: CSV `gain_db, gain_linear`; JSON добавляет
+      `frequency_hz, mode, input_signal, output_signal, v_in_peak`.
+    - **`bandwidth`**: CSV `f_low_hz, f_high_hz, bandwidth_hz`;
+      JSON добавляет `midpoint_db, ref_db, midpoint_source,
+      ref_freq_hz, input_signal, passband_signal`.
+    - **`thd`**: CSV `thd_percent, dominant_harmonic_n,
+      dominant_harmonic_percent`; JSON добавляет
+      `fundamental_hz, v_in_peak, measured_power_w, signal,
+      n_harmonics`.
+    - **`op`**: dynamically — union всех ключей
+      `result.operating_points` across combinations; missing →
+      `None`.
   - **Текстовый формат**: aligned plain-text table (без library
-    `tabulate` — используем стандартный str-форматтер).
+    `tabulate` — используем стандартный str-форматтер). Текстовая
+    таблица содержит то же подмножество колонок что CSV (для
+    краткости); JSON — полный набор полей.
   - **CSV**: stdlib `csv.writer`, RFC 4180.
   - **JSON**: list[dict[col, value]], pretty-print (indent=2).
 
 - **ДОЛЖНА** для plot:
   - **1-param sweep**: X = swept parameter (numeric SPICE notation
     parsed через существующий `parse_spice_number`); Y = chosen
-    metric. Линейный X-axis (НЕ log) — для sweep'ов значения
-    обычно дискретные, log не оправдан.
+    metric.
   - **2-param sweep**: multi-line plot, одна линия на значение
-    второго параметра (label = `<param2>=<value>`).
+    второго параметра (label = `<param2>=<value>`). X — первый
+    `--param` в порядке указания.
+  - **X-axis scale**: **auto-detect** linear vs log (Q-H → a +
+    Analyze A8). Алгоритм в **log-space** (robust к non-sorted):
+    1. Парсим values через `parse_spice_number()`, фильтруем
+       positive, сортируем ascending.
+    2. При N≥3 после фильтра: `log10_values = [log10(v) for v in
+       sorted_values]`, `diffs = [log10_values[i+1] -
+       log10_values[i]]`.
+    3. Если `stdev(diffs) / mean(diffs) < 0.10` И `mean(diffs)
+       > 0.18` (≈ ratio 1.5) → geometric series → **log scale**.
+    4. Иначе → **linear**.
+    5. N<3 или не все positive → linear.
+    Override через `--plot-x-scale linear|log` (escape hatch).
   - **>2 params**: `--plot` → warning + skip plot, таблица всё
     равно строится.
   - **Raw OP без явного `--plot-y`**: `--plot` → warning + skip.
+  - **Non-numeric params** (например `--param model=KP-507,KP-509`):
+    `parse_spice_number` fail → plot disabled с warning, таблица
+    строится.
 
 - **ДОЛЖНА** при N > soft warn limit (20) выводить warning в
-  stderr с estimated runtime, не блокировать выполнение. При
-  N > hard cap (100, override через `--max-combinations <N>`)
-  — exit 2 без запуска.
+  stderr с estimated runtime, не блокировать выполнение (Analyze
+  A7 — упрощённый текст):
+  `Warning: N combinations (estimated ~M min upper-bound runtime).
+  Continuing.`
+  где `M = ceil(N * timeout_seconds / 60)` (Analyze A13: upper-
+  bound оценка, реальное время обычно 5-10× меньше). При N > hard
+  cap (100, override через `--max-combinations <N>`) — exit 2
+  без запуска с сообщением о cap.
 
 - **ДОЛЖНА** иметь slash-команду `/sweep` (hyphenated flat per
   T014 A1 — но `sweep` — одно слово, без дефиса) в
@@ -175,10 +223,9 @@ T022 — третий шаг analysis-first ordering Фазы 2:
   Level 2): `(query, expected_topic, expected_directive_keyword)`
   для `/sweep`.
 
-- **МОЖЕТ** опционально писать `SimResult` через
-  `SimResultsRepository` (T016 pattern) если caller передал
-  repository — **по одному `SimResult` на combination** (или один
-  агрегированный «sweep» SimResult? — clarify).
+- **НЕ ДОЛЖНА** писать `SimResult` через `SimResultsRepository`
+  (Q-C → c): sweep — analytical artifact, не одиночная симуляция.
+  Persistence — через `--output-file` explicit'ом.
 
 - **НЕ ДОЛЖНА** делать diff measurement / before-after — это T021.
 
@@ -228,10 +275,19 @@ T022 — третий шаг analysis-first ordering Фазы 2:
 ## 5. Key Entities
 
 - **`SweepRun`** (existing, in `application/bridge_sweep.py`) —
-  расширяем: добавляем поле `metric_value: GainMeasurement |
-  BandwidthMeasurement | ThdMeasurement | None = None`
-  (Pydantic strict union? или просто `dict[str, Any] | None` под
-  «row payload»? — clarify).
+  расширяем **опциональным** полем `values: dict[str, float | str
+  | None] | None = None` (Q-A → b + Analyze A4: backward-compat).
+  - `result: SimulationResult | None` **остаётся** в VO (no
+    breakage existing callers).
+  - Для **`--metric op`** path: `result` filled (как раньше),
+    `values` тоже filled — derived from `result.operating_points`
+    (так renderer работает единообразно).
+  - Для **metric-path** (`gain`/`bandwidth`/`thd`): `result=None`,
+    `values` filled из соответствующего `Measurement` VO через
+    A5 mapping.
+  - `error: str | None` — без изменений (Q-D → a: failed
+    combination → `values={col: None for col in metric_cols}` +
+    `error='...'`).
 
 - **`SweepConfig`** (новое, в `application/bridge_sweep.py`) —
   Pydantic frozen VO: `analysis: AnalysisType`, `metric: Literal
@@ -316,8 +372,8 @@ T022 — третий шаг analysis-first ordering Фазы 2:
 - **Adaptive sweep / golden-section search** — поиск оптимума по
   градиенту, не Cartesian product. Backlog.
 - **FOUR `--analysis four` raw output без `--metric thd`** —
-  open question, видимо НЕ нужно (THD уже покрыт). Уточнить в
-  Clarify.
+  resolved Q-B → c: FOUR убран из CLI options, доступен только
+  как внутренний механизм `--metric thd`.
 
 ---
 
@@ -424,10 +480,305 @@ T022 — третий шаг analysis-first ordering Фазы 2:
 
 ### Resolved (с ответами)
 
-- *(заполнится после Clarify-прохода Vladimir)*
+Vladimir (2026-05-27): Q-H → a, остальные — по рекомендации.
+
+- **Q-A → b**: `dict[str, float | str | None]` payload (flat,
+  легко ложится в CSV/JSON, не разваливается на discriminator).
+  Типизация на уровне `SweepConfig` (which metric was selected).
+  Вшито в Functional Requirements + Key Entities (`SweepRun.values`).
+- **Q-B → c**: `--analysis` options = `op|tran|ac` (FOUR убран,
+  он — internal механизм для `--metric thd`). Вшито в FR +
+  «Совместимые пары».
+- **Q-C → c**: sweep НЕ пишет `SimResult` в
+  `SimResultsRepository`. Persistence — через `--output-file`
+  явно. Вшито в FR (НЕ ДОЛЖНА писать SimResult).
+- **Q-D → a**: failed combination не аборт sweep'а — в строке
+  таблицы `metric_col=None` + `error='...'`. Backward-compat
+  T004b Phase 1.
+- **Q-E → b**: новая функция `render_sweep_plot` в
+  `plot_renderer.py` с `group_by`-параметром (concerns раздельные:
+  `render_ac_sweep`/`render_time_series` — для AC/TRAN waveform,
+  `render_sweep_plot` — для parametric sweep).
+- **Q-F → b**: при `--output-file` stdout печатает **1 строку
+  `Sweep complete: N rows → <path>`** (agent-friendly, не silent).
+- **Q-G → b**: soft warn N>20 → только stderr warning, продолжаем
+  выполнение (нет interactive prompts в efactory CLI).
+- **Q-H → a (Vladimir выбор)**: **auto-detect X-axis scale**.
+  Алгоритм: при N≥3 численных values посчитать ratios между
+  последовательными; если `stdev/mean < 0.10` И `mean > 1.5` →
+  log; иначе linear. N<3 → linear по умолчанию. Override —
+  `--plot-x-scale linear|log` escape hatch.
+- **Q-I → a**: только `agent.command-routing` строка (без
+  отдельного pitfall-topic'а — sweep не имеет surprise'ов сверх
+  `--help`).
+- **Q-J → b**: `AnalysisType` enum НЕ расширяется значением
+  `sweep` (следует из Q-C → c).
 
 ---
 
 ## Analyze (заполняется Claude)
 
-- *(заполнится после Clarify)*
+Проход 2026-05-27, 14 issues: **2 Critical** (фиксим до
+implementation, оба разрешены in-spec), **6 Warning** (нужны
+явные решения, варианты предложены), **6 Note** (реализационные
+guidance).
+
+### 🔴 Critical (фиксим до implementation)
+
+- **A1: `--metric op` совместим **только** с `--analysis op`.** В
+  spec'е написано «совместимые пары» с `(op, op)`, но эта пара
+  не explicit'но помечена как **единственная** для `op`-metric.
+  Иначе пользователь может задать `--metric op --analysis tran` и
+  получить либо ошибку, либо неожиданную попытку извлечь
+  operating_points из TRAN-результата (последний sample? mean?
+  → ambiguous).
+  **Resolution:** добавляю в FR явный список **строго**
+  совместимых пар (vs «которые работают»):
+  - `--metric op` ⇔ `--analysis op` (единственная пара);
+  - `--metric gain --mode small` ⇔ `--analysis ac`;
+  - `--metric gain --mode large` ⇔ `--analysis tran`;
+  - `--metric bandwidth` ⇔ `--analysis ac`;
+  - `--metric thd` ⇔ `--analysis tran`.
+  Любая другая комбинация → `typer.Exit(code=2)` с понятным
+  сообщением.
+
+- **A2: Backward-incompat output format e2e теста.** Существующий
+  `tests/e2e/walking_skeleton/test_bridge_sweep.py ::
+  test_bridge_sweep_two_param_combinations` ассертит формат
+  `Sweep complete: 4 combinations.` + `[R1=1k C1=1u]` строки —
+  это **старый T004b Phase 1 формат**. Новый tabular выводится
+  иначе (`R1 C1 V(plate) V(K) I(V1)` aligned table). Если просто
+  переписать вывод — тест сломается.
+  **Resolution:** **переписываем тест под новый tabular format**
+  в Phase A (Phase C для CLI). Tabular лучше старого формата —
+  держать оба не имеет смысла. Backward-compat сохраняем на
+  уровне **CLI флагов** (старый вызов `bridge sweep <project>
+  --schematic <path> --param REF=v1,v2` продолжает работать без
+  новых флагов; default `--analysis op --metric op` даёт OP
+  sweep), но **output format меняется**.
+
+### 🟡 Warning (обсуждаем)
+
+- **A3: T144 root-cause fix scope creep.** Если на Phase A smoke
+  выяснится, что `operating_points` пуст не из-за OPT_SE_5K_8 (T147
+  закрыт), а из-за adapter parser bug — fix может потребовать
+  изменений в `adapters/outbound/ngspice/`. Risk: scope разрастается
+  > 50 LOC.
+  **Predeclared resolution:** если fix < 50 LOC и не меняет публичные
+  port interfaces — **in scope T022, Phase A**. Если > 50 LOC ИЛИ
+  меняет интерфейсы — **spin-off** new T-ID, T022 продолжается
+  c явным skip-условием в e2e (e.g., `pytest.skip` для OP с
+  объяснением).
+
+- **A4: SweepRun extension — backward-compat для использования
+  внутри.** Добавление `values: dict[str, float | str | None]` поля
+  не должно ломать existing usage `SweepRun.parameters` /
+  `SweepRun.result` (если есть call-sites вне CLI).
+  **Predeclared resolution:** **дополнительное** опциональное поле
+  `values: dict[str, float | str | None] | None = None` без
+  удаления `result`. Для `--metric op` path: `result` заполнен
+  (как раньше), `values` = {col: val} (новое представление,
+  derived from result). Для metric-path: `result=None`, `values`
+  filled. Renderer работает с `values` — единый путь.
+
+- **A5: Конкретный список CSV/JSON колонок per metric.** Без
+  фиксации — высокий risk inconsistency между Phase B и Phase C.
+  **Predeclared resolution:** в Phase A добавляю в spec явный
+  mapping VO → CSV columns:
+  - **gain**: `gain_db, gain_linear` (CSV); JSON добавляет
+    `frequency_hz, mode, input_signal, output_signal, v_in_peak`.
+  - **bandwidth**: `f_low_hz, f_high_hz, bandwidth_hz` (CSV);
+    JSON добавляет `midpoint_db, ref_db, midpoint_source,
+    ref_freq_hz, input_signal, passband_signal`.
+  - **thd**: `thd_percent, dominant_harmonic_n,
+    dominant_harmonic_percent` (CSV); JSON добавляет
+    `fundamental_hz, v_in_peak, measured_power_w, signal,
+    n_harmonics`.
+  - **op**: dynamically — все ключи `result.operating_points`
+    (union across all combinations, missing → None).
+
+- **A6: `--output-signal` pass-through для metric mode.** Текущие
+  `measure_gain` / `measure_bandwidth` / `measure_thd` принимают
+  `output_signal` (default `v(load)`). `sweep --metric gain` пока
+  не имеет аналогичного флага → hard-coded `v(load)` для всех
+  combinations, нет escape hatch для нестандартных нод.
+  **Predeclared resolution:** добавляю `--output-signal <name>`
+  CLI флаг (default `v(load)`) который пробрасывается в measure_*.
+  Для `--metric op` игнорируется (operating_points возвращает
+  все ноды сразу).
+
+- **A7: Warning text при N>20 — misleading hint.** В Сценарии E
+  spec'a написано: «`Continue? (use --max-combinations 100 to
+  silence warning)`», но `--max-combinations 100` — это default,
+  не silencer. Запутывает.
+  **Predeclared resolution:** упрощаю текст до:
+  `Warning: N combinations (estimated ~M min runtime). Continuing.`
+  Без silencer-флагов (yagni); если когда-то понадобится — заведём
+  отдельный `--quiet-warnings`.
+
+- **A8: `--plot-x-scale auto` алгоритм — non-sorted edge case.**
+  Если values заданы non-sorted (`--param R=10k,1k,5k`), сырые
+  ratios получаются `[0.1, 5.0]` — mean=2.55, stdev=2.45,
+  stdev/mean=0.96 → linear (неверно для geometric values).
+  **Predeclared resolution:** перед detection **сортировать
+  values по числовому значению**, ratios считать на отсортированной
+  последовательности. Альтернативно — работать в log-space:
+  `log10_values = sorted([log10(v) for v in values])`,
+  `diffs = [log10_values[i+1] - log10_values[i]]`, если
+  `stdev(diffs) / mean(diffs) < 0.10` И `mean(diffs) > 0.18` (≈
+  ratio 1.5) → log; иначе linear. Это robust к порядку и точнее
+  семантически. **Беру log-space вариант.**
+
+### 🟢 Note (к сведению)
+
+- **A9: AnalysisType enum уже содержит GAIN/BANDWIDTH/THD/FOUR.**
+  Все нужные значения уже есть (T016 + T023). Q-J → b confirmed:
+  не расширяем; внутри-sweep'а измерения используют существующие
+  значения.
+
+- **A10: ports — без новых.** T022 reuses existing
+  `SchematicExporter` + `Simulator` + `NetlistEditor` (последний
+  только для metric path, т.к. measure_* нужен ему). Новых outbound
+  port'ов нет. SweepRun, SweepConfig, SweepRow — domain/application
+  VOs, не порты.
+
+- **A11: TDD outside-in.** Phase B (use case bridge_sweep
+  generalised): сначала unit-тесты на `SweepConfig` validators
+  (metric/analysis compat — A1), потом на `bridge_sweep` use case
+  с fake-портами (parametrize over metric types), потом e2e на
+  real ngspice (минимум 1 happy-path per metric + N>cap unhappy).
+
+- **A12: stderr/stdout convention.** Warning → stderr. Tabular
+  output → stdout (or `--output-file`). При `--output-file` —
+  1-line summary в stdout (Q-F → b). При `--output csv` без
+  `--output-file` — CSV в stdout (для pipe'инга в `column -t -s,`
+  / `awk`).
+
+- **A13: estimated runtime calculation.** Использую rough
+  `~timeout_seconds × N` (upper bound) для warning text. Не пытаюсь
+  быть умным — пользователь видит `~60min`, понимает порядок.
+
+- **A14: измерение времени runtime в практике.** OP per
+  combination ~1-2s, AC sweep ~3-5s, TRAN ~5-15s в зависимости
+  от t_stop. N=20 → ~1-5 минут реально (vs ~20 минут upper bound).
+  В A13 объяснено почему берём upper bound.
+
+### Resolutions inline в spec
+
+После Analyze пробежки правки FR применены: A1 (строгие валидные
+пары), A4 (доп. поле `values`), A5 (CSV columns table), A6
+(`--output-signal` флаг), A7 (упрощённый warn text), A8 (log-space
+algorithm), A2 (e2e test rewrite в Phase A).
+
+---
+
+## Phase plan (Implementation — 4 фазы TDD outside-in)
+
+### Phase A — Diagnostic smoke + e2e test rewrite + domain VO
+
+1. **Manual smoke T144 root-cause** (Analyze A3): rebuild
+   `efactory:linux` (включая T147 OPT_SE_5K_8 fix); внутри образа
+   `efactory bridge sweep se-amp-demo --schematic
+   se-amp-demo.kicad_sch --param Rk=820 --analysis op`. Если
+   `operating_points` непуст → T144 root-cause = OPT_SE_5K_8
+   (закрыт T147), continue. Если пуст → diagnose: ngspice
+   `.raw` parser или `.cir` `.print` отсутствует. Fix < 50 LOC
+   in scope; ≥ 50 LOC → spin-off T-ID (Analyze A3).
+2. **`SweepConfig` Pydantic VO** (`application/sweep_config.py`)
+   с `model_validator` на metric/analysis совместимость (A1).
+   Required-fields per metric (freq for gain/thd, f-low/f-high
+   for bandwidth, v-in-peak for gain-large/thd).
+3. **`SweepRow`** TypedDict / Pydantic VO (`application/sweep_
+   row.py`) с явным полем `values: dict[str, float | str | None]`.
+4. **Unit tests Red→Green**: 8-12 кейсов SweepConfig validators
+   (5 valid pairs + 5+ invalid combos exit 2).
+5. **Переписать `test_bridge_sweep_two_param_combinations`** под
+   новый tabular format (A2). До Phase B Red.
+6. **CHANGELOG.md** stub под [Unreleased].
+
+### Phase B — bridge_sweep use case generalised + measure_* integration
+
+1. **Расширить `application/bridge_sweep.py`**:
+   - Новая signature: `bridge_sweep(..., config: SweepConfig,
+     netlist_editor: NetlistEditor)`.
+   - Internal dispatch:
+     - `config.metric == 'op'` → existing `sim_run` (как сейчас),
+       extract `operating_points` → `values`.
+     - `config.metric == 'gain'` → `measure_gain(...)` →
+       GainMeasurement → A5 fields → `values`.
+     - `bandwidth` → `measure_bandwidth` analogично.
+     - `thd` → `measure_thd` analogично.
+   - SweepRun extension: добавляется `values` опциональное поле.
+2. **Unit tests с fake-портами** (TDD outside-in, Analyze A11):
+   - Happy path per metric (4×).
+   - Failed combination (sim/export error) → `error='...'` +
+     `values={col: None}` (Q-D → a).
+   - N>cap → ValueError (or sentinel value); CLI повышает в exit 2.
+3. **Integration tests с real ngspice**: 1 happy-path per metric
+   (4 total) на минимальной фикстуре (voltage divider или RC
+   filter — без heavy SE amp dependencies).
+
+### Phase C — CLI sub-Typer extension + renderers + plot
+
+1. **CLI флаги** в `bridge_sweep_cli` (`adapters/inbound/cli/app.py`):
+   все из FR (`--analysis`, `--metric`, `--output`, `--output-file`,
+   `--plot`, `--plot-y`, `--plot-x-scale`, `--output-signal`,
+   `--max-combinations`, `--freq`, `--f-low`, `--f-high`, `--mode`,
+   `--v-in-peak`). `build_cli_app` пробрасывает существующий
+   `netlist_editor`.
+2. **Tabular renderer** (`adapters/inbound/cli/sweep_table_renderer.py`):
+   pure-functions `render_text/csv/json(rows: list[SweepRow],
+   metric: str) -> str`. 12+ unit tests (per format × per metric
+   matrix + edge cases: empty rows, all-None values, missing OP
+   keys).
+3. **Plot renderer extension** (`adapters/inbound/cli/plot_
+   renderer.py` — Q-E → b): новая функция `render_sweep_plot(
+   rows, x_param, y_field, *, group_by: str | None = None, x_scale:
+   Literal['auto', 'linear', 'log'] = 'auto') -> str`. Algorithm
+   A8 в helper `_detect_x_scale`.
+4. **E2e tests на real ngspice** (Analyze A11):
+   - 1 happy-path per metric (refresh existing
+     `test_bridge_sweep_two_param_combinations` + 3 новых).
+   - `--output csv --output-file <path>` → CSV file + 1-line
+     stdout summary (Q-F → b).
+   - `--output json` → valid JSON в stdout.
+   - `--plot` 1-param + 2-param multi-line.
+   - N>20 soft warn в stderr; N>100 hard cap exit 2; `--max-
+     combinations 200` override.
+   - Incompatible `--metric op --analysis ac` → exit 2.
+
+### Phase D — Slash-команда + KB sync (Levels 1+2) + docs
+
+1. **`docker/runtime-agent-commands/sweep.md`** (frontmatter
+   `description` + `argument-hint` про абсолютные пути +
+   `allowed-tools: Bash`).
+2. **`docker/runtime-agent-CLAUDE.md`** — секция «Параметрический
+   sweep» с примерами (3-4 use case).
+3. **KB sync Level 1** (T134 правило): обновить
+   `docker/runtime-agent-knowledge-base/agent.command-routing.md`
+   — добавить mapping строку: `| sweep parameters & plot |
+   /sweep |`.
+4. **KB sync Level 2**: добавить parametrized case в
+   `tests/integration/agent_kb/test_control_examples.py` —
+   `(query='как сделать parametric sweep по Rk',
+   expected_topic='agent.command-routing',
+   expected_directive_keyword='/sweep')`.
+5. **Frontmatter validation tests** для `sweep.md` (2 теста как
+   у других slash-команд).
+6. **CHANGELOG.md** [Unreleased] verbose entry: domain VO, use
+   case generalisation, CLI flags table, renderer, plot, slash,
+   KB sync, T144 closure.
+7. **BOARD.md** → Doing→Done в **этом же** task-PR (project rule).
+8. **Self-review** по 7-чекпойнт списку (scope/архитектура/код/
+   качество/документация/соглашения/безопасность).
+9. **Pre-push gates 5 зелёные** (ruff/format/mypy/lint-imports
+   3/3 KEPT/pytest); `gh pr create`; closing commit с
+   `[closed YYYY-MM-DD, PR #N]`; squash-merge.
+
+### Out-of-task spin-offs (BACKLOG entries to be created)
+
+- **T?** Adaptive sweep / golden-section search для optimisation
+  (если возникнет потребность).
+- **T?** Parallel SPICE execution per combination (asyncio.gather).
+- **T?** Sweep по не-component параметрам (`.options`, `temp`,
+  model parameters).
