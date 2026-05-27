@@ -580,25 +580,10 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   `/clear` после симуляции и получит свежий контекст. Триггер —
   когда захочется доп. seamless.
 
-- **T144** — [2026-05-26, заведено по итогам прогона 5 сценариев T016
-  на se-amp-demo] **`efactory bridge sweep`: tabular numerical output
-  + CSV.** Runner сейчас отрабатывает все combination'ы и пишет per-
-  combination `.cir`, но **в stdout печатает только лейблы** (`[R2=330] …`),
-  никаких numerical results. Причина: сгенерированные netlist'ы
-  содержат `.tran` без `.print` / `.control`, парсер из `.raw` не
-  выкачивается. По `--help` обещано «key voltages per run», по факту —
-  пусто. Главный gap для повседневной работы: sweep по катодному
-  резистору / B+ / Rg — самый частый use case в проектировании
-  ламповых каскадов, сейчас даёт ноль полезного output из коробки
-  (агент проверил вручную через `ngspice -b` — физика правильная,
-  значит проблема только в извлечении).
-  Acceptance:
-  - В per-combination netlist класть `.control { op; wrdata <file>
-    v(<nodes>) i(<sources>); }` либо честный `.raw` export.
-  - Парсер собирает values и печатает tabular: `param V(plate) V(K)
-    I(V1)` в одну таблицу для всех combination'ов.
-  - Опциональный `--output csv` / `--output json` для пост-обработки.
-  Приоритет высокий (без этого sweep не используется).
+<!-- T144 absorbed by T022 (2026-05-27): sweep tabular numerical output
+     + CSV/JSON gap входит в Phase A scope T022 (Tabular output via
+     metrics or raw signals + --output csv|json + --output-file). См.
+     BOARD.md → Doing → T022 + specs/T022-bridge-sweep/spec.md. -->
 
 - **T145** — [2026-05-26, заведено по итогам прогона 5 сценариев T016]
   **`efactory bridge sim-run op`: auto-fallback на transient-to-op
@@ -856,9 +841,12 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   результатов (до/после).
   Acceptance: после изменения схемы выводится дельта по ключевым
   метрикам (gain, bandwidth, THD).
-- **T022** — [2026-05-15] Параметрический sweep (`bridge_sweep`)
-  с визуализацией.
-  Acceptance: sweep по 1-2 параметрам строит таблицу + график.
+<!-- T022 переехала в BOARD.md → Doing 2026-05-27. Top-level scope
+     подтверждён в чате (B → c orthogonal `--analysis` + `--metric`;
+     A/C/D/E/F/G/H/I — по рекомендации). T144 absorbed. Spec —
+     specs/T022-bridge-sweep/spec.md (Draft, готов к Clarify). -->
+<!-- T144 absorbed by T022 (2026-05-27): sweep tabular output + CSV
+     gap входит в Phase A scope T022. См. запись T022 в BOARD.md. -->
 <!-- T023 переехала в BOARD.md → Doing 2026-05-26 после clarify
      прохода (10 вопросов, все «по рекомендации»). Phase margin
      вынесен в T153 (Q-B → c) — отдельный спек, когда появится

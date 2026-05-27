@@ -61,8 +61,16 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-
-
+- **T022** — [2026-05-27, taken from BACKLOG] **Параметрический sweep
+  (`bridge_sweep`) с tabular output + ASCII plot.** Третий шаг
+  analysis-first ordering Фазы 2 после T023 (метрики) и T024 (plot).
+  Absorbs T144 (sweep tabular numerical output + CSV/JSON gap).
+  Spec — `specs/T022-bridge-sweep/spec.md` (Draft, готов к Clarify).
+  Acceptance (BACKLOG): sweep по 1-2 параметрам строит таблицу +
+  график; absorbed T144 — numerical values per combination, CSV/JSON
+  export. Top-level scope: orthogonal `--analysis op|tran|ac|four`
+  + `--metric op|gain|bandwidth|thd`, плотно гомогенно с
+  `sim-run`/`measure`/`plot`. Slash-команда `/sweep`.
 
 ## Done
 
