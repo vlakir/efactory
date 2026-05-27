@@ -1776,6 +1776,15 @@ def build_app(
                 help='Input trace для --metric=gain --mode=large',
             ),
         ] = None,
+        input_source: Annotated[
+            str | None,
+            typer.Option(
+                '--input-source',
+                help='V-source ref для injection (multi-V netlist'
+                'ах: se-amp с B+/input). Без него — auto-detect '
+                'single V-source, ambiguity → error.',
+            ),
+        ] = None,
         output_format: Annotated[
             str,
             typer.Option(
@@ -1869,6 +1878,8 @@ def build_app(
                 cfg_kwargs['v_in_peak'] = v_in_peak
             if input_signal is not None:
                 cfg_kwargs['input_signal'] = input_signal
+            if input_source is not None:
+                cfg_kwargs['input_source'] = input_source
             config = SweepConfig(**cfg_kwargs)  # type: ignore[arg-type]
         except (ValueError, ValidationError) as exc:
             typer.echo(f'SweepConfig: {exc}', err=True)

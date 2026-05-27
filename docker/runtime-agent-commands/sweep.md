@@ -41,6 +41,9 @@ Args от пользователя: `$ARGUMENTS` (project + flags). Исполь
   (thd, tran). Без `--analysis` — auto-mapping.
 - **`--metric gain --mode large` требует `--input-signal v(...)`**
   явно (measure_gain не auto-detect'ит trace name для RMS-вычисления).
+- **Multi-V netlist** (e.g. SE amp с B+ и input source): без
+  `--input-source <REF>` measure_* auto-detect упадёт с ambiguity.
+  Для se-amp-demo: `--input-source V2` (input — V2, B+ — V1).
 - **`--plot` для `--metric=op`** требует `--plot-y v(<node>)` явно
   (raw OP не имеет default Y); для metric — auto `gain_db /
   bandwidth_hz / thd_percent`.

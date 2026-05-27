@@ -84,6 +84,9 @@ class SweepConfig(BaseModel):
     # Optional input signal — нужен для `--metric gain --mode large`
     # (measure_gain требует явный trace name для RMS-computation).
     input_signal: str | None = None
+    # Optional V-source ref — нужен на multi-V netlist'ах (se-amp с B+
+    # и input source); без него measure_* auto-detect падает ambiguity'ем.
+    input_source: str | None = None
 
     @model_validator(mode='after')
     def _validate_compat_and_required(self) -> Self:
@@ -327,6 +330,7 @@ async def _measure_values(
             netlist_editor=netlist_editor,
             output_signal=config.output_signal,
             input_signal=config.input_signal,
+            input_source=config.input_source,
             v_in_peak=config.v_in_peak,
             timeout_seconds=timeout_seconds,
         )
@@ -342,6 +346,7 @@ async def _measure_values(
             simulator=simulator,
             netlist_editor=netlist_editor,
             output_signal=config.output_signal,
+            input_source=config.input_source,
             timeout_seconds=timeout_seconds,
         )
         return {
@@ -360,6 +365,7 @@ async def _measure_values(
             simulator=simulator,
             netlist_editor=netlist_editor,
             signal=config.output_signal,
+            input_source=config.input_source,
             timeout_seconds=timeout_seconds,
         )
         return {
