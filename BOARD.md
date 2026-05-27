@@ -61,18 +61,55 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T022** — [2026-05-27, taken from BACKLOG] **Параметрический sweep
+## Done
+
+- **T022** — [closed 2026-05-27, PR #82] **Параметрический sweep
   (`bridge_sweep`) с tabular output + ASCII plot.** Третий шаг
   analysis-first ordering Фазы 2 после T023 (метрики) и T024 (plot).
-  Absorbs T144 (sweep tabular numerical output + CSV/JSON gap).
-  Spec — `specs/T022-bridge-sweep/spec.md` (Draft, готов к Clarify).
-  Acceptance (BACKLOG): sweep по 1-2 параметрам строит таблицу +
-  график; absorbed T144 — numerical values per combination, CSV/JSON
-  export. Top-level scope: orthogonal `--analysis op|tran|ac|four`
-  + `--metric op|gain|bandwidth|thd`, плотно гомогенно с
-  `sim-run`/`measure`/`plot`. Slash-команда `/sweep`.
-
-## Done
+  **Absorbs T144** (sweep tabular numerical output + CSV/JSON gap +
+  ngspice wrapper conflict с KiCad-embedded `.tran` директивой).
+  - **Domain VO**: `SweepConfig` (Pydantic frozen, model_validator
+    на A1 strict — 5 валидных `(metric, analysis, mode)` пар;
+    auto-mapping `--analysis` из `--metric`; required-fields per
+    metric). `SweepRun.values: dict | None` опциональное поле
+    (A4 backward-compat).
+  - **Use case**: metric dispatch (op/gain/bandwidth/thd) через
+    `_run_one_combination` + `_measure_values` helpers; reuse
+    `measure_*` use cases (T023) через DI; continue-on-failure
+    (Q-D → a); soft-warn N>20, hard cap N>100.
+  - **CLI**: +14 новых флагов (`--metric|--analysis|--mode|--freq|
+    --f-low|--f-high|--v-in-peak|--output-signal|--input-signal|
+    --input-source|--output|--output-file|--plot|--plot-y|
+    --plot-x-scale|--max-combinations`).
+  - **Renderers**: text (aligned plain-text без tabulate) / CSV
+    (RFC 4180 stdlib) / JSON (pretty-print indent=2). Plot extension
+    `render_sweep_plot` с group_by для 2-param + log/linear
+    auto-detect (A8 log-space algorithm, robust к non-sorted input).
+  - **Slash `/sweep`** + KB sync Levels 1+2 (`agent.command-routing`
+    + regression case в `test_control_examples.py`).
+  - **Level 3 smoke** 3/3 scenarios на real agent (docker run
+    headless с bind-mount overlay): gain vs Rk multi-V с
+    `--input-source V2`, op + CSV → RFC-4180 file, bandwidth +
+    plot с правильной physics interpretation.
+  - **T144 root-cause** (absorbed): `_strip_analysis_directives`
+    в `build_wrapper` стрипит все top-level analysis directives
+    (`.op/.tran/.ac/.dc/.four/.noise/.tf/.sens/.disto`) из netlist
+    перед вставкой собственной. KiCad-embedded `.tran` больше не
+    блокирует appended `.OP`; sweep на `se-amp-demo` теперь печатает
+    все 22 v/i traces per combination. +15 regression-тестов.
+  - **+91 новых тестов** (29 SweepConfig + 10 bridge_sweep dispatch
+    + 17 sweep_table_renderer + 14 plot extension + 15 wrapper +
+    6 e2e); pytest 1230 passed, coverage 85.32%.
+  - **Out of scope**: parallel SPICE (BACKLOG), sweep по `.options`/
+    `temp`/model parameters, adaptive sweep / golden-section. T021
+    (delta) — следующая Фаза 2 задача, использует T022 фундамент.
+  - **Owner manual smoke (после merge)**: full `docker build` +
+    `./efactory-up --reset-claude-state`; `/sweep --metric gain
+    --freq 1k --input-source V2 --param R2=270,330,470` на
+    `se-amp-demo`.
+  - Spec — `specs/T022-bridge-sweep/spec.md` (Analyzed: 10 Clarify
+    Q + 14 Analyze issues — 2 Critical разрешены in-spec, 6
+    Warning с predeclared resolutions, 6 Note).
 
 - **T141** — [closed 2026-05-27, PR #79] **Dev-only build
   acceleration: `efactory-build-dev` / `efactory-build-libs-dev`
