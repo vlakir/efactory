@@ -66,6 +66,14 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T156** — [closed 2026-05-27, PR pending] **`efactory kb add
+  --body "..."` inline body option** — UX fix обнаружен в smoke
+  validation T134. Compact для agent autonomous KB writes.
+  - Body source priority: `--body` (inline) > `--body-file` > stdin.
+  - Mutually exclusive `--body` / `--body-file` (exit 2).
+  - `/kb-add` slash-команда обновлена.
+  - Pre-push gates все 5 зелёные (1140 passed, без regression).
+
 - **T134** — [closed 2026-05-26, PR #78] **Agent Knowledge Base —
   persistent KB для runtime-агента efactory.** 5-phase implementation
   по полному методическому ритуалу (spec → A domain → B store → C
