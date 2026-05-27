@@ -1,16 +1,16 @@
 """
-bridge_sweep — параметрический run симуляций (T004b Phase 1).
+bridge_sweep — параметрический run симуляций (T022 generalised).
 
 Алгоритм: Cartesian product over parameter value lists → для каждой
-комбинации копия schematic → apply edits → design_to_sim → собираем
-SimulationResult. Оригинальный schematic не трогается.
+комбинации копия schematic → apply edits → design_to_sim ИЛИ
+measure_* → собираем `values` dict per A5 mapping.
 
-MVP scope (T004b Phase 1):
-* Только OP analysis (TRAN/AC — Phase 2 backlog T021/T022).
-* Output: list[SweepRun] — пары (parameters dict, SimulationResult).
-
-CLI представление через `bridge sweep` — печатает table parameters +
-operating_points per combination.
+Metric dispatch (T022 A1):
+* `op`     → existing `sim_run(OpAnalysis)`, values = operating_points.
+* `gain`   → `measure_gain` use case → `{gain_db, gain_linear}`.
+* `bandwidth` → `measure_bandwidth` → `{f_low_hz, f_high_hz, bandwidth_hz}`.
+* `thd`    → `measure_thd` → `{thd_percent, dominant_harmonic_n,
+            dominant_harmonic_percent}`.
 """
 
 from __future__ import annotations
@@ -25,15 +25,24 @@ from typing import TYPE_CHECKING, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from application.edit_component_value import edit_component_value
+from application.measure_bandwidth import measure_bandwidth
+from application.measure_gain import measure_gain
+from application.measure_thd import measure_thd
 from application.sim_run import sim_run
-from domain.simulation import SimulationResult
+from domain.simulation import OpAnalysis, SimulationResult
 from ports.outbound.schematic_exporter import SchematicExportError
 from ports.outbound.simulator import SimulationFailedError
 
 if TYPE_CHECKING:
-    from domain.simulation import AnalysisSpec
+    from ports.outbound.netlist_editor import NetlistEditor
     from ports.outbound.schematic_exporter import SchematicExporter
     from ports.outbound.simulator import Simulator
+
+
+# T022 H: hard cap для N combinations. Override через `--max-combinations` CLI.
+MAX_COMBINATIONS_DEFAULT = 100
+# Soft warn threshold (Phase C: warning в stderr).
+SOFT_WARN_COMBINATIONS = 20
 
 
 MetricKind = Literal['op', 'gain', 'bandwidth', 'thd']
@@ -72,6 +81,9 @@ class SweepConfig(BaseModel):
     f_low_hz: float = Field(default=1.0)
     f_high_hz: float = Field(default=1e6)
     output_signal: str = 'v(load)'
+    # Optional input signal — нужен для `--metric gain --mode large`
+    # (measure_gain требует явный trace name для RMS-computation).
+    input_signal: str | None = None
 
     @model_validator(mode='after')
     def _validate_compat_and_required(self) -> Self:
@@ -131,11 +143,13 @@ async def bridge_sweep(
     *,
     schematic: Path,
     parameters: dict[str, list[str]],
-    analysis: AnalysisSpec,
+    config: SweepConfig,
     exporter: SchematicExporter,
     simulator: Simulator,
+    netlist_editor: NetlistEditor | None = None,
     netlist_dir: Path | None = None,
     timeout_seconds: float = 60.0,
+    max_combinations: int = MAX_COMBINATIONS_DEFAULT,
 ) -> list[SweepRun]:
     """
     Прогнать sweep по Cartesian product `parameters`.
@@ -143,15 +157,35 @@ async def bridge_sweep(
     `parameters` — dict[ref → list_of_values]. Например,
     `{'R1': ['1k', '10k'], 'C1': ['100n', '1u']}` даёт 4 combinations.
 
-    Для каждой combination: копия schematic, apply edits, export netlist,
-    run sim. На failure (export или sim) — добавить SweepRun с
-    `result=None, error='...'` и продолжить (sweep не аборт).
+    Для каждой combination: копия schematic → apply edits → export netlist
+    → measure (per `config.metric` dispatch). На failure (export / sim /
+    metric extract) — SweepRun с `error='...'` (Q-D → a, sweep не аборт).
 
-    `netlist_dir` — куда писать netlist files (для debug). Если None —
-    tempdir per run.
+    `netlist_editor` — обязателен для metric ∈ {gain, bandwidth, thd}
+    (measure_* use cases требуют). Для `op` — игнорируется.
+
+    `max_combinations` — hard cap; N > cap → ValueError (без запуска).
     """
     refs = list(parameters)
     value_lists = [parameters[r] for r in refs]
+    n_combinations = 1
+    for vlist in value_lists:
+        n_combinations *= len(vlist)
+    if n_combinations > max_combinations:
+        msg = (
+            f'sweep would produce {n_combinations} combinations '
+            f'(over hard cap {max_combinations}); pass max_combinations '
+            f'override or narrow --param ranges'
+        )
+        raise ValueError(msg)
+
+    if config.metric != 'op' and netlist_editor is None:
+        msg = (
+            f'netlist_editor обязателен для --metric={config.metric} '
+            f'(measure_* use cases требуют)'
+        )
+        raise ValueError(msg)
+
     runs: list[SweepRun] = []
 
     if netlist_dir is not None:
@@ -189,24 +223,15 @@ async def bridge_sweep(
                 )
                 continue
 
-            try:
-                result = await sim_run(
-                    netlist=netlist,
-                    analysis=analysis,
-                    simulator=simulator,
-                    timeout_seconds=timeout_seconds,
-                )
-            except SimulationFailedError as exc:
-                runs.append(
-                    SweepRun(
-                        parameters=params_dict,
-                        result=None,
-                        error=f'sim failed: {exc}',
-                    ),
-                )
-                continue
-
-            runs.append(SweepRun(parameters=params_dict, result=result))
+            run = await _run_one_combination(
+                params_dict=params_dict,
+                netlist=netlist,
+                config=config,
+                simulator=simulator,
+                netlist_editor=netlist_editor,
+                timeout_seconds=timeout_seconds,
+            )
+            runs.append(run)
 
             # Save netlist для debug если netlist_dir задан.
             if netlist_dir is not None:
@@ -221,4 +246,135 @@ async def bridge_sweep(
     return runs
 
 
-__all__ = ['SweepRun', 'bridge_sweep']
+async def _run_one_combination(
+    *,
+    params_dict: dict[str, str],
+    netlist: Path,
+    config: SweepConfig,
+    simulator: Simulator,
+    netlist_editor: NetlistEditor | None,
+    timeout_seconds: float,
+) -> SweepRun:
+    """
+    Dispatch на metric. Failures wrap'аются в SweepRun(error=...) без
+    re-raise (Q-D → a: continue on failure).
+    """
+    try:
+        if config.metric == 'op':
+            result = await sim_run(
+                netlist=netlist,
+                analysis=OpAnalysis(),
+                simulator=simulator,
+                timeout_seconds=timeout_seconds,
+            )
+            values = _op_values(result)
+            return SweepRun(
+                parameters=params_dict,
+                result=result,
+                values=values,
+            )
+        # Metric path: result=None, values из measure_* VO.
+        if netlist_editor is None:  # pragma: no cover (caller-validated)
+            msg = 'netlist_editor required for non-op metric'
+            raise RuntimeError(msg)
+        values = await _measure_values(
+            netlist=netlist,
+            config=config,
+            simulator=simulator,
+            netlist_editor=netlist_editor,
+            timeout_seconds=timeout_seconds,
+        )
+        return SweepRun(
+            parameters=params_dict,
+            result=None,
+            values=values,
+        )
+    except (SimulationFailedError, ValueError) as exc:
+        return SweepRun(
+            parameters=params_dict,
+            result=None,
+            values=None,
+            error=f'sim failed: {exc}',
+        )
+
+
+def _op_values(result: SimulationResult) -> dict[str, float | str | None]:
+    """A5 mapping для metric='op': raw operating_points (signal → value)."""
+    if result.operating_points is None:
+        return {}
+    return dict(result.operating_points.items())
+
+
+async def _measure_values(
+    *,
+    netlist: Path,
+    config: SweepConfig,
+    simulator: Simulator,
+    netlist_editor: NetlistEditor,
+    timeout_seconds: float,
+) -> dict[str, float | str | None]:
+    """Dispatch на metric — каждый measure_* возвращает свои VO-поля per A5."""
+    if config.metric == 'gain':
+        # SweepConfig validator гарантирует non-None — narrowing for mypy.
+        if config.frequency_hz is None or config.mode is None:  # pragma: no cover
+            msg = 'gain: frequency_hz/mode required (SweepConfig invariant)'
+            raise RuntimeError(msg)
+        gain = await measure_gain(
+            netlist=netlist,
+            frequency_hz=config.frequency_hz,
+            mode=config.mode,
+            simulator=simulator,
+            netlist_editor=netlist_editor,
+            output_signal=config.output_signal,
+            input_signal=config.input_signal,
+            v_in_peak=config.v_in_peak,
+            timeout_seconds=timeout_seconds,
+        )
+        return {
+            'gain_db': gain.value_db,
+            'gain_linear': gain.value_linear,
+        }
+    if config.metric == 'bandwidth':
+        bw = await measure_bandwidth(
+            netlist=netlist,
+            f_low=config.f_low_hz,
+            f_high=config.f_high_hz,
+            simulator=simulator,
+            netlist_editor=netlist_editor,
+            output_signal=config.output_signal,
+            timeout_seconds=timeout_seconds,
+        )
+        return {
+            'f_low_hz': bw.f_low_hz,
+            'f_high_hz': bw.f_high_hz,
+            'bandwidth_hz': bw.bandwidth_hz,
+        }
+    if config.metric == 'thd':
+        if config.frequency_hz is None or config.v_in_peak is None:  # pragma: no cover
+            msg = 'thd: frequency_hz/v_in_peak required (SweepConfig invariant)'
+            raise RuntimeError(msg)
+        thd = await measure_thd(
+            netlist=netlist,
+            frequency_hz=config.frequency_hz,
+            v_in_peak=config.v_in_peak,
+            simulator=simulator,
+            netlist_editor=netlist_editor,
+            signal=config.output_signal,
+            timeout_seconds=timeout_seconds,
+        )
+        return {
+            'thd_percent': thd.thd_percent,
+            'dominant_harmonic_n': thd.dominant_harmonic_n,
+            'dominant_harmonic_percent': thd.dominant_harmonic_percent,
+        }
+    msg = f'unsupported metric: {config.metric}'
+    raise ValueError(msg)
+
+
+__all__ = [
+    'MAX_COMBINATIONS_DEFAULT',
+    'SOFT_WARN_COMBINATIONS',
+    'SweepConfig',
+    'SweepRun',
+    'bridge_sweep',
+]

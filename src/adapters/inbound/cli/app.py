@@ -26,7 +26,7 @@ from adapters.inbound.cli.template_materializer import (
     materialize_template,
 )
 from application.add_decision import add_decision as add_decision_use_case
-from application.bridge_sweep import SweepRun, bridge_sweep
+from application.bridge_sweep import SweepConfig, SweepRun, bridge_sweep
 from application.create_project import create_project as create_project_use_case
 from application.delete_project import delete_project as delete_project_use_case
 from application.design_to_netlist import (
@@ -1739,10 +1739,12 @@ def build_app(
         nd = Path(netlist_dir).resolve() if netlist_dir else None
 
         async def _run() -> list[SweepRun]:
+            # Phase B: CLI всё ещё передаёт default op-config; новые
+            # флаги (--metric / --analysis / --output / --plot) — Phase C.
             return await bridge_sweep(
                 schematic=schematic_path,
                 parameters=params_dict,
-                analysis=OpAnalysis(),
+                config=SweepConfig(metric='op'),
                 exporter=schematic_exporter,
                 simulator=simulator,
                 netlist_dir=nd,
