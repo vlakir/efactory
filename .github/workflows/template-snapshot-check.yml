@@ -1,0 +1,84 @@
+# T151 — CI: template snapshot staleness check (follow-up T014 Analyze A5).
+#
+# Триггеры:
+#   - push в main — verify after merge.
+#   - pull_request — visibility ДО merge (catch staleness в PR).
+#
+# Что делает: запускает specifically snapshot test
+# `tests/integration/test_template_se_amp_snapshot.py` (он сам нормализует
+# UUID + lib_symbols перед сравнением — `regenerate-templates.py` сам по
+# себе non-deterministic из-за `uuid.uuid4()` per call). Затем —
+# defensive `git diff --exit-code` для остальных файлов в
+# `data/templates/` (тоже могут быть stale, не только se-amp.kicad_sch).
+#
+# Acceptance per BACKLOG T151: explicit "template-snapshot-check" step
+# с понятным fail-сообщением — отдельная visibility поверх pytest
+# snapshot test (separate workflow видна в PR checks отдельной строкой).
+#
+# Fast job — не зависит от Docker build (только Python + uv); запускается
+# за минуты, даёт PR-time signal на staleness.
+
+name: template-snapshot-check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: template-snapshot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  snapshot-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv (Astral)
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run template snapshot test (normalizes UUIDs)
+        id: snapshot
+        run: |
+          if ! uv run pytest \
+              tests/integration/test_template_se_amp_snapshot.py \
+              --no-cov -v; then
+            echo "::error::Template snapshot mismatch detected."
+            echo "::error::Builder `_build_se_amp` был изменён, но shipping"
+            echo "::error::templates в data/templates/se-amp/ не пересобраны."
+            echo "::error::Run locally:"
+            echo "::error::  uv run python scripts/regenerate-templates.py"
+            echo "::error::And commit the result."
+            exit 1
+          fi
+
+      - name: Regenerate non-schematic template assets
+        # `.kicad_sch` UUID/lib_symbols non-deterministic — проверены через
+        # snapshot test выше. Остальные template assets (`models/*.lib`,
+        # `template.yaml`, `README.md` шаблонов) deterministic — проверяем
+        # через `git diff --exit-code`.
+        run: |
+          uv run python scripts/regenerate-templates.py
+          if ! git diff --exit-code \
+              -- 'data/templates/' \
+              ':!data/templates/se-amp/{{PROJECT_NAME}}.kicad_sch'; then
+            echo "::error::Non-schematic template assets stale."
+            echo "::error::Run locally:"
+            echo "::error::  uv run python scripts/regenerate-templates.py"
+            echo "::error::And commit the result."
+            exit 1
+          fi
