@@ -86,8 +86,7 @@ def _strip_dot_end(text: str) -> str:
 def _strip_analysis_directives(text: str) -> str:
     """Удалить top-level analysis directives — wrapper ставит свою."""
     return '\n'.join(
-        line for line in text.splitlines()
-        if not _EMBEDDED_ANALYSIS_RE.match(line)
+        line for line in text.splitlines() if not _EMBEDDED_ANALYSIS_RE.match(line)
     )
 
 

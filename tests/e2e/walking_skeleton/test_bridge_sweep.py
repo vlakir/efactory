@@ -170,3 +170,130 @@ def test_bridge_edit_atomic_rollback_on_failure(
     # Файл должен совпадать с pre_text — R1 НЕ изменён, потому что rollback
     post_text = target.read_text(encoding='utf-8')
     assert post_text == pre_text
+
+
+# ────────── T022 Phase C: новые CLI флаги ──────────
+
+
+import json
+
+
+@needs_kicad
+@needs_ngspice
+def test_bridge_sweep_output_csv_to_file_writes_csv(
+    rc_filter_schematic_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--output csv --output-file` → файл создан, 1-line stdout summary."""
+    projects_root = _setup_env(tmp_path, monkeypatch)
+    runner = CliRunner()
+    _seed_rc_project(rc_filter_schematic_path, projects_root, runner)
+
+    csv_file = tmp_path / 'sweep.csv'
+    result = runner.invoke(
+        build_cli_app(),
+        [
+            'bridge', 'sweep', 'sweep_test',
+            '--schematic', 'schematic/rc_filter.kicad_sch',
+            '--param', 'R1=1k,10k',
+            '--output', 'csv',
+            '--output-file', str(csv_file),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    # 1-line summary в stdout (Q-F → b).
+    assert 'rows →' in result.output
+    assert csv_file.exists()
+    csv_content = csv_file.read_text()
+    # CSV header содержит R1 + хотя бы один op-сигнал.
+    header = csv_content.strip().splitlines()[0]
+    assert 'R1' in header
+    # 2 data rows + header = 3 lines.
+    assert len(csv_content.strip().splitlines()) == 3
+
+
+@needs_kicad
+@needs_ngspice
+def test_bridge_sweep_output_json_returns_parseable_json(
+    rc_filter_schematic_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--output json` → stdout содержит valid JSON list."""
+    projects_root = _setup_env(tmp_path, monkeypatch)
+    runner = CliRunner()
+    _seed_rc_project(rc_filter_schematic_path, projects_root, runner)
+
+    result = runner.invoke(
+        build_cli_app(),
+        [
+            'bridge', 'sweep', 'sweep_test',
+            '--schematic', 'schematic/rc_filter.kicad_sch',
+            '--param', 'R1=1k,10k',
+            '--output', 'json',
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    # JSON начинается после 'Sweep complete: N combinations.' header строки.
+    json_start = result.output.index('[')
+    parsed = json.loads(result.output[json_start:])
+    assert isinstance(parsed, list)
+    assert len(parsed) == 2
+    r1_values = {row['R1'] for row in parsed}
+    assert r1_values == {'1k', '10k'}
+
+
+@needs_kicad
+def test_bridge_sweep_n_over_hard_cap_exits_2(
+    rc_filter_schematic_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """N=121 > default cap 100 без --max-combinations → exit 2."""
+    projects_root = _setup_env(tmp_path, monkeypatch)
+    runner = CliRunner()
+    _seed_rc_project(rc_filter_schematic_path, projects_root, runner)
+
+    # 11 × 11 = 121 > 100
+    values_str = ','.join(f'{i}k' for i in range(1, 12))
+    result = runner.invoke(
+        build_cli_app(),
+        [
+            'bridge', 'sweep', 'sweep_test',
+            '--schematic', 'schematic/rc_filter.kicad_sch',
+            '--param', f'R1={values_str}',
+            '--param', f'C1={values_str}',
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert 'combinations' in result.output.lower()
+
+
+@needs_kicad
+def test_bridge_sweep_incompatible_metric_analysis_exits_2(
+    rc_filter_schematic_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--metric op --analysis ac` → exit 2 (Analyze A1)."""
+    projects_root = _setup_env(tmp_path, monkeypatch)
+    runner = CliRunner()
+    _seed_rc_project(rc_filter_schematic_path, projects_root, runner)
+
+    result = runner.invoke(
+        build_cli_app(),
+        [
+            'bridge', 'sweep', 'sweep_test',
+            '--schematic', 'schematic/rc_filter.kicad_sch',
+            '--param', 'R1=1k',
+            '--metric', 'op',
+            '--analysis', 'ac',
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert 'incompatible' in result.output.lower()
