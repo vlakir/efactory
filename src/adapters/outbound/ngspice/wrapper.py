@@ -22,6 +22,17 @@ if TYPE_CHECKING:
 # чтобы пользователь мог использовать стандартный KiCad GND symbol.
 _GND_TOKEN_RE = re.compile(r'\bGND\b')
 
+# KiCad SPICE export встраивает Simulator-card директиву из `.kicad_sch`
+# (`.tran`, `.ac` и т.п.) в netlist. Если оставить — ngspice выполнит
+# её при `run`, а наш appended directive останется в queue и `write all`
+# отдаст результаты не той analysis (например, operating_points={} при
+# `OpAnalysis` поверх netlist'а с `.tran`). T144 root cause —
+# стрипим все top-level analysis directives.
+_EMBEDDED_ANALYSIS_RE = re.compile(
+    r'^\s*\.(op|tran|ac|dc|four|noise|tf|sens|disto)\b.*$',
+    re.IGNORECASE,
+)
+
 
 _WRAPPER_TEMPLATE = """* efactory ngspice wrapper (T008)
 {netlist}
@@ -44,7 +55,9 @@ def build_wrapper(
     raw_path: Path,
 ) -> str:
     """Сформировать текст wrapper-файла для `ngspice -b`."""
-    cleaned = _normalize_ground(_strip_dot_end(netlist_content))
+    cleaned = _normalize_ground(
+        _strip_analysis_directives(_strip_dot_end(netlist_content)),
+    )
     directive = _format_directive(analysis)
     pre_lines, post_lines = _format_control_blocks(analysis)
     control_pre = ''.join(f'  {line}\n' for line in pre_lines)
@@ -67,6 +80,14 @@ def _strip_dot_end(text: str) -> str:
     """Удалить любые `.end` (case-insensitive) — собственный `.END` ставит wrapper."""
     return '\n'.join(
         line for line in text.splitlines() if line.strip().lower() != '.end'
+    )
+
+
+def _strip_analysis_directives(text: str) -> str:
+    """Удалить top-level analysis directives — wrapper ставит свою."""
+    return '\n'.join(
+        line for line in text.splitlines()
+        if not _EMBEDDED_ANALYSIS_RE.match(line)
     )
 
 
