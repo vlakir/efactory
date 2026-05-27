@@ -244,6 +244,31 @@ T-ID между релизами — `CHANGELOG.md` единственное per
     показать `V(cathode) ≈ 12V, V(plate) ≈ 230V` (real bias),
     не trivial idle.
   - Pre-push gates все 5 зелёные (1150 passed, coverage 85.38%).
+- **T142 — `efactory sim-results prune <PROJECT>`: retention policy
+  для `.efactory/sim-results/`.** Append-only sim-results
+  потенциально разрастаются до сотен файлов / десятков MB при
+  тысячах запусков; SessionStart hook (T016 max_results=3) defensive,
+  но prune нужен для cleanup'а.
+  - **Use case `application/prune_sim_results.py`** (~80 LOC):
+    validate options (mutually exclusive `keep_last`/`keep_days`,
+    non-negative / positive), default policy `keep_last=100` если
+    ни один не указан, delegation в `SimResultsRepository.prune`.
+  - **Port extension**: `SimResultsRepository.prune(project_root,
+    keep_last?, keep_days?) → int` (count deleted).
+  - **Adapter `FileSystemSimResults.prune`**: sorted by filename
+    (timestamp prefix → chronological); `keep_days` использует
+    filename-timestamp если parsable, иначе fallback на `mtime`.
+    Skip non-`.json` (README.txt, `.bak`, `.tmp`).
+  - **CLI** `efactory sim-results prune <PROJECT> [--keep-last N |
+    --keep-days D]` (new top-level `sim-results` subapp). Exit
+    codes: 0 / 1 (project not found) / 2 (invalid options).
+  - **build_app** signature расширен `sim_results_repo`;
+    composition пробрасывает `FileSystemSimResults()`.
+  - **Тесты** (+17): 7 unit use case + 10 integration adapter
+    (keep_last variants, filename-timestamp, mtime fallback,
+    missing dir, non-json skip, edge cases).
+  - Compact (~140 LOC + 17 tests), без spec'и.
+  - Pre-push gates все 5 зелёные (1157 passed, coverage 85.38%).
 
 - **T156 — `efactory kb add --body "..."` inline body option.** UX
   fix обнаружен в smoke validation T134 2026-05-27: agent в
