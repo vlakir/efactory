@@ -546,20 +546,9 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 -->
 
 
-- **T142** — [2026-05-25, заведено по дороге в T016] **Sim-results
-  rotation / cleanup policy.** `.efactory/sim-results/` сейчас
-  append-only — каждый запуск симуляции (sim_run, mag_verify_field,
-  analyze_distortion_spectrum, ...) добавляет JSON-файл (несколько KB
-  каждый, но потенциально неограниченно). Через тысячу запусков —
-  десятки MB и сотни файлов в одном каталоге, заметная медлительность
-  SessionStart hook'а (хотя у него max_results=3 уже defensively
-  ограничивает).
-  Acceptance: configurable retention policy (например, оставлять
-  последние N=100 или последние D=30 дней), CLI команда
-  `efactory sim-results prune` для ручной очистки, опционально —
-  background prune при `efactory sim run`. Триггер — когда у Vladimir
-  накопится первые 100+ результатов в реальном проекте и появится
-  трение.
+<!-- T142 переехал в BOARD.md → Done 2026-05-27 одной сессией
+     (compact, ~140 LOC + 17 tests, без spec'и). См. BOARD.md →
+     Done. -->
 
 - **T143** — [2026-05-25, заведено по дороге в T016] **`PostToolUse`
   hook для real-time sim-results refresh в Claude Code.** Сейчас

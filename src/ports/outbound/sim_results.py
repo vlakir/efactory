@@ -37,3 +37,28 @@ class SimResultsRepository(Protocol):
         Бросает `SimResultsWriteFailedError` если `project_root` не
         существует или FS не позволяет записать.
         """
+
+    async def prune(
+        self,
+        *,
+        project_root: Path,
+        keep_last: int | None = None,
+        keep_days: int | None = None,
+    ) -> int:
+        """
+        Retention/cleanup: удалить старые sim-results файлы (T142).
+
+        - `keep_last=N`: оставить N последних (sorted by filename
+          ascending — timestamp-prefix даёт chronological order).
+        - `keep_days=D`: удалить файлы старше D дней (по filename-
+          timestamp если parsable, иначе по `mtime`).
+        - Mutually exclusive: только одна policy за вызов.
+        - Без options — no-op (return 0).
+
+        Returns:
+            Количество удалённых файлов.
+
+        Raises:
+            ValueError: при `keep_last` и `keep_days` одновременно.
+
+        """

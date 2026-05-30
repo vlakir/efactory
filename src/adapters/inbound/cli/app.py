@@ -70,6 +70,12 @@ from application.measure_bandwidth import (
 )
 from application.measure_gain import measure_gain as measure_gain_use_case
 from application.measure_thd import measure_thd as measure_thd_use_case
+from application.prune_sim_results import (
+    PruneOptionsInvalidError,
+)
+from application.prune_sim_results import (
+    prune_sim_results as prune_sim_results_use_case,
+)
 from application.reindex_projects import (
     reindex_projects as reindex_projects_use_case,
 )
@@ -134,6 +140,7 @@ if TYPE_CHECKING:
     )
     from ports.outbound.schematic_exporter import SchematicExporter
     from ports.outbound.session_logger import SessionLogger
+    from ports.outbound.sim_results import SimResultsRepository
     from ports.outbound.simulator import Simulator
     from ports.outbound.spice_model_library import SpiceModelLibrary
 
@@ -272,6 +279,7 @@ def build_app(
     simulator: Simulator,
     netlist_editor: NetlistEditor,
     kb_store: KbStore,
+    sim_results_repo: SimResultsRepository,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -1020,6 +1028,66 @@ def build_app(
                 f'occurs {f.occurrences} time(s) (expected ≥ 2)',
             )
         raise typer.Exit(code=1)
+
+    # T142: sim-results retention policy (`efactory sim-results prune ...`).
+    sim_results_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    app.add_typer(sim_results_app, name='sim-results')
+
+    @sim_results_app.command('prune')
+    def sim_results_prune(
+        project: Annotated[str, typer.Argument(help='Имя проекта')],
+        *,
+        keep_last: Annotated[
+            int | None,
+            typer.Option(
+                '--keep-last',
+                help='Оставить N последних sim-results файлов (default 100)',
+            ),
+        ] = None,
+        keep_days: Annotated[
+            int | None,
+            typer.Option(
+                '--keep-days',
+                help='Удалить файлы старше D дней (mutually exclusive с --keep-last)',
+            ),
+        ] = None,
+    ) -> None:
+        """
+        T142: retention policy для `.efactory/sim-results/`.
+
+        Default (без options): `--keep-last 100`.
+        """
+
+        async def _resolve_path() -> Path:
+            project_obj = await get_project_use_case(
+                name=project,
+                repo=metadata_repository,
+                manifest_repo=manifest_repository,
+            )
+            return project_obj.path
+
+        try:
+            project_root = asyncio.run(_resolve_path())
+        except ProjectNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+
+        try:
+            deleted = asyncio.run(
+                prune_sim_results_use_case(
+                    project_root=project_root,
+                    repo=sim_results_repo,
+                    keep_last=keep_last,
+                    keep_days=keep_days,
+                ),
+            )
+        except PruneOptionsInvalidError as exc:
+            typer.echo(f'invalid options: {exc}', err=True)
+            raise typer.Exit(code=2) from exc
+
+        typer.echo(
+            f'Pruned {deleted} file(s) from {project_root}/.efactory/sim-results/',
+        )
 
     app_subapp = typer.Typer(no_args_is_help=True, add_completion=False)
     app.add_typer(app_subapp, name='app')

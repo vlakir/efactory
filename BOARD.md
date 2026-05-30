@@ -218,6 +218,28 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
     `efactory bridge sim-run op <netlist> --with-op-fallback` на
     se-amp-demo → должен показать V(cathode)≈12V, V(plate)≈230V
     (real bias) вместо trivial idle.
+- **T142** — [closed 2026-05-27, PR #85] **`efactory sim-results
+  prune <PROJECT>`: retention policy для `.efactory/sim-results/`.**
+  T016 follow-up: append-only sim-results потенциально разрастаются
+  до сотен файлов / десятков MB. Compact prune с mutually exclusive
+  `--keep-last N` / `--keep-days D`; default `--keep-last 100`.
+  - **Use case `application/prune_sim_results.py`** (~80 LOC):
+    options validation (mutually exclusive, non-negative,
+    positive days), delegation в port.
+  - **Port extension** `SimResultsRepository.prune(...) → int`.
+  - **Adapter `FileSystemSimResults.prune`**: sorted by filename
+    (timestamp prefix); `keep_days` использует filename-timestamp
+    parsable → mtime fallback; skip non-`.json`.
+  - **CLI** `efactory sim-results prune <PROJECT> [--keep-last N |
+    --keep-days D]` (new top-level `sim-results` subapp). Exit
+    codes 0/1/2.
+  - **build_app** signature расширен `sim_results_repo`; composition
+    пробрасывает `FileSystemSimResults()`.
+  - **Тесты** (+17): 7 unit use case + 10 integration adapter.
+  - Compact (~140 LOC + 17 tests), без spec'и.
+  - Pre-push gates все 5 зелёные (1157 passed, coverage 85.38%).
+  - **Owner manual smoke (после merge)**: `efactory sim-results
+    prune se-amp-demo --keep-last 5` после нескольких sim-run.
 
 - **T141** — [closed 2026-05-27, PR #79] **Dev-only build
   acceleration: `efactory-build-dev` / `efactory-build-libs-dev`

@@ -42,6 +42,7 @@ from adapters.outbound.platform_native.platform_layer import (
 from adapters.outbound.session_jsonl.session_logger import (
     FilesystemJsonlSessionLogger,
 )
+from adapters.outbound.sim_results_filesystem.adapter import FileSystemSimResults
 from adapters.outbound.spice_models.spice_library import (
     FilesystemSpiceModelLibrary,
 )
@@ -122,6 +123,7 @@ def build_cli_app() -> typer.Typer:
             built_in_dir=settings.kb_built_in_dir,
             host_mutated_dir=settings.kb_host_mutated_dir,
         ),
+        sim_results_repo=FileSystemSimResults(),
     )
 
 
