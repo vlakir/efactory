@@ -61,7 +61,18 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-
+- **T021** — [2026-05-30] **`bridge edit-and-resim` с автосравнением
+  результатов (до/после).** Финальная содержательная задача
+  analysis-first ordering Фазы 2 (фундамент T023 метрики + T022
+  sweep). Use case-агрегатор: baseline measure → batch edit →
+  re-measure → diff; CLI `bridge edit-and-resim` с `--measure
+  {gain,bandwidth,thd}` (one-or-many); domain VO `MeasurementDelta`
+  per metric (before/after/delta + relative %). Rollback при ошибке
+  edit'а через `SchematicSnapshot` (как в `bridge edit`).
+  Acceptance: после изменения схемы выводится таблица «до/после/Δ»
+  по выбранным метрикам, exit-код отражает технический успех
+  pipeline (не направление дельты).
+  Spec — `specs/T021-edit-and-resim-delta/spec.md` (Draft).
 
 
 ## Done
