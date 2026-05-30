@@ -685,14 +685,9 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   Не блокирует Phase 1b завершение (T014 без `/export-production`
   закрывает Phase 1b полностью).
 
-- **T151** — [2026-05-26, follow-up T014 Analyze A5] **CI enforcement
-  для template snapshot.** В T014 Phase A — pytest snapshot test
-  (regenerate + diff). В CI workflow добавить explicit job, который
-  падает на staleness шаблонов (отдельный visibility, не только
-  внутри pytest). Triggers: `_build_se_amp` изменили, регенерацию
-  забыли.
-  Acceptance: GitHub Actions step «template-snapshot-check» с явным
-  fail-сообщением «run `uv run python scripts/regenerate-templates.py`».
+<!-- T151 переехал в BOARD.md → Done 2026-05-27 одной сессией
+     (compact ~70 lines YAML + 8 tests, без spec'и). См. BOARD.md →
+     Done. -->
 
 <!-- T152 не заведён: при имплементации T014 обнаружил, что
      pyproject.toml уже содержит `[tool.hatch.build.targets.wheel.

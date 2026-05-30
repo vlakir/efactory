@@ -198,6 +198,24 @@ T-ID между релизами — `CHANGELOG.md` единственное per
     заведено T158 в BACKLOG для PP transformer fix.
   - Compact (~190 LOC + 17 tests + CLI), без spec'и. Pre-push
     gates все 5 зелёные.
+- **T151 — CI workflow `template-snapshot-check`: staleness
+  enforcement (follow-up T014 A5).** Отдельная GitHub Actions
+  visibility (separate PR check) поверх existing pytest snapshot
+  test.
+  - **`.github/workflows/template-snapshot-check.yml`** —
+    triggers push/main + PR/* + workflow_dispatch; fast job
+    (≤10 мин, без Docker).
+  - **Step 1**: snapshot test (нормализует UUIDs + lib_symbols).
+  - **Step 2**: `regenerate-templates.py` + `git diff --exit-code`
+    для non-schematic assets (deterministic). `.kicad_sch`
+    исключён (его check'ает snapshot test).
+  - **Fail messages** — actionable: `run uv run python
+    scripts/regenerate-templates.py`.
+  - **+8 unit tests** (`test_template_snapshot_ci.py`): YAML
+    parseability, triggers, step structure, fail-message
+    actionability, Python setup.
+  - Compact (~70 lines YAML + 8 tests), без spec'и.
+  - Pre-push gates 5/5 green (1148 passed, coverage 85.38%).
 
 - **T156 — `efactory kb add --body "..."` inline body option.** UX
   fix обнаружен в smoke validation T134 2026-05-27: agent в

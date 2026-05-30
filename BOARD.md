@@ -175,6 +175,28 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
     отдельного hot-fix'а (pre-existing bug аналогичный T147 на PP).
   - Compact (~190 LOC + 17 tests + CLI), без spec'и.
   - Pre-push gates все 5 зелёные (1157 passed, coverage 85.10%).
+- **T151** — [closed 2026-05-27, PR #86] **CI workflow
+  `template-snapshot-check`: staleness enforcement (follow-up
+  T014 A5).** Отдельная GitHub Actions visibility (separate PR
+  check entry) поверх existing pytest snapshot test.
+  - `.github/workflows/template-snapshot-check.yml` (~70 lines):
+    push+main / pull_request+** / workflow_dispatch triggers;
+    fast job (≤10 мин, без Docker).
+  - **Step 1**: pytest snapshot test (нормализует UUIDs +
+    lib_symbols reordering из-за PYTHONHASHSEED).
+  - **Step 2**: defensive `regenerate-templates.py` + `git diff
+    --exit-code` для non-schematic assets (`models/*.lib`,
+    `template.yaml`, `README.md`); `.kicad_sch` exclude'ится
+    (его check'ает Step 1).
+  - **Actionable fail messages** — `run uv run python scripts/
+    regenerate-templates.py` + commit.
+  - **+8 unit tests**: YAML parseability, triggers (push/PR/manual),
+    step structure, fail-message actionability, Python setup.
+  - Compact (~70 YAML + 8 tests), без spec'и.
+  - Pre-push gates все 5 зелёные (1148 passed, coverage 85.38%).
+  - **Owner manual smoke (после merge)**: первый PR triggers
+    workflow → visibility check «template-snapshot-check» в
+    GitHub PR checks.
 
 - **T141** — [closed 2026-05-27, PR #79] **Dev-only build
   acceleration: `efactory-build-dev` / `efactory-build-libs-dev`
