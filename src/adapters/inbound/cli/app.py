@@ -11,6 +11,10 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 from pydantic import ValidationError
 
+from adapters.inbound.cli.edit_and_resim_renderer import (
+    render_edit_and_resim_json,
+    render_edit_and_resim_text,
+)
 from adapters.inbound.cli.plot_renderer import (
     render_ac_sweep,
     render_sweep_plot,
@@ -45,6 +49,13 @@ from application.design_to_netlist import (
     design_to_netlist as design_to_netlist_use_case,
 )
 from application.design_to_sim import design_to_sim as design_to_sim_use_case
+from application.edit_and_resim_with_delta import (
+    SOFT_WARN_EDITS,
+    BaselineFailedError,
+    EditAndResimConfig,
+    EditAndResimReport,
+    edit_and_resim_with_delta,
+)
 from application.edit_component_model import edit_component_model
 from application.edit_component_value import (
     ComponentNotFoundError,
@@ -1823,6 +1834,274 @@ def build_app(
         for prop_name, old_value in old_values.items():
             typer.echo(f'  {prop_name}: {old_value!r} → ...')
         typer.echo(f'{ref}: model swap → {spice_model.id}')
+
+    @bridge_app.command('edit-and-resim')
+    def bridge_edit_and_resim_cmd(
+        project: Annotated[str, typer.Argument(help='Имя проекта')],
+        *,
+        schematic: Annotated[
+            str,
+            typer.Option('--schematic', help='Путь к .kicad_sch'),
+        ],
+        set_: Annotated[
+            list[str],
+            typer.Option(
+                '--set',
+                help='REF=VALUE (повторяемый) — изменение component value. '
+                'Пример: --set R1=10k --set C3=470n',
+            ),
+        ],
+        measure: Annotated[
+            list[str],
+            typer.Option(
+                '--measure',
+                help='gain | bandwidth | thd (повторяемый). '
+                'Можно несколько метрик одной командой.',
+            ),
+        ],
+        freq: Annotated[
+            str | None,
+            typer.Option(
+                '--freq',
+                help='Частота для gain/thd (SPICE notation: 1k, 100, 10Meg)',
+            ),
+        ] = None,
+        v_in_peak: Annotated[
+            float | None,
+            typer.Option(
+                '--v-in-peak',
+                help='Peak amplitude (V) — для gain-large и thd',
+            ),
+        ] = None,
+        f_low: Annotated[
+            str,
+            typer.Option('--f-low', help='Bandwidth нижняя граница (default 1)'),
+        ] = '1',
+        f_high: Annotated[
+            str,
+            typer.Option(
+                '--f-high',
+                help='Bandwidth верхняя граница (default 1Meg)',
+            ),
+        ] = '1Meg',
+        mode: Annotated[
+            str,
+            typer.Option(
+                '--mode',
+                help='small (AC) | large (TRAN RMS) — только для gain',
+            ),
+        ] = 'small',
+        output_signal: Annotated[
+            str,
+            typer.Option(
+                '--output-signal',
+                help='Trace name для measure_* (default v(load))',
+            ),
+        ] = 'v(load)',
+        input_signal: Annotated[
+            str | None,
+            typer.Option(
+                '--input-signal',
+                help='Input trace name (нужен для --mode large)',
+            ),
+        ] = None,
+        input_source: Annotated[
+            str | None,
+            typer.Option(
+                '--input-source',
+                help='V-source ref для injection (multi-V netlist'
+                'ах вроде se-amp). Без него — auto-detect single V-source.',
+            ),
+        ] = None,
+        output_format: Annotated[
+            str,
+            typer.Option(
+                '--output',
+                '--output-format',
+                help='text | json (default text)',
+            ),
+        ] = 'text',
+        output_file: Annotated[
+            str | None,
+            typer.Option(
+                '--output-file',
+                help='Записать output в файл вместо stdout',
+            ),
+        ] = None,
+        netlist_dir: Annotated[
+            str | None,
+            typer.Option(
+                '--netlist-dir',
+                help='Папка для debug-копий baseline.cir / after.cir',
+            ),
+        ] = None,
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout', help='Per-run timeout (default 60s)'),
+        ] = 60.0,
+    ) -> None:
+        """
+        T021: применить edits к schematic, сравнить выбранные метрики до/после.
+
+        Sequence: baseline measure × N → batch edit (SchematicSnapshot
+        rollback на failure) → after measure × N → таблица «до / после /
+        Δ / Δ%». Edit'ы остаются применёнными на failure after-measure
+        (per-metric `failed_reason` в output). Exit-код = 1 если есть
+        failed-метрика.
+        """
+        # Parse --set REF=VALUE list.
+        edits: list[tuple[str, str]] = []
+        for spec_str in set_:
+            if '=' not in spec_str:
+                typer.echo(
+                    f'--set требует формат REF=VALUE, получено {spec_str!r}',
+                    err=True,
+                )
+                raise typer.Exit(code=2)
+            r, _, v = spec_str.partition('=')
+            edits.append((r.strip(), v.strip()))
+        if not edits:
+            typer.echo(
+                '--set обязателен (хотя бы один REF=VALUE).',
+                err=True,
+            )
+            raise typer.Exit(code=2)
+
+        # Validate --measure values up-front (Pydantic Literal даёт
+        # cryptic ValidationError; явное сообщение полезнее).
+        allowed_metrics = ('gain', 'bandwidth', 'thd')
+        for m in measure:
+            if m not in allowed_metrics:
+                typer.echo(
+                    f'--measure: {m!r}; ожидалось одно из {", ".join(allowed_metrics)}',
+                    err=True,
+                )
+                raise typer.Exit(code=2)
+        if not measure:
+            typer.echo(
+                '--measure обязателен (хотя бы одна метрика: '
+                f'{", ".join(allowed_metrics)}).',
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if mode not in ('small', 'large'):
+            typer.echo(
+                f'--mode: {mode!r}; ожидалось small | large',
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if output_format not in ('text', 'json'):
+            typer.echo(
+                f'--output: {output_format!r}; ожидалось text | json',
+                err=True,
+            )
+            raise typer.Exit(code=2)
+
+        # Build EditAndResimConfig (Pydantic валидирует required-fields
+        # per metric; cryptic ValidationError превращается в человеко-
+        # читаемое сообщение).
+        try:
+            cfg_kwargs: dict[str, object] = {
+                'metrics': list(measure),
+                'mode': mode,
+                'output_signal': output_signal,
+                'f_low_hz': parse_spice_number(f_low),
+                'f_high_hz': parse_spice_number(f_high),
+            }
+            if freq is not None:
+                cfg_kwargs['frequency_hz'] = parse_spice_number(freq)
+            if v_in_peak is not None:
+                cfg_kwargs['v_in_peak'] = v_in_peak
+            if input_signal is not None:
+                cfg_kwargs['input_signal'] = input_signal
+            if input_source is not None:
+                cfg_kwargs['input_source'] = input_source
+            config = EditAndResimConfig(**cfg_kwargs)  # type: ignore[arg-type]
+        except (ValueError, ValidationError, SpiceNumberFormatError) as exc:
+            typer.echo(f'EditAndResimConfig: {exc}', err=True)
+            raise typer.Exit(code=2) from exc
+
+        # Soft warn для больших batch'ей (T022 паттерн).
+        if len(edits) > SOFT_WARN_EDITS:
+            typer.echo(
+                f'Warning: {len(edits)} edits in single command — '
+                f'consider splitting; complex what-if often easier to '
+                f'debug step by step. Continuing.',
+                err=True,
+            )
+
+        async def _resolve_path() -> Path:
+            project_obj = await get_project_use_case(
+                name=project,
+                projects_root=projects_root,
+                manifest_repo=manifest_repository,
+            )
+            return (project_obj.path / schematic).resolve()
+
+        try:
+            schematic_path = asyncio.run(_resolve_path())
+        except ProjectNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+
+        nd = Path(netlist_dir).resolve() if netlist_dir else None
+
+        async def _run() -> EditAndResimReport:
+            return await edit_and_resim_with_delta(
+                schematic=schematic_path,
+                edits=edits,
+                config=config,
+                exporter=schematic_exporter,
+                simulator=simulator,
+                netlist_editor=netlist_editor,
+                netlist_dir=nd,
+                timeout_seconds=timeout,
+                project=project,
+            )
+
+        try:
+            report = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'bridge.edit_and_resim',
+                    project=project,
+                    payload={
+                        'schematic': schematic,
+                        'set': set_,
+                        'measure': list(measure),
+                        'output': output_format,
+                    },
+                    fn=_run,
+                ),
+            )
+        except BaselineFailedError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        except (ComponentNotFoundError, MultipleMatchesError) as exc:
+            typer.echo(str(exc), err=True)
+            typer.echo(
+                "Rollback: edit'ы откачены SchematicSnapshot'ом.",
+                err=True,
+            )
+            raise typer.Exit(code=1) from exc
+
+        # Render output.
+        if output_format == 'json':
+            content = render_edit_and_resim_json(report)
+        else:
+            content = render_edit_and_resim_text(report)
+
+        if output_file is not None:
+            out_path = Path(output_file).resolve()
+            out_path.write_text(content, encoding='utf-8')
+            typer.echo(f'edit-and-resim complete → {out_path}')
+        else:
+            typer.echo(content)
+
+        # Exit=1 если есть failed-метрика (Q-E → a / CI-friendly signal).
+        has_failure = any(d.after is None for d in report.deltas)
+        if has_failure:
+            raise typer.Exit(code=1)
 
     @bridge_app.command('sweep')
     def bridge_sweep_cli(
