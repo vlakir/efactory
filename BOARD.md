@@ -197,6 +197,27 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
   - **Owner manual smoke (после merge)**: первый PR triggers
     workflow → visibility check «template-snapshot-check» в
     GitHub PR checks.
+- **T145** — [closed 2026-05-30, PR #88] **`efactory bridge sim-run op
+  --with-op-fallback`: OP через TRAN-settled (lечит trivial idle на
+  tube circuits).** T022 baked-image smoke 2026-05-30 confirmed: на
+  `se-amp-demo` `.OP` solver сходится к trivial idle (V(plate)≈0,
+  tube не conducts) — OP-sweep по R2 даёт одинаковые результаты.
+  Standard SPICE workaround: `.tran 1us 100ms uic` + extract settled
+  samples как OP.
+  - `sim_run` use case + `enable_op_fallback: bool = False` flag.
+    When True + OpAnalysis: `.OP` подменяется на TranAnalysis(uic=True),
+    synthetic operating_points из settled tail.
+  - `_extract_op_from_tran_tail` helper — average last 10% samples.
+  - CLI `bridge sim-run op --with-op-fallback`. Stdout marker
+    `fallback=transient-to-op`.
+  - **Тесты** (+10 unit): tail extraction, sim_run paths, non-OP
+    rejection, custom t_stop, missing time_series.
+  - Compact (~75 LOC + 10 tests), без spec'и.
+  - Pre-push gates все 5 зелёные (1150 passed, coverage 85.38%).
+  - **Owner manual smoke (после merge + image rebuild)**:
+    `efactory bridge sim-run op <netlist> --with-op-fallback` на
+    se-amp-demo → должен показать V(cathode)≈12V, V(plate)≈230V
+    (real bias) вместо trivial idle.
 
 - **T141** — [closed 2026-05-27, PR #79] **Dev-only build
   acceleration: `efactory-build-dev` / `efactory-build-libs-dev`

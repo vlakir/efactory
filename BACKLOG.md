@@ -585,21 +585,10 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      metrics or raw signals + --output csv|json + --output-file). См.
      BOARD.md → Doing → T022 + specs/T022-bridge-sweep/spec.md. -->
 
-- **T145** — [2026-05-26, заведено по итогам прогона 5 сценариев T016]
-  **`efactory bridge sim-run op`: auto-fallback на transient-to-op
-  при non-convergence.** Голая `.op` на реальных tube-схемах часто
-  падает с `singular matrix` / `Newton iteration failure` — нужны
-  initial guess'ы (`nodeset`), `.options gmin=1e-10`, либо
-  transient run до большого `t_stop` и взятие последнего sample как
-  OP (классическая SPICE-практика для непростых нелинейностей).
-  Acceptance:
-  - На первой попытке — обычная `.op` (быстро).
-  - При fail — auto-retry: `.tran 1us 100ms uic` + извлечение последнего
-    sample. Лимит на retry-длительность (например, 30 s по умолчанию).
-  - Stdout явно отмечает каким способом получено: `OP (direct)` vs
-    `OP (transient-fallback at t=100ms)`.
-  Триггер задачи: на se-amp-demo баг `OPT_SE_5K_8.lib` (T147)
-  ломает direct `.op`, fallback решил бы UX без ручной правки моделей.
+<!-- T145 переехал в BOARD.md → Done 2026-05-30 одной сессией
+     (compact ~75 LOC + 10 tests, без spec'и). Реализован как opt-in
+     flag `--with-op-fallback` (не auto-retry на exception, а явный
+     opt-in для tube circuits, deterministic). См. BOARD.md → Done. -->
 
 <!-- T146 переехал в BOARD.md → Done 2026-05-27 одной сессией
      (compact, ~190 LOC + 17 tests + CLI без spec'и). См. BOARD.md
