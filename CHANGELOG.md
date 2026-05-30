@@ -216,6 +216,34 @@ T-ID между релизами — `CHANGELOG.md` единственное per
     actionability, Python setup.
   - Compact (~70 lines YAML + 8 tests), без spec'и.
   - Pre-push gates 5/5 green (1148 passed, coverage 85.38%).
+- **T145 — `efactory bridge sim-run op --with-op-fallback`: OP
+  через TRAN-settled fallback.** SPICE `.OP` solver на tube /
+  saturable circuits часто сходится к **trivial idle solution**
+  (V(plate) ≈ 0, tube не conducts), даже без convergence-error.
+  Workaround — стандартная SPICE-практика: run `.tran 1us 100ms
+  uic`, take last samples как OP. Обнаружено в T022 baked-image
+  smoke 2026-05-30 (se-amp-demo OP-sweep по R2 = 270/330/470 даёт
+  идентичные результаты).
+  - **`sim_run` use case** расширен флагом `enable_op_fallback:
+    bool = False`. Когда True + OpAnalysis: `.OP` **полностью
+    заменяется** на TranAnalysis(uic=True) + extract synthetic
+    operating_points из settled tail. Не для OP — `ValueError`.
+  - Params: `op_fallback_t_step=1e-6`, `op_fallback_t_stop=100e-3`
+    (overridable).
+  - **`_extract_op_from_tran_tail`** helper — average over last
+    10% samples per signal (min 1 sample).
+  - **CLI `bridge sim-run op --with-op-fallback`** flag (default
+    False). Stdout marker `fallback=transient-to-op` при success.
+  - **Тесты** (+10 unit): tail extraction (default 10%, clamps,
+    single-sample); sim_run default path (no fallback); fallback
+    triggers TRAN; rejects non-OP analysis; custom t_stop;
+    missing time_series → ValueError.
+  - Compact (~50 LOC sim_run + ~25 LOC CLI + 10 tests), без spec'и.
+  - **Owner manual smoke (после merge)**: `efactory bridge sim-run
+    op <netlist> --with-op-fallback` на se-amp-demo → должен
+    показать `V(cathode) ≈ 12V, V(plate) ≈ 230V` (real bias),
+    не trivial idle.
+  - Pre-push gates все 5 зелёные (1150 passed, coverage 85.38%).
 
 - **T156 — `efactory kb add --body "..."` inline body option.** UX
   fix обнаружен в smoke validation T134 2026-05-27: agent в

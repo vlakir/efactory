@@ -1,4 +1,4 @@
-"""sim_run — запуск симуляции на готовом netlist'е (T008 Phase 4 + T016 Phase C)."""
+"""sim_run — симуляция на готовом netlist'е (T008 + T016 + T145)."""
 
 from __future__ import annotations
 
@@ -7,13 +7,19 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from domain.sim_results import AnalysisType, SimResult
+from domain.simulation import OpAnalysis, SimulationResult, TranAnalysis
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from domain.simulation import AnalysisSpec, SimulationResult
+    from domain.simulation import AnalysisSpec, TimeSeries
     from ports.outbound.sim_results import SimResultsRepository
     from ports.outbound.simulator import Simulator
+
+
+_DEFAULT_OP_FALLBACK_T_STEP = 1e-6
+_DEFAULT_OP_FALLBACK_T_STOP = 100e-3
+_DEFAULT_OP_FALLBACK_TAIL_FRACTION = 0.1
 
 
 _ANALYSIS_TYPE_MAP: dict[str, AnalysisType] = {
@@ -33,6 +39,9 @@ async def sim_run(
     sim_results_writer: SimResultsRepository | None = None,
     project_root: Path | None = None,
     tool: str = 'ngspice',
+    enable_op_fallback: bool = False,
+    op_fallback_t_step: float = _DEFAULT_OP_FALLBACK_T_STEP,
+    op_fallback_t_stop: float = _DEFAULT_OP_FALLBACK_T_STOP,
 ) -> SimulationResult:
     """
     Запустить указанный analysis на готовом netlist'е.
@@ -44,6 +53,15 @@ async def sim_run(
     после успешной симуляции `SimResult` snapshot записывается через
     writer (см. `domain.sim_results`, `ports.outbound.sim_results`).
     Если задан только один — `ValueError` (неконсистентный вызов).
+
+    T145: при `enable_op_fallback=True` + `OpAnalysis` —
+    `sim_run` **подменяет** `.OP` на `.TRAN ... uic=True` (t_step
+    `op_fallback_t_step`, t_stop `op_fallback_t_stop`), запускает
+    transient и собирает synthetic `operating_points` из settled tail
+    (последние ~10% samples per signal). Используется для tube /
+    saturable circuits, где DC-solver `.OP` сходится к trivial idle
+    solution.
+    Допускается только для `OpAnalysis`; иначе — `ValueError`.
     """
     if (sim_results_writer is None) != (project_root is None):
         msg = (
@@ -52,13 +70,40 @@ async def sim_run(
         )
         raise ValueError(msg)
 
+    if enable_op_fallback and not isinstance(analysis, OpAnalysis):
+        msg = (
+            f'enable_op_fallback применим только к OpAnalysis '
+            f'(получен {type(analysis).__name__})'
+        )
+        raise ValueError(msg)
+
     started_at = datetime.now(UTC)
     started_perf = time.perf_counter()
-    result = await simulator.run(
-        netlist,
-        analysis,
-        timeout_seconds=timeout_seconds,
-    )
+    if enable_op_fallback:
+        tran_analysis = TranAnalysis(
+            t_step=op_fallback_t_step,
+            t_stop=op_fallback_t_stop,
+            uic=True,
+        )
+        tran_result = await simulator.run(
+            netlist,
+            tran_analysis,
+            timeout_seconds=timeout_seconds,
+        )
+        if tran_result.time_series is None:
+            msg = (
+                'enable_op_fallback: simulator returned result without '
+                'time_series — cannot extract synthetic OP'
+            )
+            raise ValueError(msg)
+        op_dict = _extract_op_from_tran_tail(tran_result.time_series)
+        result = SimulationResult(operating_points=op_dict)
+    else:
+        result = await simulator.run(
+            netlist,
+            analysis,
+            timeout_seconds=timeout_seconds,
+        )
     duration_seconds = time.perf_counter() - started_perf
 
     if sim_results_writer is not None and project_root is not None:
@@ -102,6 +147,26 @@ def _build_snapshot(
     )
 
 
+def _extract_op_from_tran_tail(
+    time_series: TimeSeries,
+    fraction: float = _DEFAULT_OP_FALLBACK_TAIL_FRACTION,
+) -> dict[str, float]:
+    """
+    Извлечь synthetic operating-point из settled tail TRAN-результата (T145).
+
+    Average values per trace over last `fraction` of samples (default 10%,
+    min 1 sample). Сравним с реальным `.OP` для tube/saturable circuits,
+    которые DC-solver не может найти прямо.
+    """
+    n = len(time_series.time)
+    take = max(1, int(n * fraction))
+    out: dict[str, float] = {}
+    for signal, values in time_series.traces.items():
+        tail = values[-take:]
+        out[signal] = sum(tail) / len(tail)
+    return out
+
+
 def _render_summary(*, analysis: AnalysisSpec, sim_result: SimulationResult) -> str:
     if analysis.type == 'op' and sim_result.operating_points is not None:
         return f'OP point: {len(sim_result.operating_points)} signals'
@@ -125,4 +190,4 @@ def _render_summary(*, analysis: AnalysisSpec, sim_result: SimulationResult) -> 
     return f'{analysis.type} completed'
 
 
-__all__ = ['sim_run']
+__all__ = ['_extract_op_from_tran_tail', 'sim_run']
