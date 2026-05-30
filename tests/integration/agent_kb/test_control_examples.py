@@ -94,6 +94,12 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         '/sweep',
     ),
+    # T021 Phase C Level 2 — KB sync regression для /edit-and-resim.
+    (
+        'what-if delta gain bandwidth',
+        'agent.command-routing',
+        '/edit-and-resim',
+    ),
 ]
 
 

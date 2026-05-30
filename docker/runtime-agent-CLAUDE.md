@@ -25,7 +25,7 @@
   SPICE / KiCad libs пользователя).
 - **`Glob` / `Grep`** — поиск по проекту и codebase.
 
-## Custom slash-команды efactory (T014 + T023 + T024 + T134 + T022)
+## Custom slash-команды efactory (T014 + T023 + T024 + T134 + T022 + T021)
 
 Видны в `/`-menu и через `/help`. Тонкие wrapper'ы над `efactory` CLI:
 
@@ -54,6 +54,14 @@
   component values с aligned tabular output + опциональный ASCII plot.
   Default `--metric op`. Soft warn N>20; hard cap N>100 (override
   через `--max-combinations`).
+- **`/edit-and-resim <PROJECT> --schematic <abs.kicad_sch> --set
+  REF=VALUE [...] --measure gain|bandwidth|thd [...] [...]`** —
+  применить один-несколько edits и сравнить выбранные метрики до/после
+  (delta). Шаги: baseline measure → SchematicSnapshot batch edit →
+  after measure → таблица «до / после / Δ / Δ%». Strict baseline
+  (failure → edits не применяются); per-metric continue-on-failure
+  после edit. Когда выбирать вместо `/sweep`: one-shot правка (1-5
+  edits), не диапазон значений.
 - **`/kb-search <query>`** — поиск по Knowledge Base (token-AND).
   Используй ПЕРЕД тем, как изобретать решение: «как сделать X»,
   «pitfall с Y», «формула для Z».
