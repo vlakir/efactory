@@ -8,16 +8,12 @@ authors = [
 ]
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    "aiosqlite>=0.22.1",
-    "alembic>=1.18.4",
-    "kuzu>=0.11.3",
     "plotext>=5.3.2",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.1",
     "pyopenmagnetics>=1.3.10",
     "pyyaml>=6.0.3",
     "sexpdata>=1.0.2",
-    "sqlalchemy[asyncio]>=2.0.49",
     "typer>=0.25.1",
 ]
 
@@ -86,7 +82,6 @@ exclude = [
     "dist",
     "tests",
     "scripts",
-    "src/adapters/outbound/persistence_sql/migrations",
 ]
 
 
@@ -127,7 +122,6 @@ extend-immutable-calls = ["typer.Option", "typer.Argument"]
 runtime-evaluated-base-classes = [
     "pydantic.BaseModel",
     "pydantic_settings.BaseSettings",
-    "sqlalchemy.orm.DeclarativeBase",
 ]
 
 
@@ -145,7 +139,6 @@ explicit_package_bases = true
 ignore_missing_imports = true
 mypy_path = "src"
 plugins = ["pydantic.mypy"]
-exclude = ["src/adapters/outbound/persistence_sql/migrations/"]
 
 
 # tests/ исключены из mypy через ignore_errors override (T125 — Vladimir
@@ -171,7 +164,6 @@ testpaths = ["tests"]
 source = ["src"]
 branch = true
 omit = [
-    "src/adapters/outbound/persistence_sql/migrations/*",
     "src/ports/**/*",
 ]
 
@@ -213,10 +205,6 @@ name = "domain depends only on pydantic and stdlib"
 type = "forbidden"
 source_modules = ["domain"]
 forbidden_modules = [
-    "sqlalchemy",
-    "aiosqlite",
-    "alembic",
-    "kuzu",
     "mcp",
     "anthropic",
     "typer",
@@ -227,7 +215,6 @@ name = "Adapters don't import each other"
 type = "independence"
 modules = [
     "adapters.inbound.cli",
-    "adapters.outbound.persistence_sql",
     "adapters.outbound.file_store",
     "adapters.outbound.manifest_yaml",
     "adapters.outbound.decision_markdown",

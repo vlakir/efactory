@@ -26,6 +26,54 @@ ADR-Lite: компактный лог архитектурных решений 
      дат — от фундаментального к инструментальному. -->
 
 
+### 2026-05-30 — Persistent state: filesystem as single source of truth (T157)
+
+- **Контекст.** До T157 efactory держал три параллельных хранилища
+  состояния: (1) `project.yaml` manifest YAML на диске, (2) SQLite
+  индекс через SQLAlchemy + alembic-миграции (`MetadataRepository`),
+  (3) Kùzu graph-store адаптер. Все три должны были синхронизироваться
+  через `reindex_projects` — bootstrap manifest'ов из SQL для pre-T098
+  проектов и опциональный remove-orphans. По факту:
+  - SQL-индекс **никогда** не был authoritative — Vladimir несколько
+    раз ловил bug'и, где SQL отставал от диска (T097 phase rename,
+    T098 manifest bootstrap), и единственный способ их разрешения —
+    `path.is_dir()` + reload manifest YAML.
+  - Kùzu adapter был spike-only, никогда не интегрирован в use cases.
+  - Manifest YAML — единственное хранилище decisions, magnetics
+    компонентов, transformer designs, phase-state.
+
+- **Решение.** Удалить SQL-индекс и Kùzu adapter полностью; filesystem
+  layout (`<projects_root>/<name>/project.yaml` + `decisions/D*.md`)
+  становится **единственным** persistent состоянием. Use cases берут
+  параметр `projects_root: Path`, дискаверят projects через
+  `path.is_dir()` + `manifest_repo.load(path)`. `reindex_projects`
+  переименован в `validate_manifests` — diagnostic scan без upsert.
+
+- **Альтернативы рассмотрены:**
+  - **Сохранить SQL как acceleration cache** — отвергнуто. Не было
+    реальных performance pain points (typical projects_root < 50
+    директорий, manifest YAML парсится <1ms). Cache требовал бы
+    invalidation discipline, которой не было.
+  - **Заменить SQL на read-only Kùzu для query'ов** — отвергнуто как
+    over-engineering на текущем масштабе; YAGNI.
+  - **Гибрид (manifest = SSOT, SQL = derived index)** — отвергнут как
+    middle-ground без явного выигрыша; T098 и так использовал
+    manifest как SSOT, SQL остался artefact'ом.
+
+- **Последствия.**
+  - Минус: dependency set резко сократился (`sqlalchemy`, `aiosqlite`,
+    `alembic`, `kuzu` удалены) → cold install быстрее, dev-friction
+    меньше, alembic-migrations исчезли (boilerplate).
+  - Минус: нет atomic transactions; `create_project` создаёт каталог
+    +manifest, частичный failure может оставить каталог без manifest.
+    Mitigated через `validate_manifests` (diagnostic).
+  - Плюс: `path.is_dir()` always agrees with `manifest_repo.load(path)`
+    — single-source semantics, нет drift'а.
+  - **xfail T160 (follow-up)**: project rename — manifest пишется с
+    новым именем но directory остаётся со старым путём. Filesystem-
+    rename support — отдельной задачей.
+
+
 ### 2026-05-24 — Tool surface runtime-агента: Bash + efactory CLI + filesystem, не MCP
 
 - **Контекст.** В рамках Phase 1b «Claude Code integration» подняли

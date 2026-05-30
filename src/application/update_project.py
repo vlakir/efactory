@@ -1,21 +1,12 @@
 """
-UpdateProject — use case manifest-first (T098).
+UpdateProject — use case manifest-first (T098 + T157 refactor).
 
-Manifest = truth: загружаем актуальное состояние с диска, мутируем,
-переписываем manifest, дальше переиндексируем SQL. SQL-строка нужна
-только для path lookup (через `get_project` → `get_by_name`).
-
-В T097 CLI ограничивает каждый вызов одной правкой; на уровне use case
-DTO допускает обе одновременно — это даёт атомарную сохранную операцию
-для будущих расширений API.
+Manifest = truth: load → mutate → save. SQL slice удалён в T157.
 
 Ошибки:
-- `ProjectNotFoundError` — нет SQL-строки с таким именем.
-- `ProjectManifestMissingError` — SQL есть, manifest на диске нет
-  (desync; пользователю предлагается `reindex`).
-- `IndexPersistenceError` — manifest сохранён, SQL update упал
-  (partial failure C2; truth уцелел, SQL stale).
-- `ValueError` — запрещённый переход фазы (от `Phase.transitioned_to`).
+- `ProjectNotFoundError` — каталога нет.
+- `ProjectManifestMissingError` — каталог есть, manifest отсутствует.
+- `ValueError` — запрещённый переход фазы.
 """
 
 from __future__ import annotations
@@ -24,18 +15,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy.exc import SQLAlchemyError
-
-from application.errors import (
-    IndexPersistenceError,
-    ProjectManifestMissingError,
-)
+from application.errors import ProjectManifestMissingError
 from application.get_project import ProjectNotFoundError, get_project
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from domain.phase import PhaseName, PhaseStatus
     from domain.project import Project
-    from ports.outbound.metadata_repository import MetadataRepository
     from ports.outbound.project_manifest_repository import (
         ProjectManifestRepository,
     )
@@ -57,12 +44,12 @@ class UpdateProjectCommand:
 async def update_project(
     *,
     command: UpdateProjectCommand,
-    repo: MetadataRepository,
+    projects_root: Path,
     manifest_repo: ProjectManifestRepository,
 ) -> Project:
     project = await get_project(
         name=command.name,
-        repo=repo,
+        projects_root=projects_root,
         manifest_repo=manifest_repo,
     )
 
@@ -76,15 +63,10 @@ async def update_project(
     project.updated_at = datetime.now(UTC)
 
     await manifest_repo.save(project)
-    try:
-        await repo.update(project)
-    except SQLAlchemyError as exc:
-        raise IndexPersistenceError(command.name, exc) from exc
     return project
 
 
 __all__ = [
-    'IndexPersistenceError',
     'PhaseUpdate',
     'ProjectManifestMissingError',
     'ProjectNotFoundError',

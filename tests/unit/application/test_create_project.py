@@ -1,4 +1,4 @@
-"""Tests for application use case CreateProject — с fake-портами."""
+"""Tests for application use case CreateProject — T157 filesystem-first."""
 
 from __future__ import annotations
 
@@ -6,10 +6,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from sqlalchemy.exc import SQLAlchemyError
 
 from application.create_project import create_project
-from application.errors import IndexPersistenceError
 from ports.outbound.git_repository import (
     GitOperationError,
     GitUnavailableError,
@@ -17,17 +15,6 @@ from ports.outbound.git_repository import (
 
 if TYPE_CHECKING:
     from domain.project import Project
-
-
-class FakeMetadataRepository:
-    def __init__(self, *, save_raises: Exception | None = None) -> None:
-        self.saved: list[Project] = []
-        self._save_raises = save_raises
-
-    async def save(self, project: Project) -> None:
-        if self._save_raises is not None:
-            raise self._save_raises
-        self.saved.append(project)
 
 
 class FakeProjectFileRepository:
@@ -52,16 +39,15 @@ class FakeGitRepository:
         self._raises = raises
 
     async def init_with_initial_commit(
-        self, project_path: Path, message: str
+        self, project_path: Path, message: str,
     ) -> None:
         if self._raises is not None:
             raise self._raises
         self.calls.append((project_path, message))
 
 
-async def test_create_project_writes_manifest_then_sql_index_then_git() -> None:
-    """Манифест записан до SQL до git init (T010 C1)."""
-    repo = FakeMetadataRepository()
+async def test_create_project_writes_manifest_then_git() -> None:
+    """Manifest first → git init last (T157: SQL slice removed)."""
     file_repo = FakeProjectFileRepository()
     manifest_repo = FakeManifestRepository()
     git_repo = FakeGitRepository()
@@ -69,7 +55,6 @@ async def test_create_project_writes_manifest_then_sql_index_then_git() -> None:
     result = await create_project(
         name='my-amp',
         projects_root=Path('/projects'),
-        repo=repo,
         file_repo=file_repo,
         manifest_repo=manifest_repo,
         git_repo=git_repo,
@@ -80,13 +65,11 @@ async def test_create_project_writes_manifest_then_sql_index_then_git() -> None:
     assert project.path == Path('/projects/my-amp')
     assert file_repo.created_dirs == [project.path]
     assert manifest_repo.saved == [project]
-    assert repo.saved == [project]
     assert git_repo.calls == [(project.path, 'efactory: create project my-amp')]
     assert result.git_initialized is True
 
 
 async def test_create_project_returns_domain_aggregate() -> None:
-    repo = FakeMetadataRepository()
     file_repo = FakeProjectFileRepository()
     manifest_repo = FakeManifestRepository()
     git_repo = FakeGitRepository()
@@ -94,7 +77,6 @@ async def test_create_project_returns_domain_aggregate() -> None:
     result = await create_project(
         name='preamp',
         projects_root=Path('/p'),
-        repo=repo,
         file_repo=file_repo,
         manifest_repo=manifest_repo,
         git_repo=git_repo,
@@ -107,40 +89,8 @@ async def test_create_project_returns_domain_aggregate() -> None:
     assert project.status.value == 'idea'
 
 
-async def test_create_project_partial_failure_raises_index_persistence_error() -> None:
-    """SQL upsert fails after manifest saved → IndexPersistenceError (C2).
-
-    Manifest на диске остаётся (truth), пользователь зовёт `reindex`.
-    """
-    sql_error = SQLAlchemyError('connection lost')
-    repo = FakeMetadataRepository(save_raises=sql_error)
-    file_repo = FakeProjectFileRepository()
-    manifest_repo = FakeManifestRepository()
-    git_repo = FakeGitRepository()
-
-    with pytest.raises(IndexPersistenceError) as exc_info:
-        await create_project(
-            name='ill-fated',
-            projects_root=Path('/p'),
-            repo=repo,
-            file_repo=file_repo,
-            manifest_repo=manifest_repo,
-            git_repo=git_repo,
-        )
-
-    assert exc_info.value.project_name == 'ill-fated'
-    assert exc_info.value.__cause__ is sql_error
-    # Manifest успели записать до фейла SQL.
-    assert len(manifest_repo.saved) == 1
-    assert manifest_repo.saved[0].name == 'ill-fated'
-    assert file_repo.created_dirs == [Path('/p/ill-fated')]
-    # git init не зовётся при SQL fail (T010 C1 (A): git после всего)
-    assert git_repo.calls == []
-
-
 async def test_create_project_git_unavailable_returns_flag_false() -> None:
-    """T010 N9: git нет на машине → проект создан без VCS, git_initialized=False."""
-    repo = FakeMetadataRepository()
+    """git нет на машине → проект создан без VCS, git_initialized=False."""
     file_repo = FakeProjectFileRepository()
     manifest_repo = FakeManifestRepository()
     git_repo = FakeGitRepository(raises=GitUnavailableError('git not found'))
@@ -148,7 +98,6 @@ async def test_create_project_git_unavailable_returns_flag_false() -> None:
     result = await create_project(
         name='no-git',
         projects_root=Path('/p'),
-        repo=repo,
         file_repo=file_repo,
         manifest_repo=manifest_repo,
         git_repo=git_repo,
@@ -156,12 +105,11 @@ async def test_create_project_git_unavailable_returns_flag_false() -> None:
 
     assert result.project.name == 'no-git'
     assert result.git_initialized is False
-    assert repo.saved == [result.project]  # проект всё равно сохранён
+    assert manifest_repo.saved == [result.project]
 
 
 async def test_create_project_git_operation_error_propagates() -> None:
-    """GitOperationError — серьёзный FS-сбой, пробрасывается до CLI (Spec § 3)."""
-    repo = FakeMetadataRepository()
+    """GitOperationError — серьёзный FS-сбой, пробрасывается до CLI."""
     file_repo = FakeProjectFileRepository()
     manifest_repo = FakeManifestRepository()
     git_repo = FakeGitRepository(raises=GitOperationError('permission denied'))
@@ -170,7 +118,6 @@ async def test_create_project_git_operation_error_propagates() -> None:
         await create_project(
             name='broken-git',
             projects_root=Path('/p'),
-            repo=repo,
             file_repo=file_repo,
             manifest_repo=manifest_repo,
             git_repo=git_repo,

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from typer.testing import CliRunner
 
 from composition.main import build_cli_app
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 
 def _setup_env(
@@ -21,10 +21,6 @@ def _setup_env(
     projects_root = tmp_path / 'projects'
     db_file = tmp_path / 'efactory.sqlite'
     monkeypatch.setenv('EFACTORY_PROJECTS_ROOT', str(projects_root))
-    monkeypatch.setenv(
-        'EFACTORY_DATABASE_URL',
-        f'sqlite+aiosqlite:///{db_file}',
-    )
     return projects_root
 
 

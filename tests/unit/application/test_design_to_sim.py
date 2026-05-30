@@ -27,14 +27,6 @@ if TYPE_CHECKING:
     from domain.project import Project
 
 
-class FakeMetadataRepository:
-    def __init__(self, project: Project | None = None) -> None:
-        self._project = project
-
-    async def get_by_name(self, name: str):  # noqa: ARG002,ANN201
-        return self._project
-
-
 class FakeManifestRepository:
     def __init__(self, project: Project | None = None) -> None:
         self._project = project
@@ -43,6 +35,9 @@ class FakeManifestRepository:
         if self._project is None:
             raise ManifestNotFoundError('absent')
         return self._project
+
+    async def exists(self, project_path: Path) -> bool:  # noqa: ARG002
+        return self._project is not None
 
 
 class FakeSchematicExporter:
@@ -98,7 +93,6 @@ async def test_design_to_sim_exports_netlist_and_stub_simulator_returns_netlist_
     project.path.mkdir(parents=True, exist_ok=True)
     schematic = Path('schematic/rc.kicad_sch')  # relative
 
-    repo = FakeMetadataRepository(project)
     manifest_repo = FakeManifestRepository(project)
     exporter = FakeSchematicExporter()
     simulator = FakeSimulator(
@@ -109,7 +103,7 @@ async def test_design_to_sim_exports_netlist_and_stub_simulator_returns_netlist_
         project_name='demo',
         analysis=OpAnalysis(),
                 schematic=schematic,
-        repo=repo,
+        projects_root=tmp_path,
         manifest_repo=manifest_repo,
         exporter=exporter,
         simulator=simulator,
@@ -132,7 +126,6 @@ async def test_design_to_sim_returns_simulated_when_real_simulator_works(
     """Будущий T008: реальный Simulator → status=SIMULATED."""
     project = _make_project(tmp_path / 'demo')
     project.path.mkdir(parents=True, exist_ok=True)
-    repo = FakeMetadataRepository(project)
     manifest_repo = FakeManifestRepository(project)
     exporter = FakeSchematicExporter()
     simulator = FakeSimulator(
@@ -143,7 +136,7 @@ async def test_design_to_sim_returns_simulated_when_real_simulator_works(
         project_name='demo',
         analysis=OpAnalysis(),
                 schematic=Path('schematic/rc.kicad_sch'),
-        repo=repo,
+        projects_root=tmp_path,
         manifest_repo=manifest_repo,
         exporter=exporter,
         simulator=simulator,
@@ -165,7 +158,6 @@ async def test_design_to_sim_absolute_schematic_path_kept(tmp_path: Path) -> Non
     abs_schematic = tmp_path / 'external' / 'imported.kicad_sch'
     abs_schematic.parent.mkdir(parents=True, exist_ok=True)
     abs_schematic.write_text('dummy')
-    repo = FakeMetadataRepository(project)
     manifest_repo = FakeManifestRepository(project)
     exporter = FakeSchematicExporter()
     simulator = FakeSimulator(raises=SimulatorUnavailableError('stub'))
@@ -174,7 +166,7 @@ async def test_design_to_sim_absolute_schematic_path_kept(tmp_path: Path) -> Non
         project_name='demo',
         analysis=OpAnalysis(),
                 schematic=abs_schematic,
-        repo=repo,
+        projects_root=tmp_path,
         manifest_repo=manifest_repo,
         exporter=exporter,
         simulator=simulator,
@@ -187,7 +179,6 @@ async def test_design_to_sim_custom_netlist_output(tmp_path: Path) -> None:
     project = _make_project(tmp_path / 'demo')
     project.path.mkdir(parents=True, exist_ok=True)
     custom_output = tmp_path / 'my_out' / 'custom.cir'
-    repo = FakeMetadataRepository(project)
     manifest_repo = FakeManifestRepository(project)
     exporter = FakeSchematicExporter()
     simulator = FakeSimulator(raises=SimulatorUnavailableError('stub'))
@@ -197,7 +188,7 @@ async def test_design_to_sim_custom_netlist_output(tmp_path: Path) -> None:
         analysis=OpAnalysis(),
                 schematic=Path('schematic/x.kicad_sch'),
         netlist_output=custom_output,
-        repo=repo,
+        projects_root=tmp_path,
         manifest_repo=manifest_repo,
         exporter=exporter,
         simulator=simulator,
@@ -206,8 +197,7 @@ async def test_design_to_sim_custom_netlist_output(tmp_path: Path) -> None:
     assert sim.netlist_path == custom_output
 
 
-async def test_design_to_sim_unknown_project_raises() -> None:
-    repo = FakeMetadataRepository(None)
+async def test_design_to_sim_unknown_project_raises(tmp_path: Path) -> None:
     manifest_repo = FakeManifestRepository(None)
     exporter = FakeSchematicExporter()
     simulator = FakeSimulator(raises=SimulatorUnavailableError('stub'))
@@ -217,7 +207,7 @@ async def test_design_to_sim_unknown_project_raises() -> None:
             project_name='ghost',
             analysis=OpAnalysis(),
             schematic=Path('schematic/x.kicad_sch'),
-            repo=repo,
+            projects_root=tmp_path,
             manifest_repo=manifest_repo,
             exporter=exporter,
             simulator=simulator,
@@ -225,8 +215,7 @@ async def test_design_to_sim_unknown_project_raises() -> None:
 
 
 async def test_design_to_sim_manifest_missing_raises(tmp_path: Path) -> None:
-    project = _make_project(tmp_path / 'demo')
-    repo = FakeMetadataRepository(project)
+    (tmp_path / 'demo').mkdir()  # dir exists but manifest missing
     manifest_repo = FakeManifestRepository(None)  # manifest нет
     exporter = FakeSchematicExporter()
     simulator = FakeSimulator(raises=SimulatorUnavailableError('stub'))
@@ -236,7 +225,7 @@ async def test_design_to_sim_manifest_missing_raises(tmp_path: Path) -> None:
             project_name='demo',
             analysis=OpAnalysis(),
                     schematic=Path('x.kicad_sch'),
-            repo=repo,
+            projects_root=tmp_path,
             manifest_repo=manifest_repo,
             exporter=exporter,
             simulator=simulator,
@@ -246,7 +235,6 @@ async def test_design_to_sim_manifest_missing_raises(tmp_path: Path) -> None:
 async def test_design_to_sim_propagates_exporter_error(tmp_path: Path) -> None:
     project = _make_project(tmp_path / 'demo')
     project.path.mkdir(parents=True, exist_ok=True)
-    repo = FakeMetadataRepository(project)
     manifest_repo = FakeManifestRepository(project)
     exporter = FakeSchematicExporter(raises=SchematicExportError('bad sch'))
     simulator = FakeSimulator(raises=SimulatorUnavailableError('stub'))
@@ -256,7 +244,7 @@ async def test_design_to_sim_propagates_exporter_error(tmp_path: Path) -> None:
             project_name='demo',
             analysis=OpAnalysis(),
                     schematic=Path('schematic/x.kicad_sch'),
-            repo=repo,
+            projects_root=tmp_path,
             manifest_repo=manifest_repo,
             exporter=exporter,
             simulator=simulator,
@@ -267,7 +255,6 @@ async def test_design_to_sim_propagates_simulation_failed(tmp_path: Path) -> Non
     """Future T008: SimulationFailedError (convergence) → пробрасывается."""
     project = _make_project(tmp_path / 'demo')
     project.path.mkdir(parents=True, exist_ok=True)
-    repo = FakeMetadataRepository(project)
     manifest_repo = FakeManifestRepository(project)
     exporter = FakeSchematicExporter()
     simulator = FakeSimulator(raises=SimulationFailedError('no conv'))
@@ -277,7 +264,7 @@ async def test_design_to_sim_propagates_simulation_failed(tmp_path: Path) -> Non
             project_name='demo',
             analysis=OpAnalysis(),
                     schematic=Path('schematic/x.kicad_sch'),
-            repo=repo,
+            projects_root=tmp_path,
             manifest_repo=manifest_repo,
             exporter=exporter,
             simulator=simulator,

@@ -1,13 +1,10 @@
-"""CreateProject — use case manifest-first + git init (T098 + T010)."""
+"""CreateProject — use case manifest-first + git init (T098 + T010 + T157)."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from sqlalchemy.exc import SQLAlchemyError
-
-from application.errors import IndexPersistenceError
 from domain.project import Project
 from ports.outbound.git_repository import GitUnavailableError
 
@@ -15,7 +12,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ports.outbound.git_repository import GitRepository
-    from ports.outbound.metadata_repository import MetadataRepository
     from ports.outbound.project_file_repository import ProjectFileRepository
     from ports.outbound.project_manifest_repository import (
         ProjectManifestRepository,
@@ -36,19 +32,14 @@ _INITIAL_COMMIT_TEMPLATE = 'efactory: create project {name}'
 async def create_project(
     name: str,
     projects_root: Path,
-    repo: MetadataRepository,
     file_repo: ProjectFileRepository,
     manifest_repo: ProjectManifestRepository,
     git_repo: GitRepository,
 ) -> CreateProjectResult:
-    """Manifest first, SQL upsert, git init last (T010 C1)."""
+    """T157: manifest first, git init last; SQL upsert удалён."""
     project = Project(name=name, path=projects_root / name)
     await file_repo.create_project_directory(project.path)
     await manifest_repo.save(project)
-    try:
-        await repo.save(project)
-    except SQLAlchemyError as exc:
-        raise IndexPersistenceError(name, exc) from exc
 
     git_initialized = True
     try:
