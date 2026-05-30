@@ -156,6 +156,27 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
     as single source of truth».
   - Spec — `specs/T157-de-engineering-persistent-state/spec.md`.
 
+- **T159** — [closed 2026-05-30, PR #89] **BuildKit cache mounts:
+  радикальное ускорение rebuilds (apt + uv + FreeCAD AppImage
+  cache).** User feedback после T155: «хочется не качать 820 MB
+  снова». Cold full build ~2h → **secondary builds — секунды-
+  минуты** через persistent BuildKit cache mounts.
+  - **apt cache** (`--mount=type=cache` /var/cache/apt + /var/lib/apt)
+    в base + freecad-appimage stages. Disabled docker-clean hook +
+    enabled Keep-Downloaded-Packages — debs persist.
+  - **uv cache** (`--mount=type=cache` /root/.cache/uv) в
+    python-deps + efactory-code stages.
+  - **FreeCAD AppImage cache** (`--mount=type=cache` /cache/freecad)
+    — 820 MB AppImage скачивается один раз ever per FREECAD_VERSION.
+    Conditional skip: cached SHA matches → skip curl entirely.
+    Atomic download (fc.AppImage.tmp → SHA verify → mv).
+  - **Dockerfile остаётся portable** (CI/GHCR/cold dev-host — full
+    первый раз; secondary — cache hit).
+  - **Тесты** (+5 regression). Existing T155 curl resilience
+    retained.
+  - Compact (~20 LOC + 5 tests), без spec'и.
+  - Pre-push gates все 5 зелёные (1303 passed, coverage 85.10%).
+
 - **T022** — [closed 2026-05-27, PR #82] **Параметрический sweep
   (`bridge_sweep`) с tabular output + ASCII plot.** Третий шаг
   analysis-first ordering Фазы 2 после T023 (метрики) и T024 (plot).
