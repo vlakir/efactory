@@ -32,10 +32,6 @@ def _setup_env(
 ) -> Path:
     projects_root = tmp_path / 'projects'
     monkeypatch.setenv('EFACTORY_PROJECTS_ROOT', str(projects_root))
-    monkeypatch.setenv(
-        'EFACTORY_DATABASE_URL',
-        f'sqlite+aiosqlite:///{tmp_path / "efactory.sqlite"}',
-    )
     monkeypatch.setenv('EFACTORY_SESSION_ROOT', str(tmp_path / 'sessions'))
     return projects_root
 

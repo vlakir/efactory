@@ -25,10 +25,6 @@ def _set_env(
     tmp_path: 'Path',
 ) -> None:
     monkeypatch.setenv('EFACTORY_PROJECTS_ROOT', str(tmp_path / 'projects'))
-    monkeypatch.setenv(
-        'EFACTORY_DATABASE_URL',
-        f'sqlite+aiosqlite:///{tmp_path / "efactory.sqlite"}',
-    )
 
 
 def test_project_delete_removes_metadata_and_filesystem(

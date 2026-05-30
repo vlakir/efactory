@@ -11,7 +11,6 @@ from domain.simulation import Simulation, SimulationStatus
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ports.outbound.metadata_repository import MetadataRepository
     from ports.outbound.project_manifest_repository import (
         ProjectManifestRepository,
     )
@@ -35,14 +34,14 @@ async def design_to_netlist(
     project_name: str,
     schematic: Path,
     netlist_output: Path | None = None,
-    repo: MetadataRepository,
+    projects_root: Path,
     manifest_repo: ProjectManifestRepository,
     exporter: SchematicExporter,
 ) -> Simulation:
     """Только экспорт SPICE netlist из KiCad schematic — без симуляции."""
     project = await get_project(
         name=project_name,
-        repo=repo,
+        projects_root=projects_root,
         manifest_repo=manifest_repo,
     )
 

@@ -155,7 +155,7 @@ COPY src/ ./src/
 COPY data/ ./data/
 COPY tests/ ./tests/
 COPY scripts/ ./scripts/
-COPY hatch_build.py README.md alembic.ini ./
+COPY hatch_build.py README.md ./
 
 # Editable install: T114 `efactory-up --dev` сможет bind-mount'ить
 # host src/ поверх `/opt/efactory/src/` без пересборки образа.

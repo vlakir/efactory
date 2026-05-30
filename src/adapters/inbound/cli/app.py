@@ -132,7 +132,6 @@ if TYPE_CHECKING:
     from ports.outbound.decision_repository import DecisionRepository
     from ports.outbound.git_repository import GitRepository
     from ports.outbound.knowledge_base import KbStore
-    from ports.outbound.metadata_repository import MetadataRepository
     from ports.outbound.netlist_editor import NetlistEditor
     from ports.outbound.project_file_repository import ProjectFileRepository
     from ports.outbound.project_manifest_repository import (
@@ -267,7 +266,6 @@ def _emit_thd(result: ThdMeasurement, *, output_fmt: str) -> None:
 def build_app(
     *,
     projects_root: Path,
-    metadata_repository: MetadataRepository,
     file_repository: ProjectFileRepository,
     manifest_repository: ProjectManifestRepository,
     decision_repository: DecisionRepository,
@@ -311,7 +309,6 @@ def build_app(
             return await create_project_use_case(
                 name=name,
                 projects_root=effective_root,
-                repo=metadata_repository,
                 file_repo=file_repository,
                 manifest_repo=manifest_repository,
                 git_repo=git_repository,
@@ -371,7 +368,10 @@ def build_app(
     @project_app.command('list')
     def list_() -> None:
         async def _run() -> list:
-            return await list_projects_use_case(repo=metadata_repository)
+            return await list_projects_use_case(
+                projects_root=projects_root,
+                manifest_repo=manifest_repository,
+            )
 
         projects = asyncio.run(
             _log_command(
@@ -397,7 +397,7 @@ def build_app(
         async def _run() -> Project:
             return await get_project_use_case(
                 name=name,
-                repo=metadata_repository,
+                projects_root=projects_root,
                 manifest_repo=manifest_repository,
             )
 
@@ -437,7 +437,7 @@ def build_app(
         async def _run() -> None:
             await delete_project_use_case(
                 name=name,
-                repo=metadata_repository,
+                projects_root=projects_root,
                 file_repo=file_repository,
             )
 
@@ -469,7 +469,7 @@ def build_app(
                     new_name=new_name,
                     phase_update=phase_update,
                 ),
-                repo=metadata_repository,
+                projects_root=projects_root,
                 manifest_repo=manifest_repository,
             )
 
@@ -612,27 +612,15 @@ def build_app(
                 ),
             ),
         ] = None,
-        remove_orphans: Annotated[
-            bool,
-            typer.Option(
-                '--remove-orphans',
-                help=(
-                    'Удалить из SQL индекса записи без manifest на диске. '
-                    'По умолчанию — оставить и попытаться bootstrap из SQL.'
-                ),
-            ),
-        ] = False,
     ) -> None:
-        """Пересобрать SQL индекс по manifest'ам (T098); sync decisions (T099)."""
+        """Валидировать manifest'ы проектов (T157: filesystem = source of truth)."""
         root: Path = Path(storage_root) if storage_root is not None else projects_root
 
         async def _run() -> ReindexSummary:
             return await reindex_projects_use_case(
                 storage_root=root,
-                repo=metadata_repository,
                 manifest_repo=manifest_repository,
                 decision_repo=decision_repository,
-                remove_orphans=remove_orphans,
             )
 
         summary = asyncio.run(
@@ -640,23 +628,11 @@ def build_app(
                 session_logger,
                 'project.reindex',
                 project=None,
-                payload={'storage_root': str(root), 'remove_orphans': remove_orphans},
+                payload={'storage_root': str(root)},
                 fn=_run,
             ),
         )
-        typer.echo(f'Reindexed {summary.indexed} projects.')
-        if summary.bootstrapped:
-            typer.echo(
-                f'Bootstrapped {summary.bootstrapped} manifests for pre-T098 projects.',
-            )
-        if summary.orphans:
-            action = 'removed' if remove_orphans else 'kept'
-            typer.echo(
-                f'Orphans ({len(summary.orphans)}, {action}): '
-                f'{", ".join(summary.orphans)}',
-            )
-            if not remove_orphans:
-                typer.echo('  (Use --remove-orphans to clean.)')
+        typer.echo(f'Validated {summary.valid} projects.')
         if summary.failed:
             typer.echo(f'Failed ({len(summary.failed)}):', err=True)
             for failed_path, message in summary.failed:
@@ -728,7 +704,7 @@ def build_app(
                 rationale=rationale,
                 evidence=Path(evidence) if evidence is not None else None,
                 session=Path(session) if session is not None else None,
-                repo=metadata_repository,
+                projects_root=projects_root,
                 manifest_repo=manifest_repository,
                 decision_repo=decision_repository,
             )
@@ -776,7 +752,7 @@ def build_app(
         async def _run() -> list:
             return await list_decisions_use_case(
                 project_name=project,
-                repo=metadata_repository,
+                projects_root=projects_root,
                 manifest_repo=manifest_repository,
                 decision_repo=decision_repository,
             )
@@ -821,7 +797,7 @@ def build_app(
             return await get_decision_use_case(
                 project_name=project,
                 decision_id=decision_id,
-                repo=metadata_repository,
+                projects_root=projects_root,
                 manifest_repo=manifest_repository,
                 decision_repo=decision_repository,
             )
@@ -1061,7 +1037,7 @@ def build_app(
         async def _resolve_path() -> Path:
             project_obj = await get_project_use_case(
                 name=project,
-                repo=metadata_repository,
+                projects_root=projects_root,
                 manifest_repo=manifest_repository,
             )
             return project_obj.path
@@ -1325,7 +1301,7 @@ def build_app(
                 netlist_output=(
                     Path(netlist_output) if netlist_output is not None else None
                 ),
-                repo=metadata_repository,
+                projects_root=projects_root,
                 manifest_repo=manifest_repository,
                 exporter=schematic_exporter,
             )
@@ -1547,7 +1523,7 @@ def build_app(
                     Path(netlist_output) if netlist_output is not None else None
                 ),
                 timeout_seconds=timeout_seconds,
-                repo=metadata_repository,
+                projects_root=projects_root,
                 manifest_repo=manifest_repository,
                 exporter=schematic_exporter,
                 simulator=simulator,
@@ -1721,7 +1697,7 @@ def build_app(
         async def _resolve_schematic_path() -> Path:
             project_obj = await get_project_use_case(
                 name=project,
-                repo=metadata_repository,
+                projects_root=projects_root,
                 manifest_repo=manifest_repository,
             )
             return (project_obj.path / schematic).resolve()
@@ -1797,7 +1773,7 @@ def build_app(
         async def _resolve() -> tuple[Path, SpiceModel]:
             project_obj = await get_project_use_case(
                 name=project,
-                repo=metadata_repository,
+                projects_root=projects_root,
                 manifest_repo=manifest_repository,
             )
             sch_path = (project_obj.path / schematic).resolve()
@@ -2055,7 +2031,7 @@ def build_app(
         async def _resolve_path() -> Path:
             project_obj = await get_project_use_case(
                 name=project,
-                repo=metadata_repository,
+                projects_root=projects_root,
                 manifest_repo=manifest_repository,
             )
             return (project_obj.path / schematic).resolve()

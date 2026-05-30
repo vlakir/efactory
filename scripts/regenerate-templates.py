@@ -59,6 +59,24 @@ def _bake_se_amp(target_dir: Path) -> None:
     build = _import_se_amp_builder()
     build(sch_path)  # type: ignore[operator]
 
+    # Builder embed'ит абсолютные `Sim.Library "/dev-machine/.../X.lib"`
+    # (берёт `_TUBE_LIB`/`_OPT_LIB` из dev-репо). В shipping template
+    # это (a) leaks dev-path в репо — snapshot CI ловит drift между
+    # машинами; (b) ломает materialized projects на другой машине.
+    # Fix: пост-процесс replace `<repo>/data/models/.../X.lib` →
+    # `models/X.lib` (relative к materialized project root, где baker
+    # копирует models в `target/models/`).
+    sch_text = sch_path.read_text(encoding='utf-8')
+    sch_text = sch_text.replace(
+        str(_MODELS_DIR / 'tubes' / 'custom' / '6P14P.lib'),
+        'models/6P14P.lib',
+    )
+    sch_text = sch_text.replace(
+        str(_MODELS_DIR / 'transformers' / 'generic' / 'OPT_SE_5K_8.lib'),
+        'models/OPT_SE_5K_8.lib',
+    )
+    sch_path.write_text(sch_text, encoding='utf-8')
+
     pro_name = f'{PROJECT_NAME_PLACEHOLDER}.kicad_pro'
     pro_path = target_dir / pro_name
     pro_path.write_text(

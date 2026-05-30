@@ -1,22 +1,10 @@
-"""Application-уровень errors для T098 manifest-primary write-path."""
+"""Application-уровень errors (T098 + T157)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy.exc import SQLAlchemyError
-
-from application.errors import IndexPersistenceError, ProjectManifestMissingError
-
-
-def test_index_persistence_error_carries_project_name_and_original() -> None:
-    cause = SQLAlchemyError('connection lost')
-    err = IndexPersistenceError('demo', cause)
-
-    assert err.project_name == 'demo'
-    assert err.__cause__ is cause
-    assert 'demo' in str(err)
-    assert 'reindex' in str(err).lower()
+from application.errors import ProjectManifestMissingError
 
 
 def test_project_manifest_missing_error_carries_path_and_hint() -> None:
@@ -27,4 +15,3 @@ def test_project_manifest_missing_error_carries_path_and_hint() -> None:
     msg = str(err)
     assert 'demo' in msg
     assert '/storage/demo' in msg
-    assert 'reindex' in msg.lower()

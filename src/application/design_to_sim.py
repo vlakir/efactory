@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from domain.simulation import AnalysisSpec
-    from ports.outbound.metadata_repository import MetadataRepository
     from ports.outbound.project_manifest_repository import (
         ProjectManifestRepository,
     )
@@ -28,7 +27,7 @@ async def design_to_sim(
     analysis: AnalysisSpec,
     netlist_output: Path | None = None,
     timeout_seconds: float = 60.0,
-    repo: MetadataRepository,
+    projects_root: Path,
     manifest_repo: ProjectManifestRepository,
     exporter: SchematicExporter,
     simulator: Simulator,
@@ -38,7 +37,7 @@ async def design_to_sim(
         project_name=project_name,
         schematic=schematic,
         netlist_output=netlist_output,
-        repo=repo,
+        projects_root=projects_root,
         manifest_repo=manifest_repo,
         exporter=exporter,
     )

@@ -1,14 +1,7 @@
-"""Integration-тест composition root: build_cli_app без env.
-
-Проверяет, что Walking Skeleton CLI собирается и работает из чистого
-окружения (без EFACTORY_* / .secrets) — composition root применяет
-Settings-default'ы и автоматически создаёт storage-каталоги до запуска
-Alembic-миграций (T087).
-"""
+"""Integration-тест composition root: build_cli_app без env (T157)."""
 
 from __future__ import annotations
 
-import sqlite3
 from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
@@ -20,7 +13,7 @@ if TYPE_CHECKING:
 
     import pytest
 
-_EFACTORY_ENV_VARS = ('EFACTORY_PROJECTS_ROOT', 'EFACTORY_DATABASE_URL')
+_EFACTORY_ENV_VARS = ('EFACTORY_PROJECTS_ROOT',)
 
 
 def test_build_cli_app_works_without_env_and_creates_storage_dirs(
@@ -36,19 +29,14 @@ def test_build_cli_app_works_without_env_and_creates_storage_dirs(
 
     expected_root = tmp_path / '.local' / 'share' / 'efactory'
     assert expected_root.is_dir(), (
-        'composition root должен создать каталог хранилища до миграций'
+        'composition root должен создать каталог хранилища'
     )
     assert (expected_root / 'projects').is_dir()
-    assert (expected_root / 'efactory.db').is_file(), (
-        'Alembic должен создать SQLite-файл при первом старте'
-    )
 
     runner = CliRunner()
     result = runner.invoke(app, ['project', 'create', '--name', 'smoke'])
 
     assert result.exit_code == 0, result.output
+    # T157: directory + manifest YAML are source of truth (no SQL).
     assert (expected_root / 'projects' / 'smoke').is_dir()
-
-    with sqlite3.connect(expected_root / 'efactory.db') as cx:
-        rows = cx.execute('SELECT name FROM projects').fetchall()
-    assert rows == [('smoke',)]
+    assert (expected_root / 'projects' / 'smoke' / 'project.yaml').is_file()

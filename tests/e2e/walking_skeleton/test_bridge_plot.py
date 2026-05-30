@@ -34,10 +34,6 @@ def _strip_ansi(s: str) -> str:
 
 def _setup_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv('EFACTORY_PROJECTS_ROOT', str(tmp_path / 'projects'))
-    monkeypatch.setenv(
-        'EFACTORY_DATABASE_URL',
-        f'sqlite+aiosqlite:///{tmp_path / "efactory.sqlite"}',
-    )
     monkeypatch.setenv('EFACTORY_SESSION_ROOT', str(tmp_path / 'sessions'))
 
 

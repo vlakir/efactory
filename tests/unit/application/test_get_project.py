@@ -1,4 +1,4 @@
-"""Tests for GetProject use case — manifest-first (T098)."""
+"""Tests for GetProject use case — T157 filesystem-first refactor."""
 
 from __future__ import annotations
 
@@ -10,23 +10,6 @@ from application.errors import ProjectManifestMissingError
 from application.get_project import ProjectNotFoundError, get_project
 from domain.project import Project
 from ports.outbound.project_manifest_repository import ManifestNotFoundError
-
-
-class FakeMetadataRepository:
-    def __init__(self, projects: list[Project] | None = None) -> None:
-        self._projects = list(projects or [])
-
-    async def save(self, project: Project) -> None:
-        self._projects.append(project)
-
-    async def list_all(self) -> list[Project]:
-        return list(self._projects)
-
-    async def get_by_name(self, name: str) -> Project | None:
-        for project in self._projects:
-            if project.name == name:
-                return project
-        return None
 
 
 class FakeManifestRepository:
@@ -49,40 +32,48 @@ class FakeManifestRepository:
         return sorted(p for p in self._by_path if p.parent == storage_root)
 
 
-async def test_get_project_returns_manifest_state_when_found() -> None:
-    """SQL даёт path, manifest даёт всё остальное (truth)."""
-    target_sql = Project(name='target', path=Path('/p/target'))
-    target_manifest = Project(
-        id=target_sql.id,
-        name='target',
-        path=Path('/p/target'),
-    )
-    repo = FakeMetadataRepository([target_sql])
+async def test_get_project_returns_manifest_state_when_found(
+    tmp_path: Path,
+) -> None:
+    """T157: directory exists + manifest loadable → returns Project."""
+    target_path = tmp_path / 'target'
+    target_path.mkdir()
+    target_manifest = Project(name='target', path=target_path)
     manifest_repo = FakeManifestRepository(target_manifest)
 
-    result = await get_project(name='target', repo=repo, manifest_repo=manifest_repo)
+    result = await get_project(
+        name='target', projects_root=tmp_path, manifest_repo=manifest_repo,
+    )
 
     assert result is target_manifest
 
 
-async def test_get_project_raises_project_not_found_when_sql_missing() -> None:
-    repo = FakeMetadataRepository()
+async def test_get_project_raises_project_not_found_when_no_directory(
+    tmp_path: Path,
+) -> None:
+    """T157: directory отсутствует → ProjectNotFoundError."""
     manifest_repo = FakeManifestRepository()
 
     with pytest.raises(ProjectNotFoundError) as excinfo:
-        await get_project(name='ghost', repo=repo, manifest_repo=manifest_repo)
+        await get_project(
+            name='ghost', projects_root=tmp_path, manifest_repo=manifest_repo,
+        )
 
     assert 'ghost' in str(excinfo.value)
 
 
-async def test_get_project_raises_manifest_missing_when_sql_has_but_manifest_absent() -> None:
-    """Desync: SQL знает о проекте, manifest на диске удалён."""
-    sql_only = Project(name='legacy', path=Path('/p/legacy'))
-    repo = FakeMetadataRepository([sql_only])
+async def test_get_project_raises_manifest_missing_when_dir_exists_no_yaml(
+    tmp_path: Path,
+) -> None:
+    """T157: directory есть, manifest yaml отсутствует/повреждён → corrupt."""
+    legacy_path = tmp_path / 'legacy'
+    legacy_path.mkdir()  # dir exists but no manifest
     manifest_repo = FakeManifestRepository()  # пусто
 
     with pytest.raises(ProjectManifestMissingError) as excinfo:
-        await get_project(name='legacy', repo=repo, manifest_repo=manifest_repo)
+        await get_project(
+            name='legacy', projects_root=tmp_path, manifest_repo=manifest_repo,
+        )
 
     assert excinfo.value.project_name == 'legacy'
-    assert excinfo.value.project_path == Path('/p/legacy')
+    assert excinfo.value.project_path == legacy_path

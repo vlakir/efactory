@@ -11,7 +11,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from domain.simulation import AnalysisSpec, Simulation
-    from ports.outbound.metadata_repository import MetadataRepository
     from ports.outbound.project_manifest_repository import (
         ProjectManifestRepository,
     )
@@ -27,7 +26,7 @@ async def edit_and_resim(
     analysis: AnalysisSpec,
     netlist_output: Path | None = None,
     timeout_seconds: float = 60.0,
-    repo: MetadataRepository,
+    projects_root: Path,
     manifest_repo: ProjectManifestRepository,
     exporter: SchematicExporter,
     simulator: Simulator,
@@ -52,7 +51,7 @@ async def edit_and_resim(
         analysis=analysis,
         netlist_output=netlist_output,
         timeout_seconds=timeout_seconds,
-        repo=repo,
+        projects_root=projects_root,
         manifest_repo=manifest_repo,
         exporter=exporter,
         simulator=simulator,

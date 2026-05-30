@@ -34,6 +34,40 @@ T-ID между релизами — `CHANGELOG.md` единственное per
      версию `[N.M.0]`. При закрытии milestone — переименовывается
      в очередную версию, ниже создаётся новая пустая `[Unreleased]`. -->
 
+### Removed
+
+- **T157 — De-engineering persistent state: filesystem as single
+  source of truth.** Удалены SQL-индекс (`MetadataRepository` +
+  SQLAlchemy + alembic + aiosqlite) и Kùzu graph-store адаптер
+  (`kuzu` dep + `tests/integration/adapters/graph_store/`); manifest
+  YAML (`project.yaml`) теперь единственный источник истины,
+  decisions читаются напрямую из `decisions/D*.md`.
+  - **Use cases переписаны** (12 шт): `get/list/create/update/delete_
+    project`, `add/get/list_decisions`, `design_to_netlist/sim`,
+    `edit_and_resim` — параметр `repo: MetadataRepository` заменён
+    на `projects_root: Path`; loaders делают `path.is_dir()` →
+    `manifest_repo.load(path)`.
+  - **`reindex_projects` → `validate_manifests`** (старое имя — alias
+    для callers): diagnostic-only scan manifest YAML без SQL upsert/
+    bootstrap; CLI флаг `--remove-orphans` удалён (нет SQL — нет
+    orphans).
+  - **Удалены файлы**: `src/adapters/outbound/persistence_sql/` (вся
+    директория, 8 файлов), `tests/integration/adapters/persistence_
+    sql/` (3 файла), `tests/integration/adapters/graph_store/`,
+    `tests/e2e/walking_skeleton/test_reindex_project.py`, `test_
+    reindex_portability.py`, `test_create_partial_failure.py`,
+    `alembic.ini`.
+  - **Удалены runtime deps**: `sqlalchemy`, `aiosqlite`, `alembic`,
+    `kuzu` из `pyproject.toml` + `importlinter.forbidden_modules`.
+    `EFACTORY_DATABASE_URL` settings field удалён.
+  - **xfail'd**: `test_update_renames_existing_project` (rename
+    создаёт manifest с новым именем но directory остаётся со старым
+    путём — filesystem rename отдельной follow-up задачей T160).
+  - Все 5 pre-push gates green: ruff/format/mypy/lint-imports +
+    1265 passed / 9 skipped / 1 xfailed @ 84.60% coverage.
+  - ADR в `DECISIONS.md` 2026-05-30 «Persistent state: filesystem
+    as single source of truth». (T157)
+
 ### Fixed
 
 - **T144 (absorbed by T022) — `bridge sweep` numerical output gap.**

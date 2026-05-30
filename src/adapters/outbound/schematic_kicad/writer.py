@@ -101,19 +101,21 @@ def _collect_lib_symbols(lib_ids: list[str]) -> list[str]:
             parent = match.group(1)
             if parent not in loaded:
                 queue.append(parent)
-    # Topo-sort: parents before derived.
+    # Topo-sort: parents before derived. `sorted(pending)` гарантирует
+    # детерминированный output между запусками — Python set iteration
+    # рандомизируется через PYTHONHASHSEED, и без sort lib_symbols секция
+    # перемешивается на каждом rebuild (snapshot-CI fail).
     ordered: list[str] = []
     pending = set(loaded)
     while pending:
         progressed = False
-        for lid in list(pending):
+        for lid in sorted(pending):
             parents = {m.group(1) for m in _EXTENDS_RE.finditer(loaded[lid])}
             if parents.issubset(set(ordered)):
                 ordered.append(lid)
                 pending.discard(lid)
                 progressed = True
         if not progressed:
-            # Cycle или missing dependency — fall back на arbitrary порядок.
             ordered.extend(sorted(pending))
             break
     return [loaded[lid] for lid in ordered]

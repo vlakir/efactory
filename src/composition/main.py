@@ -1,17 +1,12 @@
-"""Composition root: сборка графа зависимостей и точка входа CLI."""
+"""Composition root: сборка графа зависимостей и точка входа CLI (T157)."""
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import secrets
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
-
-from sqlalchemy.engine import make_url
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from adapters.inbound.cli.app import build_app
 from adapters.outbound.decision_markdown.decision_repository import (
@@ -32,10 +27,6 @@ from adapters.outbound.manifest_yaml.project_manifest_repository import (
 )
 from adapters.outbound.ngspice.netlist_substitution import NgspiceNetlistEditor
 from adapters.outbound.ngspice.simulator import NgspiceSimulator
-from adapters.outbound.persistence_sql.migrations_runner import run_migrations
-from adapters.outbound.persistence_sql.repository import (
-    SqlAlchemyMetadataRepository,
-)
 from adapters.outbound.platform_native.platform_layer import (
     NativePlatformLayer,
 )
@@ -56,24 +47,9 @@ if TYPE_CHECKING:
 
 
 def _ensure_storage_dirs(settings: Settings) -> None:
-    """
-    Создать каталоги для projects_root, session_root и SQLite-БД до миграций.
-
-    Aiosqlite/SQLite сами создают файл БД, но не создают родительский
-    каталог — для default'ов вида `~/.local/share/efactory/efactory.db`
-    это критично. Для других СУБД (Postgres и т.д.) пропускаем.
-    """
+    """Создать projects_root + session_root (T157: SQL-БД больше не нужна)."""
     settings.projects_root.mkdir(parents=True, exist_ok=True)
     settings.session_root.mkdir(parents=True, exist_ok=True)
-
-    url = make_url(settings.database_url)
-    db_path = url.database
-    if (
-        url.drivername.startswith('sqlite')
-        and db_path is not None
-        and db_path != ':memory:'
-    ):
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
 
 def _make_session_id() -> str:
@@ -91,18 +67,12 @@ def build_cli_app() -> typer.Typer:
     settings = Settings()
     _ensure_storage_dirs(settings)
 
-    asyncio.run(run_migrations(settings.database_url))
-
-    engine = create_async_engine(settings.database_url)
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
-
     session_id = _make_session_id()
     platform = NativePlatformLayer()
     app_manager = SubprocessAppManager(platform)
 
     return build_app(
         projects_root=settings.projects_root,
-        metadata_repository=SqlAlchemyMetadataRepository(session_factory),
         file_repository=FilesystemProjectFileRepository(),
         manifest_repository=FilesystemProjectManifestRepository(),
         decision_repository=FilesystemDecisionRepository(),
