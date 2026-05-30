@@ -615,6 +615,10 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   - На фикстурном `.lib` с floating-node — fail / warning с указанием
     конкретной ноды.
 
+<!-- T155 переехал в BOARD.md → Done 2026-05-27 одной сессией (3 LOC
+     Dockerfile + 2 regression tests, без spec'и). curl --http1.1 +
+     --retry 3 для FreeCAD AppImage (HTTP/2 BuildKit flakiness). -->
+
 <!-- T147 переехал в BOARD.md → Doing 2026-05-26. По дороге выяснилось,
      что гипотеза «опечатка P3 вместо P, 1 строка» не работает: оба DCR
      (Rp_dcr, Rs_dcr) подключены к floating узлам (P3, S3); корректный

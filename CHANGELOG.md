@@ -49,6 +49,32 @@ T-ID между релизами — `CHANGELOG.md` единственное per
   22 v/i traces per combination. +15 regression-тестов в
   `test_ngspice_simulator.py`.
 
+- **T155 — FreeCAD AppImage download resilience (BuildKit HTTP/2
+  flakiness на github.com releases).** Dockerfile stage
+  `freecad-appimage`: `curl -fsSL --http1.1 --retry 3 --retry-delay 5
+  --retry-all-errors --max-time 1800` для AppImage download.
+  - `--http1.1` обходит BuildKit HTTP/2 race (intermittent TLS
+    resets / connection drops).
+  - `--retry 3 --retry-delay 5` — retry transient connection errors.
+  - `--retry-all-errors` — **критично**: без него `curl: (18)
+    transfer closed with X bytes remaining` (самый частый mode
+    failure на github.com releases при flaky link) НЕ triggers
+    retry. Обнаружено в warm rebuild T141 verification 2026-05-30
+    (84 мин stuck на partial transfer без retry).
+  - `--max-time 3600` — hard cap 60 мин на attempt; без него curl
+    ждёт infinity при hung connection.
+  - `-C -` (resume) — каждая retry **продолжает** с partial offset
+    вместо start-over. Обнаружено в warm rebuild T141 #2 (2026-05-30):
+    FreeCAD 1.1.1 AppImage = **820 MB** (не 286), на slow link
+    ~7 MB/min single attempt не успевает в 30 мин → exit 28.
+    С `-C -` retries аккумулируют bytes.
+  - `--retry 5` (увеличен с 3) — больше запас для flaky link.
+  - Regression-тест `tests/integration/test_dockerfile_freecad_
+    resilience.py` (+5) проверяет flags (`--http1.1`, `--retry`,
+    `--retry-all-errors`, `--max-time`, `-C -`).
+  - Compact (8 LOC Dockerfile + 5 tests), без spec'и. Pre-push
+    gates все 5 зелёные.
+
 ### Added
 
 - **T022 — `bridge sweep` generalised: tabular output + ASCII plot

@@ -61,6 +61,9 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+
+
+
 ## Done
 
 - **T022** — [closed 2026-05-27, PR #82] **Параметрический sweep
@@ -110,6 +113,22 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
   - Spec — `specs/T022-bridge-sweep/spec.md` (Analyzed: 10 Clarify
     Q + 14 Analyze issues — 2 Critical разрешены in-spec, 6
     Warning с predeclared resolutions, 6 Note).
+
+- **T155** — [closed 2026-05-27, PR #87] **Dockerfile freecad-appimage
+  curl `--http1.1` `--retry 3` (HTTP/2 flakiness).** Past sessions
+  reported intermittent failures на FreeCAD AppImage download в cold
+  build (BuildKit HTTP/2 + github.com releases — flaky combination:
+  TLS resets, connection drops). Defensive flags:
+  - `--http1.1` обходит BuildKit HTTP/2 race condition.
+  - `--retry 3 --retry-delay 5` против transient network errors.
+  - **+2 regression tests** (`test_dockerfile_freecad_resilience.py`)
+    — lockdown против silent flag removal при future Dockerfile
+    cleanup.
+  - Compact (3 LOC Dockerfile + 2 tests), без spec'и.
+  - Pre-push gates все 5 зелёные (1142 passed, coverage 85.38%).
+  - **Owner manual smoke (опционально)**: cold build retry — но
+    проблема probabilistic, не каждый build репродуцирует HTTP/2
+    race (т.е. signal только через серии rebuilds).
 
 - **T141** — [closed 2026-05-27, PR #79] **Dev-only build
   acceleration: `efactory-build-dev` / `efactory-build-libs-dev`
