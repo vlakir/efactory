@@ -57,7 +57,18 @@ ENV DEBIAN_FRONTEND=noninteractive
 # без них `LANG=ru_RU.UTF-8` в runtime отвалится в `C.UTF-8`.
 # `--no-install-recommends` отсекает GUI-документацию и спутниковые тулзы
 # (spec §N1, N6).
-RUN apt-get update \
+# T159: BuildKit cache mounts для apt — persistent debs cache между
+# builds. На cold build (CI / fresh dev-host) — нормальный download
+# первый раз. Subsequent builds — все .deb берутся из cache (минуты
+# вместо часов). Ubuntu default `docker-clean` apt hook удаляет
+# /var/cache/apt/archives при install — отключаем чтобы cache mount
+# действительно persist'ил debs.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean \
+ && echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' \
+        > /etc/apt/apt.conf.d/keep-cache \
+ && apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
@@ -105,8 +116,7 @@ RUN apt-get update \
       /etc/locale.gen \
  && locale-gen \
  && apt-get purge -y software-properties-common gnupg \
- && apt-get autoremove -y \
- && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+ && apt-get autoremove -y
 
 # T013 — Claude Code CLI через npm. ARG объявлен здесь (после apt-блока),
 # чтобы bump CLAUDE_CODE_VERSION не инвалидировал кэш apt-layer. Отдельный
@@ -138,7 +148,9 @@ WORKDIR /opt/efactory
 # Без `--no-install-project` поднимет hatchling и попытается build
 # efactory без исходников → fail. Поэтому деплоим зависимости отдельно.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project
+# T159: uv cache mount — wheel downloads persist между builds.
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    uv sync --frozen --no-install-project
 
 
 # ============================================================================
@@ -161,7 +173,9 @@ COPY hatch_build.py README.md ./
 # host src/ поверх `/opt/efactory/src/` без пересборки образа.
 # hatch_build хук (T095) silently skips при отсутствии `.git/`
 # (см. hatch_build.py).
-RUN uv sync --frozen
+# T159: uv cache mount.
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    uv sync --frozen
 
 
 # ============================================================================
@@ -241,32 +255,41 @@ ARG SHEETMETAL_SHA=8076898be2d888c3c634dee343af2349c974a1d0
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update \
+# T159: apt cache mount (same pattern что Stage 1 base).
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean \
+ && apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
-      git \
- && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+      git
 
 WORKDIR /tmp/freecad
-# T155: BuildKit HTTP/2 на github.com releases — flaky (intermittent
-# TLS resets / connection drops). FreeCAD 1.1.1 AppImage ~820 MB —
-# крупный, на slow link single transfer не успевает. Defensive curl
-# flags:
+# T155 + T159: BuildKit HTTP/2 на github.com releases flaky + AppImage
+# 820 MB. T155 — curl resilience flags; T159 — persistent cache mount
+# для AppImage. С cache file скачивается **один раз ever** (per
+# FREECAD_VERSION); subsequent builds — instant cache hit + SHA verify.
+# При flaky link это огромная экономия (часы → секунды).
+# curl flags (T155):
 #   --http1.1               обходит HTTP/2 race condition.
-#   --retry 5 --retry-delay 5  retry transient connection errors
-#                           (5 attempts — больше запас для flaky link).
-#   --retry-all-errors      без него curl exit 18 (partial transfer)
-#                           НЕ triggers retry — самый частый mode failure.
-#   --max-time 3600         hard cap 60 min на attempt; cap'ит hung
-#                           connections (без него curl ждёт infinity).
-#   -C -                    resume from partial download (без него
-#                           каждая retry качает с нуля и `--max-time`
-#                           может не хватить на 820 MB при slow link).
-RUN curl -fsSL --http1.1 --retry 5 --retry-delay 5 --retry-all-errors \
-        --max-time 3600 -C - -o fc.AppImage \
-      "https://github.com/FreeCAD/FreeCAD/releases/download/${FREECAD_VERSION}/FreeCAD_${FREECAD_VERSION}-Linux-x86_64-py311.AppImage" \
- && echo "${FREECAD_SHA256}  fc.AppImage" | sha256sum -c - \
+#   --retry 5 --retry-delay 5  retry transient connection errors.
+#   --retry-all-errors      retry на exit 18 (partial transfer).
+#   --max-time 3600         hard cap 60 min на attempt.
+#   -C -                    resume from partial download.
+RUN --mount=type=cache,target=/cache/freecad,sharing=locked \
+    if [ ! -f /cache/freecad/fc.AppImage ] \
+    || [ "$(sha256sum /cache/freecad/fc.AppImage | cut -d' ' -f1)" != "${FREECAD_SHA256}" ]; then \
+        echo "T159: cache miss — downloading FreeCAD AppImage"; \
+        curl -fsSL --http1.1 --retry 5 --retry-delay 5 --retry-all-errors \
+             --max-time 3600 -C - -o /cache/freecad/fc.AppImage.tmp \
+             "https://github.com/FreeCAD/FreeCAD/releases/download/${FREECAD_VERSION}/FreeCAD_${FREECAD_VERSION}-Linux-x86_64-py311.AppImage"; \
+        echo "${FREECAD_SHA256}  /cache/freecad/fc.AppImage.tmp" | sha256sum -c -; \
+        mv /cache/freecad/fc.AppImage.tmp /cache/freecad/fc.AppImage; \
+    else \
+        echo "T159: cache hit — using cached FreeCAD AppImage"; \
+    fi \
+ && cp /cache/freecad/fc.AppImage fc.AppImage \
  && chmod +x fc.AppImage \
  && ./fc.AppImage --appimage-extract >/dev/null \
  && mv squashfs-root /opt/freecad \
