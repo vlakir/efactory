@@ -98,3 +98,28 @@ def test_dockerfile_freecad_curl_has_max_time() -> None:
         'FreeCAD AppImage curl должен использовать `--max-time SEC` '
         '(T155 follow-up — без cap hung connections не fail-fast в retry)'
     )
+
+
+def test_dockerfile_freecad_curl_has_resume() -> None:
+    """`-C -` (`--continue-at -`) — resume from partial download.
+
+    Без него каждая retry начинает с нуля. На slow link (~7 MB/min) +
+    820 MB AppImage даже 60-минутный `--max-time` cap не успевает в
+    одну попытку. С `-C -` retries продолжают с offset → faster overall.
+    Обнаружено в warm rebuild T141 #2 (2026-05-30, 33 min, 227/820 MB).
+    """
+    text = _DOCKERFILE.read_text(encoding='utf-8')
+    idx = text.find('fc.AppImage')
+    context_start = text.rfind('RUN ', 0, idx)
+    context_end = text.find('\n\n', idx)
+    if context_end == -1:
+        context_end = len(text)
+    context = text[context_start:context_end]
+
+    # `-C -` (short form) или `--continue-at -` (long form).
+    has_short = '-C -' in context or '-C-' in context
+    has_long = '--continue-at' in context
+    assert has_short or has_long, (
+        'FreeCAD AppImage curl должен использовать `-C -` или '
+        '`--continue-at -` для resume partial transfer'
+    )

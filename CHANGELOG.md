@@ -61,12 +61,18 @@ T-ID между релизами — `CHANGELOG.md` единственное per
     failure на github.com releases при flaky link) НЕ triggers
     retry. Обнаружено в warm rebuild T141 verification 2026-05-30
     (84 мин stuck на partial transfer без retry).
-  - `--max-time 1800` — hard cap 30 мин на attempt; без него curl
+  - `--max-time 3600` — hard cap 60 мин на attempt; без него curl
     ждёт infinity при hung connection.
+  - `-C -` (resume) — каждая retry **продолжает** с partial offset
+    вместо start-over. Обнаружено в warm rebuild T141 #2 (2026-05-30):
+    FreeCAD 1.1.1 AppImage = **820 MB** (не 286), на slow link
+    ~7 MB/min single attempt не успевает в 30 мин → exit 28.
+    С `-C -` retries аккумулируют bytes.
+  - `--retry 5` (увеличен с 3) — больше запас для flaky link.
   - Regression-тест `tests/integration/test_dockerfile_freecad_
-    resilience.py` (+4) проверяет flags (`--http1.1`, `--retry`,
-    `--retry-all-errors`, `--max-time`).
-  - Compact (5 LOC Dockerfile + 4 tests), без spec'и. Pre-push
+    resilience.py` (+5) проверяет flags (`--http1.1`, `--retry`,
+    `--retry-all-errors`, `--max-time`, `-C -`).
+  - Compact (8 LOC Dockerfile + 5 tests), без spec'и. Pre-push
     gates все 5 зелёные.
 
 ### Added
