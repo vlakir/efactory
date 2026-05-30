@@ -507,22 +507,55 @@ A5/A6 — Phase A grep на `Project.id` references.
 
 ### Phase A — Inventory + domain VO extension
 
-1. **Inventory** (Critical A1/A2/A5/A6/A11):
-   - Grep всех use cases / tests / композиции которые используют
-     `MetadataRepository` vs `ProjectManifestRepository`. Build
-     map: «какой use case → какой port».
-   - Grep `project.id` / `Project.id` references — определить
-     где ID персистится / используется как stable reference.
-   - Inspect `Project` domain VO (`src/domain/project.py`) + `Phase`
-     entity (`src/domain/phase.py`) — нужно ли расширить.
-   - List все tests которые используют SQL-specific семантику
-     (UNIQUE error, FK cascade).
-2. **Domain extension** (если нужно — A2 resolution):
-   - `Project.phases: list[Phase]` field в domain VO.
-   - `ProjectManifest` Pydantic schema в `manifest_yaml` adapter
-     (если ещё нет) с `schema_version: 1`, `phases: list[PhaseEntry]`.
-3. **Acceptance tests on existing fake repository** — verify что
-   they pass on the Manifest adapter с/без changes.
+1. **Inventory completed 2026-05-30** (Critical A1/A2/A5 resolved):
+   - **MetadataRepository callers** (12 use cases): add_decision,
+     create_project, delete_project, design_to_netlist, design_to_sim,
+     edit_and_resim, get_decision, get_project, list_decisions,
+     list_projects, reindex_projects, update_project.
+   - **ProjectManifestRepository callers** (10 use cases) — already
+     adopt manifest-first pattern: add_decision, create_project,
+     design_to_netlist, design_to_sim, edit_and_resim, get_decision,
+     get_project, list_decisions, reindex_projects, update_project.
+     Most use cases **double-source**: SQL для lookup name→path,
+     manifest для load Project VO.
+   - **delete_project, list_projects** — single-sourced SQL only;
+     need refactor to filesystem scan (manifest_repo.discover_all
+     + load each).
+   - **`Project.id` usage** (Analyze A5): **ZERO** references outside
+     `src/adapters/outbound/persistence_sql/`. No filesystem paths
+     use ID, no sim-results paths reference it. **Safe** to keep id
+     в domain VO (для manifest serialisation) без external coupling.
+   - **`Project` domain VO** (Analyze A2): **already complete** —
+     `phases: PhasesTuple` + `id: UUID` + `decisions` уже existed
+     с T097/T098. **No domain extension needed.**
+   - **ProjectManifestRepository adapter** (`manifest_yaml/`) уже ready
+     с save/load/exists/discover_all. Sufficient для refactor.
+
+2. **Strategy для Phase B (refactor pattern):**
+   - Drop `repo: MetadataRepository` параметр.
+   - Add `projects_root: Path` параметр (уже в build_app, нужно
+     пробросить в use cases).
+   - Replace `repo.get_by_name(name)` lookup паттерном:
+     ```python
+     path = projects_root / name
+     if not await manifest_repo.exists(path):
+         raise ProjectNotFoundError(name)
+     ```
+   - Replace `repo.save(project)` → `manifest_repo.save(project)`
+     (manifest_repo уже это делает).
+   - Replace `repo.update(project)` → `manifest_repo.save(project)`.
+   - Replace `repo.delete_by_name(name)` →
+     `file_repo.remove_project_directory(path)`.
+   - Replace `repo.list_all()` →
+     `paths = await manifest_repo.discover_all(projects_root)`;
+     load each.
+
+3. **Acceptance tests** through manifest fake / file fixture — verify
+   что existing use case behavior preserved.
+
+**Scope estimate**: ~60 LOC change across 12 use cases (~5 LOC each)
++ delete `src/adapters/outbound/persistence_sql/` (~300 LOC) +
+remove deps. Net **delete-heavy** refactor.
 
 ### Phase B — Use case rewiring + reindex → validate
 
