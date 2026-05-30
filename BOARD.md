@@ -66,6 +66,33 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T157** — [closed 2026-05-30, PR #90] **De-engineering persistent
+  state: filesystem as single source of truth.** Архитектурный
+  refactor — убраны SQL-индекс (`MetadataRepository` + SQLAlchemy +
+  alembic + aiosqlite) и Kùzu graph-store адаптер. Manifest YAML
+  (`project.yaml`) + `decisions/D*.md` теперь единственное persistent
+  состояние.
+  - **12 use cases переписаны**: параметр `repo: MetadataRepository`
+    → `projects_root: Path`; loaders делают `path.is_dir()` +
+    `manifest_repo.load(path)`.
+  - **`reindex_projects` → `validate_manifests`**: diagnostic-only
+    scan; CLI флаг `--remove-orphans` удалён (нет SQL → нет
+    orphans). Старое имя — alias для callers.
+  - **Удалены файлы**: `src/adapters/outbound/persistence_sql/` (8
+    файлов), `tests/integration/adapters/persistence_sql/` (3),
+    `tests/integration/adapters/graph_store/`, 3 walking_skeleton-
+    теста про reindex/partial-failure, `alembic.ini`.
+  - **Deps дропнуты**: `sqlalchemy`, `aiosqlite`, `alembic`, `kuzu`
+    из `pyproject.toml` + importlinter contracts.
+  - **xfail follow-up T160**: project rename — manifest пишется с
+    новым именем но directory остаётся со старым путём.
+  - Diff: 66 файлов, +511 / -2869 (net -2358 LOC).
+  - Pre-push gates все 5 зелёные: 1265 passed / 9 skipped / 1
+    xfailed @ 84.60% coverage.
+  - **ADR в `DECISIONS.md` 2026-05-30** «Persistent state: filesystem
+    as single source of truth».
+  - Spec — `specs/T157-de-engineering-persistent-state/spec.md`.
+
 - **T022** — [closed 2026-05-27, PR #82] **Параметрический sweep
   (`bridge_sweep`) с tabular output + ASCII plot.** Третий шаг
   analysis-first ordering Фазы 2 после T023 (метрики) и T024 (plot).
