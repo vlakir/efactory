@@ -64,7 +64,7 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
-- **T021** — [closed 2026-05-30, PR #N] **`bridge edit-and-resim`
+- **T021** — [closed 2026-05-30, PR #93] **`bridge edit-and-resim`
   с автосравнением метрик до/после.** Финальная содержательная задача
   analysis-first ordering Фазы 2 (фундамент T023 метрики + T022 sweep).
   - **Domain** — 3 frozen Pydantic VO `Gain/Bandwidth/ThdDelta`
@@ -109,7 +109,7 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
     Clarify по рекомендации + Q-J override smoke in container;
     2 Critical разрешены in-spec, 5 Warning, 7 Note).
 
-- **T162** — [closed 2026-05-30, PR #N (T021)] **Backlog:
+- **T162** — [closed 2026-05-30, PR #93 (T021)] **Backlog:
   `tests/integration/application/__init__.py` создаёт namespace-
   коллизию с `src/application/`** при `--import-mode=importlib +
   pythonpath=["src"]`. Обнаружено в ходе T021 Phase A. Workaround:
