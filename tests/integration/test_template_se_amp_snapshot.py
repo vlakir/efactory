@@ -123,9 +123,31 @@ def test_se_amp_template_in_sync_with_builder(fresh_bake_dir: Path) -> None:
             differences.append(str(rel_path))
 
     if differences:
+        import difflib
+
+        diff_dump = []
+        for rel_path in differences:
+            fresh_text = _normalize(
+                (fresh_bake_dir / rel_path).read_text(encoding='utf-8')
+            )
+            baked_text = _normalize(
+                (_TEMPLATE_DIR / rel_path).read_text(encoding='utf-8')
+            )
+            udiff = list(
+                difflib.unified_diff(
+                    baked_text.splitlines(keepends=True),
+                    fresh_text.splitlines(keepends=True),
+                    fromfile=f'baked/{rel_path}',
+                    tofile=f'fresh/{rel_path}',
+                    n=1,
+                )
+            )[:40]
+            diff_dump.append(''.join(udiff))
         msg = (
             f'Template content drift in files: {differences}.\n'
-            f'Run `uv run python {_REGEN_SCRIPT.relative_to(_REPO_ROOT)}`.'
+            f'Run `uv run python {_REGEN_SCRIPT.relative_to(_REPO_ROOT)}`.\n'
+            f'--- Unified diff (first 40 lines):\n'
+            f'{chr(10).join(diff_dump)}'
         )
         pytest.fail(msg)
 
