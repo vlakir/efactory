@@ -82,6 +82,7 @@ from application.update_project import (
 from application.update_project import (
     update_project as update_project_use_case,
 )
+from application.validate_lib import validate_lib
 from domain.application import ApplicationKind
 from domain.decision import DecisionStatus
 from domain.knowledge_base import KbConflictError, KbEntry, KbParseError
@@ -969,6 +970,56 @@ def build_app(
         ComponentCategory.DIODE,
         'No diode models found.',
     )
+
+    # T146: SPICE-models static validator (`efactory lib validate <file>`).
+    lib_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    app.add_typer(lib_app, name='lib')
+
+    @lib_app.command('validate')
+    def lib_validate(
+        lib_file: Annotated[
+            str,
+            typer.Argument(help='Путь к SPICE `.lib` / `.cir` / `.net` файлу'),
+        ],
+    ) -> None:
+        """
+        T146: static validator — floating-node detection в `.SUBCKT`-блоках.
+
+        Каждая нода subckt должна встречаться ≥ 2 раз (external pin счёт
+        + internal touches). Ноды с count == 1 — floating (как `P3`/`S3`
+        в pre-T147 `OPT_SE_5K_8.lib`).
+
+        Exit codes:
+        - 0: no floating nodes.
+        - 1: floating nodes detected (printed details to stdout).
+        - 2: file not found / parse error.
+        """
+        path = Path(lib_file).resolve()
+        if not path.is_file():
+            typer.echo(f'lib file not found: {path}', err=True)
+            raise typer.Exit(code=2)
+        try:
+            report = validate_lib(path)
+        except OSError as exc:
+            typer.echo(f'read error: {exc}', err=True)
+            raise typer.Exit(code=2) from exc
+
+        typer.echo(f'lib: {report.lib_path}')
+        typer.echo(f'subckts validated: {report.subckts_validated}')
+        if report.skipped_subckts:
+            typer.echo(
+                f'skipped (X-subckt refs): {", ".join(report.skipped_subckts)}',
+            )
+        if not report.floating_nodes:
+            typer.echo('result: OK (no floating nodes)')
+            return
+        typer.echo(f'result: FLOATING ({len(report.floating_nodes)} node(s))')
+        for f in report.floating_nodes:
+            typer.echo(
+                f'  - {f.subckt}: node {f.node!r} '
+                f'occurs {f.occurrences} time(s) (expected ≥ 2)',
+            )
+        raise typer.Exit(code=1)
 
     app_subapp = typer.Typer(no_args_is_help=True, add_completion=False)
     app.add_typer(app_subapp, name='app')

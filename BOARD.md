@@ -156,6 +156,25 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
     se-amp-demo` с pre-existing `$HOME/efactory-state/claude/
     settings.json` (e.g. theme only) → файл содержит и theme, и
     hooks; SessionStart hook engages в TUI без `--reset-claude-state`.
+- **T146** — [closed 2026-05-27, PR #84] **`efactory lib validate
+  <file>`: SPICE-models static floating-node validator.** Каждая
+  нода `.SUBCKT`-блока должна встречаться ≥ 2 раз (external pin +
+  internal touch); count==1 → floating (pre-T147 P3/S3 pattern).
+  - `application/validate_lib.py` (~190 LOC) — pure heuristic
+    parser: regex `.SUBCKT`/`.ENDS`, per-element node-count table
+    (R/L/C/V/I/D/E/F/G/H/Q/J/M/S/W/T/O), ground special-case
+    (`0`/`GND`), X-subckt → `skipped_subckts`.
+  - CLI `efactory lib validate <file>` (new top-level `lib` subapp);
+    exit codes 0/1/2 (OK / floating / file error).
+  - **Тесты** (+17 unit): valid RC, post/pre-T147 OPT, dangling
+    resistor, ground special-case, BJT 3-node, MOSFET 4-node,
+    K-coupling refs, X-subckt skip, multi-subckt, comments,
+    lowercase, errors.
+  - **Immediate ROI**: real `OPT_PP_6K6_8.lib` сразу выдал 3
+    floating nodes (PC1/PC2/S3) → spin-off T158 в BACKLOG для
+    отдельного hot-fix'а (pre-existing bug аналогичный T147 на PP).
+  - Compact (~190 LOC + 17 tests + CLI), без spec'и.
+  - Pre-push gates все 5 зелёные (1157 passed, coverage 85.10%).
 
 - **T141** — [closed 2026-05-27, PR #79] **Dev-only build
   acceleration: `efactory-build-dev` / `efactory-build-libs-dev`
