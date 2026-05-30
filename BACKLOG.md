@@ -415,6 +415,23 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- Задачи признанные нужными, но без активного владельца / времени.
      Не идут в Doing до явного решения Разработчика «берём». -->
 
+- **T161** — [2026-05-30, обнаружено в T157 post-merge smoke]
+  **`bridge sim-run op` падает `IsADirectoryError: '.'` при пустом
+  NETLIST argument.** Если переменная `$NETLIST` в shell-обёртке не
+  экспортирована и попадает в `bash -c` subshell как пустая строка,
+  Typer передаёт `''` как `netlist: str` argument; где-то ниже по
+  стеку этот пустой path резолвится в `Path('.')` → `read_text()` на
+  директории → cryptic `IsADirectoryError`.
+  Воспроизводится: `uv run efactory bridge sim-run op ""`. То же
+  поведение, скорее всего, в `measure gain/bandwidth/thd` (общий
+  `_run_sim_and_report` путь — стоит проверить parametrized).
+  **Acceptance:** при пустом / несуществующем NETLIST CLI выдаёт
+  понятное сообщение вида `Netlist file not found: <path>` и
+  `raise typer.Exit(code=2)`, не падает traceback'ом в
+  `pathlib._local`. Минимальный fix — `Path(netlist).is_file()`
+  guard в `_run_sim_and_report` (или общем netlist-loader).
+  +parametrized тест на все sim-run / measure subcommands с empty
+  + non-existent argument.
 - **T003** — [2026-05-15, parked 2026-05-19 до Phase Cross-platform]
   bootstrap.ps1 для Windows: то же самое через winget/chocolatey +
   pip. **Parked:** efactory переходит на Docker-distribution (Linux
