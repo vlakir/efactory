@@ -415,6 +415,22 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- Задачи признанные нужными, но без активного владельца / времени.
      Не идут в Doing до явного решения Разработчика «берём». -->
 
+- **T162** — [2026-05-30, found during T021 Phase A]
+  `tests/integration/application/__init__.py` создаёт коллизию
+  namespace с `src/application/` при `--import-mode=importlib`
+  + `pythonpath=["src"]`. Симптом: при изолированном запуске
+  `pytest tests/integration/application/...` все тесты падают
+  `ModuleNotFoundError: No module named 'application.X'`, хотя в
+  полном `pytest` (когда unit tests прогружают src.application.*
+  первыми) проходят зелёные. T021 обошёл — расположил unit-style
+  use-case-test в `tests/unit/application/` (там `__init__.py` нет).
+  **Фикс:** удалить `tests/integration/application/__init__.py`,
+  проверить что `test_analyze_distortion_spectrum.py` и
+  `test_mag_verify_field.py` все ещё прогоняются. Возможно надо
+  удалить `__init__.py` из всех `tests/**/` для consistency.
+  Acceptance: `uv run pytest tests/integration/application/` 
+  собирает и проходит зелёным в изолированном run; `uv run pytest`
+  полным проходом тоже зелёный.
 - **T003** — [2026-05-15, parked 2026-05-19 до Phase Cross-platform]
   bootstrap.ps1 для Windows: то же самое через winget/chocolatey +
   pip. **Parked:** efactory переходит на Docker-distribution (Linux
@@ -807,10 +823,9 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- T020 переформулирован 2026-05-22 как research MCP-tool, перенесён
      в Фазу 8 (nice-to-have, не Phase 2). -->
 
-- **T021** — [2026-05-15] `bridge_edit_and_resim` с автосравнением
-  результатов (до/после).
-  Acceptance: после изменения схемы выводится дельта по ключевым
-  метрикам (gain, bandwidth, THD).
+<!-- T021 переехала в BOARD.md → Doing 2026-05-30. Spec —
+     specs/T021-edit-and-resim-delta/spec.md (Draft → готова к Clarify). -->
+
 <!-- T022 переехала в BOARD.md → Doing 2026-05-27. Top-level scope
      подтверждён в чате (B → c orthogonal `--analysis` + `--metric`;
      A/C/D/E/F/G/H/I — по рекомендации). T144 absorbed. Spec —

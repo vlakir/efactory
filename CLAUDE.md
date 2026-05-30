@@ -202,6 +202,37 @@ PR #N]`, а не placeholder `PR current`.
 
 ## Проект-специфичные правила
 
+### Сборка контейнера: `efactory-build-dev`, не `docker build` (T021, 2026-05-30)
+
+Для **любой** пересборки `efactory:linux` на dev-машине Разработчика
+**используем `./scripts/efactory-build-dev`** (T141 buildx wrapper с
+persistent layer cache в `~/efactory-buildcache/`), а не generic
+`docker build`.
+
+**Почему это правило:**
+
+- `docker build -t efactory:linux .` тянет каждый layer заново
+  (~30 мин), даже если код не менялся.
+- `./scripts/efactory-build-dev` с warm cache — секунды; с пустым cache
+  один раз — те же ~30 мин, **но cache persistent**.
+- T021 Phase D (2026-05-30) Гвидо сжёг ~30 минут вторым cold rebuild
+  через `docker build` (cache не использовался), потому что был
+  невнимателен. Правило закреплено чтобы не повторять.
+
+**Когда использовать generic `docker build`:**
+
+- Только при отсутствии `docker-buildx-plugin` на host'е (необычно).
+- Документация для **конечных** пользователей в `README.md` (они
+  скачивают efactory один раз и не имеют buildx).
+- В CI пайплайнах (T115) если решено не подключать buildx.
+
+**Что делать при OOM во время build / run:**
+
+Дефолтный `--memory=8g` лимит docker run в `efactory-up` (T021) ловит
+runaway memory у ngspice / FEM / PyOM advisor и убивает контейнер
+вместо global OOM-killer'а на хосте. Сообщение в stderr подскажет
+override: `EFACTORY_MEMORY_LIMIT=12g ./efactory-up ...`.
+
 ### Дисциплина sync с Agent Knowledge Base (T134, 2026-05-27)
 
 KB runtime-агента (`docker/runtime-agent-knowledge-base/`) — primary

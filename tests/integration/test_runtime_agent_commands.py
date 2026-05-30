@@ -28,6 +28,7 @@ _EXPECTED_COMMANDS = {
     'kb-search',
     'kb-add',
     'sweep',  # T022 Phase D
+    'edit-and-resim',  # T021 Phase C
 }
 _REQUIRED_FRONTMATTER = {'description', 'argument-hint', 'allowed-tools'}
 

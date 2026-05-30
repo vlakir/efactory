@@ -123,37 +123,64 @@ Cross-platform.
 
 ### Запуск KiCad GUI из контейнера (current state, T114+T121)
 
-Один раз — собрать оба образа:
+#### Как собрать образы
+
+Есть **два пути** — выбор зависит от того, планируешь ли ты
+пересобирать образ:
+
+**Recommended — `efactory-build-dev` (для разработки)**
+
+Wrapper над `docker buildx` с persistent layer cache в
+`~/efactory-buildcache/` (T141). Первый прогревочный build — как
+обычный `docker build` по времени (~30 мин), последующие — секунды,
+даже после изменений в Dockerfile (cache переиспользуется по слоям).
 
 ```bash
-docker build -t efactory:linux .                          # ~2.5 GB
+# Pre-requisites (Ubuntu/Debian):
+sudo apt install docker-buildx-plugin
+
+./scripts/efactory-build-dev                # → efactory:linux
+./scripts/efactory-build-libs-dev           # → efactory-libs:linux-dev
+./scripts/efactory-build-libs-dev --with-3d # → efactory-libs:linux-dev-3d
+
+# Cache: $HOME/efactory-buildcache/
+# Override: EFACTORY_BUILD_CACHE_DIR=/some/path ./scripts/efactory-build-dev
+```
+
+**Fallback — обычный `docker build` (для разовой первой установки)**
+
+Тот же Dockerfile portable — пользователь, скачивающий efactory
+впервые, может обойтись без buildx-plugin'а. Полный rebuild без
+cache (~30 мин), для каждого rebuild — заново.
+
+```bash
+docker build -t efactory:linux .                              # ~2.5 GB
 docker build -f Dockerfile.libs -t efactory-libs:linux-dev .  # ~450 MB
 # Опционально — 3D-модели для PCB-preview (~4 GB):
 # docker build -f Dockerfile.libs --build-arg INCLUDE_3DMODELS=1 \
 #     -t efactory-libs:linux-dev-3d .
 ```
 
-**Dev-only ускорение** (T141): для частых пересборок на той же
-машине есть wrapper над `docker buildx` с локальным persistent
-layer cache. Первый build столько же; повторный без изменений
-Dockerfile — секунды.
+**ADR 2026-05-24** «пользователь должен честно тянуть» — Dockerfile
+остаётся portable, buildx — опциональный dev-only ускоритель.
+
+#### Защита host'а от OOM (memory limit)
+
+`efactory-up` по умолчанию запускает контейнер с **`--memory=8g`**
+(T021, 2026-05-30). Защита от runaway ngspice TRAN, FEM advisor,
+PyOM advisor — kernel cgroup OOM-killer убивает процесс **внутри**
+контейнера, не разносит host'а.
 
 ```bash
-# Pre-requisites (Ubuntu/Debian):
-sudo apt install docker-buildx-plugin
+# Override (по умолчанию 8g):
+EFACTORY_MEMORY_LIMIT=12g ./efactory-up
 
-# Прогревочный build (как обычный docker build по времени):
-./scripts/efactory-build-dev                # → efactory:linux
-./scripts/efactory-build-libs-dev           # → efactory-libs:linux-dev
-./scripts/efactory-build-libs-dev --with-3d # → efactory-libs:linux-dev-3d
-
-# Повторный build без изменений — секунды (cache hit).
-# Cache: $HOME/efactory-buildcache/ (override через EFACTORY_BUILD_CACHE_DIR).
+# В headless / CI:
+EFACTORY_MEMORY_LIMIT=4g ./efactory-up --headless
 ```
 
-Dockerfile **остаётся portable** — пользователь, скачивающий
-efactory впервые, использует обычный `docker build` без зависимости
-на buildx (см. ADR 2026-05-24 «пользователь должен честно тянуть»).
+Если контейнер завершился с exit code 137 — был OOM-killed; в stderr
+будет диагностическое сообщение с подсказкой увеличить лимит.
 
 Дальше — `efactory-up` сам делает остальное:
 

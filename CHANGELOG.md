@@ -34,6 +34,168 @@ T-ID между релизами — `CHANGELOG.md` единственное per
      версию `[N.M.0]`. При закрытии milestone — переименовывается
      в очередную версию, ниже создаётся новая пустая `[Unreleased]`. -->
 
+### Added
+
+- **T021 — `bridge edit-and-resim` с автосравнением метрик до/после.**
+  Финальная содержательная задача analysis-first ordering Фазы 2
+  (после T023 метрики и T022 sweep). Команда `bridge edit-and-resim
+  <PROJECT> --schematic <abs.kicad_sch> --set REF=VALUE [...] --measure
+  {gain,bandwidth,thd} [...] [...]` сворачивает one-shot what-if
+  эксперимент (баseline measure → batch edit → after measure → delta
+  table) в одну CLI-команду — вместо ручного цикла из 4 шагов.
+  - **Domain VO** — 3 frozen Pydantic class'а в `src/domain/
+    measurement_delta.py`: `GainDelta` / `BandwidthDelta` / `ThdDelta`
+    (Phase-coherent с T023: 3 independent VO без union'а, Clarify
+    Q-F → a). Поля: `before` (T023 Measurement), `after`
+    (Measurement|None), `delta_absolute` (signed float|None),
+    `delta_relative_percent` (signed % |None), `failed_reason`
+    (str|None), `metric_field` Literal-дискриминатор. Validators:
+    after=None ⇔ delta_*=None ⇔ failed_reason set; NaN-forbid в
+    delta_*. Classmethods `from_measurements` / `from_failed_after`.
+  - **Use case** `application/edit_and_resim_with_delta.py` (T004b
+    `edit_and_resim` оставлен нетронутым, Clarify Q-A → b):
+    `edit_and_resim_with_delta(...)` принимает schematic + edits
+    list + `EditAndResimConfig` + 3 outbound ports (Exporter +
+    Simulator + NetlistEditor). Sequence: export baseline → measure
+    baseline × N → `SchematicSnapshot` + batch edit → export after
+    → measure after × N → assemble `EditAndResimReport.deltas`.
+    Strict baseline (failure → `BaselineFailedError`, edits НЕ
+    применяются); per-metric continue-on-failure после edit'ов
+    (Q-E → a); after-export failure → все метрики помечаются failed.
+  - **`EditAndResimConfig`** (Pydantic frozen) — единый набор флагов
+    на все метрики (Q-C → a, T022 паттерн); model_validator с
+    per-metric required-fields (`frequency_hz` для gain/thd,
+    `v_in_peak` для gain-large/thd) + silent dedupe `metrics`
+    list (UX: Typer-повторяемый `--measure` может дать duplicates).
+  - **`EditAndResimReport`** (frozen) — schematic + edits + deltas
+    (`Annotated discriminator='metric_field'`) + project metadata
+    (Q-H → b: полные before/after VO-объекты в JSON для
+    programmatic consumers).
+  - **CLI команда** `bridge edit-and-resim` в `src/adapters/inbound/
+    cli/app.py`: 14 флагов (--set repeatable, --measure repeatable,
+    --freq, --v-in-peak, --f-low/--f-high, --mode, --output-signal,
+    --input-signal, --input-source, --output text|json, --output-
+    file, --netlist-dir, --timeout). Validation chain: format → metric
+    enum → mode → output → EditAndResimConfig; cryptic ValidationError
+    превращается в человеко-читаемое сообщение. Soft warn >10 edits
+    в stderr (W5 / T022 паттерн). Error handling:
+    `BaselineFailedError`/`ComponentNotFoundError`/`MultipleMatchesError`
+    → exit 1 (с явным «Rollback» для last двух — SchematicSnapshot
+    откатил); exit 1 при наличии failed-метрики (CI-friendly signal).
+  - **Renderer** `src/adapters/inbound/cli/edit_and_resim_renderer.
+    py`: text — aligned plain-text table (Metric / Field / Before /
+    After / Δ / Δ%) с шапкой Project + Schematic + Edits; failed-
+    метрика печатает FAILED + sub-row с failed_reason. json —
+    `model_dump_json(indent=2)` (Q-H → b: полные VO-объекты).
+    Fixed-point форматирование в [0.001, 1e5), иначе scientific
+    notation; signed delta; NaN-safe percent.
+  - **Slash `/edit-and-resim`** + KB sync Levels 1+2:
+    `docker/runtime-agent-commands/edit-and-resim.md` — detailed
+    body с Pitfalls (strict baseline, multi-V netlist, large mode
+    input-signal) и «когда выбирать / не выбирать» (vs /sweep /
+    /measure-* / /edit); `agent.command-routing.md` — новая строка
+    mapping + special case «what-if на схеме с несколькими метриками»;
+    regression case `('what-if delta gain bandwidth',
+    'agent.command-routing', '/edit-and-resim')` в
+    `test_control_examples.py`. `runtime-agent-CLAUDE.md` обновлён.
+  - **Level 3 smoke в контейнере** (вскрыл root-cause / pivot scope):
+    - **Apt'овский ngspice 42 (Ubuntu 24.04 noble) имеет XSPICE TRAN
+      memory leak**, который инкрементально ест RAM на saturable
+      A-devices (OPT_SE_5K_8.lib через gyrator-cap, KB
+      `spice.saturable-gyrator-cap`). Первая попытка smoke на
+      `se-amp-demo` сожрала **8.8 GB RSS дважды подряд** в `ngspice`-
+      subprocess → global OOM-killer → host-side reboot. Тот же
+      netlist на хосте (ngspice 45.2 из Ubuntu 25.04 universe) —
+      44 MB RSS, 0.32 sec.
+    - **Решение в скоупе T021**: новый Dockerfile stage `ngspice-build`
+      собирает ngspice 45.2 из source (github mirror
+      `imr/ngspice` через codeload — sourceforge нестабилен через
+      Cloudflare). Configure flags `--enable-xspice --enable-cider
+      --with-readline=yes --enable-pss --enable-osdi --disable-debug`.
+      Install в `/opt/ngspice/`; final stage ln'ит на
+      `/usr/local/bin/ngspice` — приоритетен в PATH над apt'овским
+      42 (`/usr/bin`). Apt'овский ngspice 42 + libngspice0 остаются
+      на месте — KiCad Simulator GUI использует C++ linkage. CLI
+      pipeline (`bridge sim-run / measure / edit-and-resim`) теперь
+      использует 45.2 субпроцессом; KiCad — 42 через libngspice0.
+    - **Cache mount apt** (`--mount=type=cache,target=/var/cache/apt,
+      sharing=locked`) на ngspice-build stage — амортизация
+      нестабильного archive.ubuntu.com mirror'а. Первый build с
+      пустым кэшем — медленный; последующие — мгновенно.
+    - **Новый KB topic** `spice.ngspice-version-upgrade` — фиксирует
+      rationale + fallback steps; cross-ref добавлен в
+      `agent.command-routing.md`.
+    - **Smoke results в контейнере** с `--memory=4g`:
+      - `bridge measure thd se-amp-demo --freq 1k --v-in-peak 0.1
+        --input-source V2 --signal v(/output_probe)`: 0.5 sec wall,
+        THD = 15.9%, exit 0, без OOM.
+      - `bridge edit-and-resim se-amp-demo --set R2=330 --measure gain
+        --measure thd --freq 1k --v-in-peak 0.1 --input-source V2
+        --output-signal v(/output_probe)`: valid JSON delta —
+        gain_db Δ ≈ +0.4 dB, thd_percent Δ = +2.49% absolute /
+        +15.7% relative (physically sensible: больший R_k смещает
+        bias, тогда выше small-signal gain, но усиливается clipping
+        → THD растёт).
+  - **+52 теста**: 19 domain (validators / JSON round-trip / NaN-
+    forbid / frozen-immutability), 19 application use-case (config
+    validators / happy path single&multi-metric / edits ordering /
+    baseline-edit-after failure pathways / SchematicSnapshot rollback /
+    partial after failure / after-export failure / duplicate metric
+    dedupe / Multiple/ComponentNotFoundError rollback / SOFT_WARN_EDITS
+    constant exported), 10 CLI renderer (text columns / multiple
+    deltas / zero-before / failed marker; json round-trip / pretty-
+    print / full measurement objects / null failed), 4 CLI e2e
+    (invalid --set / unknown --measure / missing --freq / полный
+    real-ngspice cycle на RC-фильтре).
+  - **Out of scope (явно)**: sweep по диапазону (T022); multi-sheet /
+    hierarchical schematic; визуализация дельты графиком; persistence
+    дельты отдельным sim-result kind'ом (T016 SSOT + filesystem);
+    schematic input → design-to-measure pipeline (.cir only); THD
+    target-power calibration (T131); phase margin (T153 / feedback
+    fixture); automatic rollback при «дельта в плохую сторону»
+    (exit-код отражает технический успех, не направление дельты).
+  - **Build discipline и memory safety net** (T021 sub-scope, per
+    request 2026-05-30):
+    - `README.md` «Как собрать образы» переписан с явным разделением
+      на recommended `./scripts/efactory-build-dev` (buildx persistent
+      cache, T141) и fallback `docker build` (для end-user без
+      buildx). Гвидо в T021 Phase D потерял ~30 минут на cold
+      rebuild через generic `docker build` — правило закреплено.
+    - Проектный `CLAUDE.md` получил новый раздел «Сборка контейнера»
+      с явным rule «для любой пересборки `efactory:linux` —
+      `./scripts/efactory-build-dev`, не generic `docker build`».
+    - `efactory-up` получил `--memory=8g --memory-swap=8g` default
+      на всех 3 docker run (AGENT_MODE / HEADLESS / GUI / demo-
+      freecad) + env var override `EFACTORY_MEMORY_LIMIT`. Cgroup
+      OOM-killer теперь бьёт по процессу внутри контейнера, host
+      остаётся живым.
+    - `efactory-up` получил `diagnose_exit` helper — после `docker
+      run` диагностирует exit code: 137 → actionable message про
+      OOM + EFACTORY_MEMORY_LIMIT override suggestion + cross-ref на
+      KB `spice.ngspice-version-upgrade` / `magnetics.pyom-advisor`;
+      139 → segfault hint про `--headless`.
+  - **Owner manual smoke** (после merge): `./scripts/efactory-build-dev` +
+    `./efactory-up --reset-claude-state` + `/edit-and-resim
+    se-amp-demo --schematic schematic/se_amp.kicad_sch --set
+    R5=2k --measure gain --measure thd --freq 1k --v-in-peak 0.1
+    --input-source V2 --output-signal v(load)`.
+  - Spec — `specs/T021-edit-and-resim-delta/spec.md` (Analyzed: 10
+    Clarify по рекомендации + Q-J override smoke in container;
+    2 Critical разрешены in-spec — A1 accepted 6 ngspice runs cost,
+    A2 use case оборачивает SchematicSnapshot; 5 Warning, 7 Note).
+  - Pre-push gates: ruff/format/mypy зелёные; pytest 1336 passed,
+    9 skipped, 1 xfailed; coverage 84.76%.
+- **T162 — backlog: tests/integration/application/__init__.py создаёт
+  коллизию namespace** при `--import-mode=importlib + pythonpath=src`.
+  Симптом обнаружен в ходе T021 Phase A: изолированный `pytest
+  tests/integration/application/test_*.py` падает
+  `ModuleNotFoundError: No module named 'application.X'` несмотря
+  на то что полный `pytest` (когда unit-тесты прогружают src/
+  первыми) проходит. Workaround в T021: новый use-case-test
+  расположен в `tests/unit/application/` (где `__init__.py` отсутствует).
+  Засписан в Tech Debt; fix — удалить `__init__.py` из `tests/**/`
+  пакетов для consistency с importlib mode.
+
 ### Removed
 
 - **T157 — De-engineering persistent state: filesystem as single
