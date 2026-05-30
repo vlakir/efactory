@@ -230,6 +230,33 @@ T-ID между релизами — `CHANGELOG.md` единственное per
   - ADR в `DECISIONS.md` 2026-05-30 «Persistent state: filesystem
     as single source of truth». (T157)
 
+- **T159 — BuildKit cache mounts: радикальное ускорение rebuilds
+  (apt + uv + FreeCAD AppImage cache).** Cold full build (~2h на
+  slow link, dominated 96 мин apt + ~30 мин AppImage download +
+  uv sync ~10 мин) → **secondary builds — секунды-минуты** благодаря
+  persistent caches между builds.
+  - **apt cache** (`--mount=type=cache,target=/var/cache/apt + /var/lib/apt`)
+    в Stage 1 (base) + Stage 3 (freecad-appimage). Disabled
+    `docker-clean` apt hook + enabled `Keep-Downloaded-Packages` —
+    debs persist в cache mount.
+  - **uv cache** (`--mount=type=cache,target=/root/.cache/uv`) в
+    Stage 2 (python-deps) — wheel downloads persist.
+  - **FreeCAD AppImage cache** (`--mount=type=cache,target=/cache/freecad`)
+    в Stage 3 — 820 MB AppImage download happens **один раз ever**
+    (per FREECAD_VERSION). При flaky link это **критично** —
+    instead часов ожидания получаем instant cache hit + SHA verify.
+    Conditional skip: если cached file SHA matches → skip curl
+    entirely; иначе download via tmp file + atomic move.
+  - **Dockerfile остаётся portable** (CI/GHCR/cold dev-host — full
+    downloads первый раз; secondary builds cache hit'аются).
+  - **Тесты** (+5 regression): syntax header, apt cache в base,
+    uv cache в python-deps, FreeCAD persistent cache, conditional
+    skip logic в FreeCAD step.
+  - Compact (~20 LOC Dockerfile + 5 tests), без spec'и.
+  - **Acceptance**: после первого full build на dev-host, изменение
+    src/ (любое) + `efactory-build-dev` → секунды (apt+npm+uv
+    cached, FreeCAD cache hit + extract).
+
 ### Fixed
 
 - **T161 — defensive guard для пустого / несуществующего NETLIST
