@@ -67,6 +67,13 @@
 #     EFACTORY_LIBS_DIR     Libraries dir (default $HOME/efactory-libs).
 #     EFACTORY_KICAD_BIN    Какой бинарь стартовать в GUI режиме
 #                           (default kicad).
+#     EFACTORY_MEMORY_LIMIT Docker --memory limit (default 8g, T021). Защищает
+#                           host от global OOM при runaway ngspice TRAN / FEM
+#                           advisor / PyOM advisor. Cgroup OOM-killer бьёт по
+#                           процессу внутри контейнера, host остаётся живым.
+#                           Override типа `EFACTORY_MEMORY_LIMIT=12g
+#                           ./efactory-up`. Применяется ко всем режимам
+#                           (--agent / --headless / GUI / --demo).
 
 set -euo pipefail
 
@@ -76,7 +83,34 @@ STATE_DIR="${EFACTORY_STATE_DIR:-$HOME/efactory-state}"
 PROJECTS_DIR="${EFACTORY_PROJECTS_DIR:-$HOME/efactory-projects}"
 LIBS_DIR="${EFACTORY_LIBS_DIR:-$HOME/efactory-libs}"
 KICAD_BIN="${EFACTORY_KICAD_BIN:-kicad}"
+# T021: --memory limit для защиты host'а от global OOM (см. KB
+# spice.ngspice-version-upgrade — saturable XSPICE TRAN мог в прошлом
+# выкатиться в 8+ GB RSS).
+MEMORY_LIMIT="${EFACTORY_MEMORY_LIMIT:-8g}"
+MEMORY_ARGS=(--memory "$MEMORY_LIMIT" --memory-swap "$MEMORY_LIMIT")
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# T021: после `docker run` диагностируем exit code — OOM-kill (137) /
+# segfault (139) дают нечитаемые exit без объяснения. Wrapper ловит и
+# печатает actionable suggestion (EFACTORY_MEMORY_LIMIT override).
+diagnose_exit() {
+    local rc="$1"
+    case "$rc" in
+        137)
+            log "FATAL: контейнер убит OOM-killer'ом (cgroup memory limit ${MEMORY_LIMIT})."
+            log "  Типичные причины: runaway ngspice TRAN на saturable A-device"
+            log "  (см. KB spice.ngspice-version-upgrade), FEM-сетка слишком плотная,"
+            log "  PyOM advisor (см. KB magnetics.pyom-advisor)."
+            log "  Override лимит: EFACTORY_MEMORY_LIMIT=12g ./efactory-up ..."
+            ;;
+        139)
+            log "FATAL: контейнер упал по SIGSEGV (segmentation fault)."
+            log "  Возможные причины: ngspice/FEM coredump, GPU/X11 несовместимость."
+            log "  Запусти с --headless для исключения GUI factors."
+            ;;
+    esac
+    return "$rc"
+}
 
 # Flags
 DO_PULL=0
@@ -262,11 +296,16 @@ if (( DEMO_FREECAD_MODE )); then
     if [[ ! -f "$FREECAD_DEMO_DIR_HOST/bracket.FCStd" ]]; then
         log "bracket demo не найден — генерирую через freecadcmd внутри контейнера"
         docker run --rm \
+            "${MEMORY_ARGS[@]}" \
             -v "$PROJECTS_DIR:/workspace:rw" \
             --user "$(id -u):$(id -g)" \
             "$IMAGE" \
-            freecadcmd /opt/efactory/scripts/gen-bracket-demo.FCMacro \
-            || fail "генератор bracket-demo упал"
+            freecadcmd /opt/efactory/scripts/gen-bracket-demo.FCMacro
+        bracket_rc=$?
+        if (( bracket_rc != 0 )); then
+            diagnose_exit "$bracket_rc" || true
+            fail "генератор bracket-demo упал (exit=$bracket_rc)"
+        fi
     fi
     LAUNCH_BIN="freecad"
     PASS_ARGS=(/workspace/sheetmetal-bracket-demo/bracket.FCStd "${PASS_ARGS[@]}")
@@ -278,7 +317,11 @@ if (( HEADLESS )); then
     if (( ${#PASS_ARGS[@]} > 0 )); then
         cmd=("${PASS_ARGS[@]}")
     fi
-    exec docker run --rm "$IMAGE" "${cmd[@]}"
+    # Не `exec`: нужен diagnose_exit fallback при OOM/segfault.
+    docker run --rm "${MEMORY_ARGS[@]}" "$IMAGE" "${cmd[@]}"
+    exit_code=$?
+    diagnose_exit "$exit_code" || true
+    exit "$exit_code"
 fi
 
 # ── Claude Code state bootstrap (T016 settings + T014 commands) ────────────
@@ -465,7 +508,8 @@ if (( AGENT_MODE )); then
     # сработал (Analyzed issue #2 в T013 spec'е); явное указание через флаг —
     # надёжно и не зависит от поиска по файловой системе.
     # bash -c обёртка нужна для $(cat) интерполяции внутри контейнера.
-    exec docker run --rm -it \
+    docker run --rm -it \
+        "${MEMORY_ARGS[@]}" \
         "${AGENT_ENV_ARGS[@]}" \
         -v "$STATE_DIR/claude:/efactory/.claude:rw" \
         -v "$STATE_DIR/knowledge-base:/efactory/knowledge-base/host-mutated:rw" \
@@ -474,6 +518,9 @@ if (( AGENT_MODE )); then
         "$IMAGE" \
         bash -c 'exec claude --dangerously-skip-permissions --append-system-prompt "$(cat /CLAUDE.md)" "$@"' \
         bash "${PASS_ARGS[@]}"
+    exit_code=$?
+    diagnose_exit "$exit_code" || true
+    exit "$exit_code"
 fi
 
 # ── GUI: pre-flight для X11 ────────────────────────────────────────────────
@@ -514,7 +561,8 @@ xhost "+SI:localuser:#${HOST_UID}" >/dev/null
 trap 'xhost "-SI:localuser:#${HOST_UID}" >/dev/null || true' EXIT
 
 # `docker run --rm`: state / projects / libs / X11 / Xauthority + локали.
-exec docker run --rm \
+docker run --rm \
+    "${MEMORY_ARGS[@]}" \
     -e DISPLAY \
     "${LOCALE_ARGS[@]}" \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
@@ -528,3 +576,6 @@ exec docker run --rm \
     "${DRI_ARGS[@]}" \
     "$IMAGE" \
     "$LAUNCH_BIN" "${PASS_ARGS[@]}"
+gui_exit_code=$?
+diagnose_exit "$gui_exit_code" || true
+exit "$gui_exit_code"

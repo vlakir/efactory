@@ -154,7 +154,27 @@ T-ID между релизами — `CHANGELOG.md` единственное per
     target-power calibration (T131); phase margin (T153 / feedback
     fixture); automatic rollback при «дельта в плохую сторону»
     (exit-код отражает технический успех, не направление дельты).
-  - **Owner manual smoke** (после merge): `docker build` +
+  - **Build discipline и memory safety net** (T021 sub-scope, per
+    request 2026-05-30):
+    - `README.md` «Как собрать образы» переписан с явным разделением
+      на recommended `./scripts/efactory-build-dev` (buildx persistent
+      cache, T141) и fallback `docker build` (для end-user без
+      buildx). Гвидо в T021 Phase D потерял ~30 минут на cold
+      rebuild через generic `docker build` — правило закреплено.
+    - Проектный `CLAUDE.md` получил новый раздел «Сборка контейнера»
+      с явным rule «для любой пересборки `efactory:linux` —
+      `./scripts/efactory-build-dev`, не generic `docker build`».
+    - `efactory-up` получил `--memory=8g --memory-swap=8g` default
+      на всех 3 docker run (AGENT_MODE / HEADLESS / GUI / demo-
+      freecad) + env var override `EFACTORY_MEMORY_LIMIT`. Cgroup
+      OOM-killer теперь бьёт по процессу внутри контейнера, host
+      остаётся живым.
+    - `efactory-up` получил `diagnose_exit` helper — после `docker
+      run` диагностирует exit code: 137 → actionable message про
+      OOM + EFACTORY_MEMORY_LIMIT override suggestion + cross-ref на
+      KB `spice.ngspice-version-upgrade` / `magnetics.pyom-advisor`;
+      139 → segfault hint про `--headless`.
+  - **Owner manual smoke** (после merge): `./scripts/efactory-build-dev` +
     `./efactory-up --reset-claude-state` + `/edit-and-resim
     se-amp-demo --schematic schematic/se_amp.kicad_sch --set
     R5=2k --measure gain --measure thd --freq 1k --v-in-peak 0.1
