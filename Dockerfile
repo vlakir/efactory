@@ -192,9 +192,17 @@ RUN apt-get update \
 
 WORKDIR /tmp/freecad
 # T155: BuildKit HTTP/2 на github.com releases — flaky (intermittent
-# TLS resets / connection drops). `--http1.1` обходит HTTP/2 race;
-# `--retry 3 --retry-delay 5` — defensive против transient errors.
-RUN curl -fsSL --http1.1 --retry 3 --retry-delay 5 -o fc.AppImage \
+# TLS resets / connection drops). Defensive curl flags:
+#   --http1.1               обходит HTTP/2 race condition.
+#   --retry 3 --retry-delay 5  retry transient connection errors.
+#   --retry-all-errors      без него curl exit 18 (partial transfer)
+#                           НЕ triggers retry — а это самый частый mode
+#                           failure на github.com releases (~286 MB
+#                           transfer закрывается посередине).
+#   --max-time 1800         hard cap 30 min на attempt; защита от
+#                           hung connections (без него — wait infinity).
+RUN curl -fsSL --http1.1 --retry 3 --retry-delay 5 --retry-all-errors \
+        --max-time 1800 -o fc.AppImage \
       "https://github.com/FreeCAD/FreeCAD/releases/download/${FREECAD_VERSION}/FreeCAD_${FREECAD_VERSION}-Linux-x86_64-py311.AppImage" \
  && echo "${FREECAD_SHA256}  fc.AppImage" | sha256sum -c - \
  && chmod +x fc.AppImage \

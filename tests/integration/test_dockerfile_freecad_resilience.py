@@ -59,3 +59,42 @@ def test_dockerfile_freecad_curl_has_retry() -> None:
         'FreeCAD AppImage curl должен использовать `--retry N` '
         '(T155 — defensive против transient network errors)'
     )
+
+
+def test_dockerfile_freecad_curl_has_retry_all_errors() -> None:
+    """`--retry-all-errors` обязателен: без него exit 18 (partial
+    transfer — самый частый mode failure на github.com releases) НЕ
+    triggers retry. Обнаружено 2026-05-30 в warm rebuild T141."""
+    text = _DOCKERFILE.read_text(encoding='utf-8')
+    idx = text.find('fc.AppImage')
+    context_start = text.rfind('RUN ', 0, idx)
+    context_end = text.find('\n\n', idx)
+    if context_end == -1:
+        context_end = len(text)
+    context = text[context_start:context_end]
+
+    assert '--retry-all-errors' in context, (
+        'FreeCAD AppImage curl должен использовать `--retry-all-errors` '
+        '(T155 follow-up — без него exit 18 partial-transfer не '
+        'триггерит retry)'
+    )
+
+
+def test_dockerfile_freecad_curl_has_max_time() -> None:
+    """`--max-time` защищает от hung connections (curl default = infinity).
+
+    Без cap warm rebuild T141 застрял на 84 мин на single attempt вместо
+    retry'я после короткого timeout.
+    """
+    text = _DOCKERFILE.read_text(encoding='utf-8')
+    idx = text.find('fc.AppImage')
+    context_start = text.rfind('RUN ', 0, idx)
+    context_end = text.find('\n\n', idx)
+    if context_end == -1:
+        context_end = len(text)
+    context = text[context_start:context_end]
+
+    assert '--max-time' in context, (
+        'FreeCAD AppImage curl должен использовать `--max-time SEC` '
+        '(T155 follow-up — без cap hung connections не fail-fast в retry)'
+    )
