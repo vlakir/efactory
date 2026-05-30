@@ -53,6 +53,12 @@ tags: [agent, slash-commands, routing, scope]
   (1-5 edits + 1-3 метрики). Для диапазона значений → `/sweep`
   (T022), не `/edit-and-resim`.
 
+- **«ngspice OOM / memory growth на TRAN»** — см. KB
+  `spice.ngspice-version-upgrade` (контейнер использует 45.2 из
+  source, apt 42 имел XSPICE TRAN memory leak). На свежесобранном
+  образе проблемы быть не должно; если есть — пересобрать через
+  `./scripts/efactory-build-dev`.
+
 ## Когда лезть в исходники efactory
 
 Только если: (а) `/help` + `/kb-search` ничего не нашли, (б)

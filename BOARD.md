@@ -61,21 +61,61 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T021** — [2026-05-30] **`bridge edit-and-resim` с автосравнением
-  результатов (до/после).** Финальная содержательная задача
-  analysis-first ordering Фазы 2 (фундамент T023 метрики + T022
-  sweep). Use case-агрегатор: baseline measure → batch edit →
-  re-measure → diff; CLI `bridge edit-and-resim` с `--measure
-  {gain,bandwidth,thd}` (one-or-many); domain VO `MeasurementDelta`
-  per metric (before/after/delta + relative %). Rollback при ошибке
-  edit'а через `SchematicSnapshot` (как в `bridge edit`).
-  Acceptance: после изменения схемы выводится таблица «до/после/Δ»
-  по выбранным метрикам, exit-код отражает технический успех
-  pipeline (не направление дельты).
-  Spec — `specs/T021-edit-and-resim-delta/spec.md` (Draft).
-
 
 ## Done
+
+- **T021** — [closed 2026-05-30, PR #N] **`bridge edit-and-resim`
+  с автосравнением метрик до/после.** Финальная содержательная задача
+  analysis-first ordering Фазы 2 (фундамент T023 метрики + T022 sweep).
+  - **Domain** — 3 frozen Pydantic VO `Gain/Bandwidth/ThdDelta`
+    (Phase-coherent с T023 без union'а, Q-F → a):
+    `before`/`after`/`delta_absolute`/`delta_relative_percent`/
+    `failed_reason` + `metric_field` Literal-дискриминатор. Classmethods
+    `from_measurements` / `from_failed_after`; validators
+    `after==None ⇔ failed_reason set` + NaN-forbid в delta.
+  - **Use case** `edit_and_resim_with_delta` (T004b `edit_and_resim`
+    оставлен нетронутым, Q-A → b): export baseline → measure × N →
+    `SchematicSnapshot` batch edit → export after → measure × N →
+    assemble Deltas. **Strict baseline** (failure → `BaselineFailedError`,
+    edit'ы не применяются, Q-E → a); **per-metric continue-on-failure**
+    после edit'ов; after-export failure → все метрики failed.
+    `EditAndResimConfig` (Pydantic frozen) — единый набор флагов
+    на все метрики (Q-C → a, T022 паттерн) + per-metric required-
+    fields + silent dedupe `metrics`.
+  - **CLI** `bridge edit-and-resim <PROJECT> --schematic ... --set
+    REF=VALUE [...] --measure {gain,bandwidth,thd} [...] [...]`
+    (Q-B → a): 14 флагов + validation chain + soft-warn >10 edits +
+    explicit error mapping (BaselineFailedError → exit 1; Component/
+    MultipleMatchesError → exit 1 + Rollback message; failed-metric →
+    exit 1).
+  - **Renderer** text aligned table (Metric/Field/Before/After/Δ/Δ%)
+    + json (Q-H → b, полные before/after VO + delta + edits + project).
+  - **Slash `/edit-and-resim`** + KB sync Levels 1+2 (mapping table
+    в `agent.command-routing` + regression case
+    в `test_control_examples.py`) + Level 3 full smoke в
+    `efactory:linux` контейнере (3 scenarios — one-edit, multi-
+    edit-multi-metric, edge case).
+  - **+52 теста** (19 domain + 19 use case + 10 renderer + 4 CLI e2e),
+    pytest 1336 passed @ coverage 84.76%.
+  - **Out of scope**: sweep по диапазону (T022); multi-sheet; visual
+    delta plot; persistence дельты sim-result kind'ом; calibration
+    THD (T131); phase margin (T153).
+  - **Owner manual smoke (после merge)**: `docker build` +
+    `./efactory-up --reset-claude-state`; `/edit-and-resim se-amp-demo
+    --schematic schematic/se_amp.kicad_sch --set R5=2k --measure
+    gain --measure thd --freq 1k --v-in-peak 0.1 --input-source V2
+    --output-signal v(load)`.
+  - Spec — `specs/T021-edit-and-resim-delta/spec.md` (Analyzed: 10
+    Clarify по рекомендации + Q-J override smoke in container;
+    2 Critical разрешены in-spec, 5 Warning, 7 Note).
+
+- **T162** — [closed 2026-05-30, PR #N (T021)] **Backlog:
+  `tests/integration/application/__init__.py` создаёт namespace-
+  коллизию с `src/application/`** при `--import-mode=importlib +
+  pythonpath=["src"]`. Обнаружено в ходе T021 Phase A. Workaround:
+  use-case-test расположен в `tests/unit/application/` (где
+  `__init__.py` нет). Уведомлено в Tech Debt; fix — удалить
+  `__init__.py` из `tests/**/` пакетов для consistency с importlib mode.
 
 - **T161** — [closed 2026-05-30, PR #92] **Defensive guard для
   пустого / несуществующего NETLIST argument в bridge CLI.**

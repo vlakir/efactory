@@ -165,6 +165,64 @@ RUN uv sync --frozen
 
 
 # ============================================================================
+# Stage 3.5a: ngspice-build — build ngspice 45.2 from source.
+# ============================================================================
+# T021 root-cause (2026-05-30): Ubuntu 24.04 noble ships ngspice 42, which
+# имеет memory growth bug при TRAN на XSPICE A-devices (saturable transformer
+# OPT_SE_5K_8.lib через gyrator-cap → 8.8 GB RSS → host-wide OOM). Upstream
+# 43-45.2 contains XSPICE TRAN memory fixes. Параллельно — apt'овский ngspice
+# 42 + libngspice0 остаются установленными в base stage (KiCad Simulator GUI
+# depends on libngspice0 as C++ link); /usr/local/bin/ngspice от этого stage
+# приоритетен в PATH, так что CLI pipeline (bridge sim-run / measure /
+# edit-and-resim) использует 45.2, а KiCad — apt'овский 42 через C++ link.
+#
+# Build dependencies — наследуем `base` (curl + apt index уже там); добавляем
+# build-essential + autotools + bison/flex/libreadline-dev. Final image
+# копирует только `/opt/ngspice` (~30 MB).
+#
+# Source — github mirror imr/ngspice (sourceforge'овский tarball link нестабилен
+# через Cloudflare anti-bot). codeload URL — стабильный direct-archive endpoint.
+FROM base AS ngspice-build
+
+ARG NGSPICE_VERSION=45.2
+
+# Cache mounts (BuildKit): /var/cache/apt + /var/lib/apt persist между builds.
+# Первый build с пустым кэшем — apt-get update медленный (10+ мин на flaky
+# archive.ubuntu.com mirror). Последующие — почти мгновенно (apt index reuse).
+# `sharing=locked` — гарантия что параллельные builds не дерутся за один cache.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
+ && apt-get install -y --no-install-recommends \
+      build-essential \
+      autoconf \
+      automake \
+      libtool \
+      bison \
+      flex \
+      libreadline-dev
+
+WORKDIR /tmp/ngspice
+RUN curl -fsSL --http1.1 --retry 5 --retry-delay 5 --retry-all-errors \
+        --max-time 600 -o ngspice.tar.gz \
+      "https://codeload.github.com/imr/ngspice/tar.gz/refs/tags/ngspice-${NGSPICE_VERSION}" \
+ && tar xzf ngspice.tar.gz \
+ && cd ngspice-ngspice-${NGSPICE_VERSION} \
+ && ./autogen.sh \
+ && ./configure \
+      --prefix=/opt/ngspice \
+      --enable-xspice \
+      --enable-cider \
+      --with-readline=yes \
+      --enable-pss \
+      --enable-osdi \
+      --disable-debug \
+ && make -j"$(nproc)" \
+ && make install \
+ && cd / && rm -rf /tmp/ngspice
+
+
+# ============================================================================
 # Stage 3.5: freecad-appimage — extract FreeCAD AppImage + Sheet Metal addon.
 # ============================================================================
 # T112 (variant C, ADR 2026-05-20). FreeCAD 1.1+ нет в apt — берём AppImage
@@ -237,6 +295,13 @@ ENV PATH=/opt/efactory/.venv/bin:/usr/local/bin:/usr/bin:/bin \
 # подменит на `--user $(id -u):$(id -g)` хоста; пока uid 1000 на dev-
 # машине совпадает с vlakir.
 RUN chown -R 1000:1000 /opt/efactory
+
+# T021 — ngspice 45.2 from source (см. stage 3.5a). Apt'овский ngspice 42 +
+# libngspice0 остаются на месте для KiCad Simulator C++-linkage; CLI pipeline
+# (bridge sim-run / measure / edit-and-resim) использует /usr/local/bin/ngspice
+# (приоритетен в PATH).
+COPY --from=ngspice-build /opt/ngspice /opt/ngspice
+RUN ln -sf /opt/ngspice/bin/ngspice /usr/local/bin/ngspice
 
 # T112 — FreeCAD: копируем extracted AppImage + Sheet Metal addon из
 # stage 3.5; root-owned read-only достаточно (пользователь только читает).
