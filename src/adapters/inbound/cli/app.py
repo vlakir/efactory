@@ -1236,6 +1236,15 @@ def build_app(
             return typer.Exit(code=1)
         return typer.Exit(code=2)
 
+    def _resolve_netlist_path(netlist: str) -> Path:
+        # T161: guard для CLI netlist argument. Без него пустая
+        # строка резолвится в Path('.') → IsADirectoryError, а
+        # nonexistent path → FileNotFoundError — оба cryptic, exit=1.
+        if not netlist or not Path(netlist).is_file():
+            typer.echo(f'Netlist file not found: {netlist!r}', err=True)
+            raise typer.Exit(code=2)
+        return Path(netlist)
+
     def _make_tran(
         t_step: str,
         t_stop: str,
@@ -1371,10 +1380,11 @@ def build_app(
         *,
         enable_op_fallback: bool = False,
     ) -> None:
+        netlist_path = _resolve_netlist_path(netlist)
         try:
             asyncio.run(
                 _execute_sim_run(
-                    Path(netlist),
+                    netlist_path,
                     analysis,
                     timeout_seconds,
                     event,
@@ -2179,6 +2189,7 @@ def build_app(
         if mode not in ('small', 'large'):
             typer.echo(f'Invalid --mode: {mode!r}; expected small|large', err=True)
             raise typer.Exit(code=2)
+        netlist_path = _resolve_netlist_path(netlist)
         try:
             freq_hz = parse_spice_number(freq)
         except SpiceNumberFormatError as exc:
@@ -2186,7 +2197,7 @@ def build_app(
 
         async def _run() -> GainMeasurement:
             return await measure_gain_use_case(
-                netlist=Path(netlist),
+                netlist=netlist_path,
                 frequency_hz=freq_hz,
                 mode=mode,  # type: ignore[arg-type]
                 simulator=simulator,
@@ -2281,6 +2292,7 @@ def build_app(
                 err=True,
             )
             raise typer.Exit(code=2)
+        netlist_path = _resolve_netlist_path(netlist)
         try:
             f_low_hz = parse_spice_number(f_low)
             f_high_hz = parse_spice_number(f_high)
@@ -2290,7 +2302,7 @@ def build_app(
 
         async def _run() -> BandwidthMeasurement:
             return await measure_bandwidth_use_case(
-                netlist=Path(netlist),
+                netlist=netlist_path,
                 simulator=simulator,
                 netlist_editor=netlist_editor,
                 f_low=f_low_hz,
@@ -2367,6 +2379,7 @@ def build_app(
             typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
         ] = 60.0,
     ) -> None:
+        netlist_path = _resolve_netlist_path(netlist)
         try:
             freq_hz = parse_spice_number(freq)
         except SpiceNumberFormatError as exc:
@@ -2374,7 +2387,7 @@ def build_app(
 
         async def _run() -> ThdMeasurement:
             return await measure_thd_use_case(
-                netlist=Path(netlist),
+                netlist=netlist_path,
                 frequency_hz=freq_hz,
                 v_in_peak=v_in_peak,
                 simulator=simulator,
@@ -2603,7 +2616,7 @@ def build_app(
 
         # AC analysis требует AC modifier на V-source'е, иначе ngspice
         # видит AC=0 и магнитуда везде 0 → -inf dB (T024 follow-up fix).
-        netlist_path = Path(netlist)
+        netlist_path = _resolve_netlist_path(netlist)
         try:
             prepared_netlist_path = _prepare_ac_netlist(
                 netlist_path=netlist_path,
@@ -2692,6 +2705,7 @@ def build_app(
             typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
         ] = 60.0,
     ) -> None:
+        netlist_path = _resolve_netlist_path(netlist)
         try:
             analysis = _make_tran(t_step, t_stop, t_start, uic=uic)
         except (SpiceNumberFormatError, ValidationError) as exc:
@@ -2699,7 +2713,7 @@ def build_app(
 
         async def _run() -> SimulationResult:
             return await sim_run_use_case(
-                netlist=Path(netlist),
+                netlist=netlist_path,
                 analysis=analysis,
                 simulator=simulator,
                 timeout_seconds=timeout,

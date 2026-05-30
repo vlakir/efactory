@@ -70,6 +70,22 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Fixed
 
+- **T161 — defensive guard для пустого / несуществующего NETLIST
+  argument в `bridge` CLI subcommands.** До фикса `uv run efactory
+  bridge sim-run op ""` (shell-обёртка с неэкспортированной
+  переменной `$NETLIST` → пустая строка через `bash -c`) падал
+  cryptic `IsADirectoryError: [Errno 21] Is a directory: '.'` с
+  rich-traceback и exit=1; nonexistent path — `FileNotFoundError`
+  с тем же traceback'ом. После фикса CLI печатает в stderr
+  `Netlist file not found: <path>` и `raise typer.Exit(code=2)`.
+  Применён единый helper `_resolve_netlist_path` в 8 entry points:
+  `bridge sim-run {op,tran,ac}` (через общий `_run_sim_and_report`),
+  `bridge measure {gain,bandwidth,thd}`, `bridge plot {ac,tran}`.
+  +16 parametrized e2e-тестов (8 subcommands × 2 invalid argument:
+  empty + non-existent) в
+  `tests/e2e/walking_skeleton/test_bridge_netlist_path_guard.py`.
+  Обнаружено в T157 post-merge smoke 2026-05-30.
+
 - **T144 (absorbed by T022) — `bridge sweep` numerical output gap.**
   KiCad SPICE export встраивал Simulator-card директиву из
   `.kicad_sch` (`.tran 10u 80m 10m uic` и т.п.) в netlist; wrapper

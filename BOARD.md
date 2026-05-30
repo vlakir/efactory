@@ -66,6 +66,18 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T161** — [closed 2026-05-30, PR #92] **Defensive guard для
+  пустого / несуществующего NETLIST argument в bridge CLI.**
+  `bridge sim-run op ""` падал cryptic `IsADirectoryError: '.'` с
+  exit=1; nonexistent path → `FileNotFoundError`. После фикса —
+  `Netlist file not found: <path>` в stderr + `typer.Exit(code=2)`.
+  Helper `_resolve_netlist_path` применён единообразно в 8 entry
+  points: `bridge sim-run {op,tran,ac}` (через общий
+  `_run_sim_and_report`), `bridge measure {gain,bandwidth,thd}`,
+  `bridge plot {ac,tran}`. Scope расширен с original BACKLOG-записи
+  (sim-run + measure) до plot — тот же класс bug'а, тот же helper.
+  +16 parametrized e2e-тестов (8 × 2 invalid arguments).
+
 - **T157** — [closed 2026-05-30, PR #90] **De-engineering persistent
   state: filesystem as single source of truth.** Архитектурный
   refactor — убраны SQL-индекс (`MetadataRepository` + SQLAlchemy +
