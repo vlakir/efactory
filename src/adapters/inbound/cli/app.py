@@ -1295,6 +1295,8 @@ def build_app(
         analysis: AnalysisSpec,
         timeout_seconds: float,
         event: str,
+        *,
+        enable_op_fallback: bool = False,
     ) -> SimulationResult:
         async def _run() -> SimulationResult:
             return await sim_run_use_case(
@@ -1302,6 +1304,7 @@ def build_app(
                 analysis=analysis,
                 simulator=simulator,
                 timeout_seconds=timeout_seconds,
+                enable_op_fallback=enable_op_fallback,
             )
 
         return await _log_command(
@@ -1321,6 +1324,8 @@ def build_app(
         analysis: AnalysisSpec,
         timeout_seconds: float,
         event: str,
+        *,
+        enable_op_fallback: bool = False,
     ) -> None:
         try:
             asyncio.run(
@@ -1329,6 +1334,7 @@ def build_app(
                     analysis,
                     timeout_seconds,
                     event,
+                    enable_op_fallback=enable_op_fallback,
                 ),
             )
         except (
@@ -1339,7 +1345,13 @@ def build_app(
         ) as exc:
             raise _exit_on_bridge_error(exc) from exc
 
-        typer.echo(f'Simulation: completed (analysis={analysis.type})')
+        if enable_op_fallback:
+            typer.echo(
+                f'Simulation: completed (analysis={analysis.type}, '
+                'fallback=transient-to-op)',
+            )
+        else:
+            typer.echo(f'Simulation: completed (analysis={analysis.type})')
 
     @sim_run_app.command('op')
     def sim_run_op(
@@ -1349,12 +1361,23 @@ def build_app(
             float,
             typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
         ] = 60.0,
+        with_op_fallback: Annotated[
+            bool,
+            typer.Option(
+                '--with-op-fallback',
+                help='T145: подменить `.OP` на `.TRAN ... uic=True` и '
+                'собрать synthetic operating-point из settled tail. '
+                'Полезно для tube/saturable circuits где `.OP` solver '
+                'сходится к trivial idle solution.',
+            ),
+        ] = False,
     ) -> None:
         _run_sim_and_report(
             netlist,
             OpAnalysis(),
             timeout,
             'bridge.sim_run.op',
+            enable_op_fallback=with_op_fallback,
         )
 
     @sim_run_app.command('tran')
