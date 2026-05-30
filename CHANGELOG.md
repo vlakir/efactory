@@ -98,11 +98,44 @@ T-ID между релизами — `CHANGELOG.md` единственное per
     regression case `('what-if delta gain bandwidth',
     'agent.command-routing', '/edit-and-resim')` в
     `test_control_examples.py`. `runtime-agent-CLAUDE.md` обновлён.
-  - **Level 3 smoke** — headless `claude -p` в `efactory:linux` с
-    несколькими scenarios (one-edit single metric, multi-edit multi-
-    metric, edge case с saturation). Acceptance — agent правильно
-    использует `/edit-and-resim`, не изобретает велосипеды; результаты
-    зафиксированы в PR description.
+  - **Level 3 smoke в контейнере** (вскрыл root-cause / pivot scope):
+    - **Apt'овский ngspice 42 (Ubuntu 24.04 noble) имеет XSPICE TRAN
+      memory leak**, который инкрементально ест RAM на saturable
+      A-devices (OPT_SE_5K_8.lib через gyrator-cap, KB
+      `spice.saturable-gyrator-cap`). Первая попытка smoke на
+      `se-amp-demo` сожрала **8.8 GB RSS дважды подряд** в `ngspice`-
+      subprocess → global OOM-killer → host-side reboot. Тот же
+      netlist на хосте (ngspice 45.2 из Ubuntu 25.04 universe) —
+      44 MB RSS, 0.32 sec.
+    - **Решение в скоупе T021**: новый Dockerfile stage `ngspice-build`
+      собирает ngspice 45.2 из source (github mirror
+      `imr/ngspice` через codeload — sourceforge нестабилен через
+      Cloudflare). Configure flags `--enable-xspice --enable-cider
+      --with-readline=yes --enable-pss --enable-osdi --disable-debug`.
+      Install в `/opt/ngspice/`; final stage ln'ит на
+      `/usr/local/bin/ngspice` — приоритетен в PATH над apt'овским
+      42 (`/usr/bin`). Apt'овский ngspice 42 + libngspice0 остаются
+      на месте — KiCad Simulator GUI использует C++ linkage. CLI
+      pipeline (`bridge sim-run / measure / edit-and-resim`) теперь
+      использует 45.2 субпроцессом; KiCad — 42 через libngspice0.
+    - **Cache mount apt** (`--mount=type=cache,target=/var/cache/apt,
+      sharing=locked`) на ngspice-build stage — амортизация
+      нестабильного archive.ubuntu.com mirror'а. Первый build с
+      пустым кэшем — медленный; последующие — мгновенно.
+    - **Новый KB topic** `spice.ngspice-version-upgrade` — фиксирует
+      rationale + fallback steps; cross-ref добавлен в
+      `agent.command-routing.md`.
+    - **Smoke results в контейнере** с `--memory=4g`:
+      - `bridge measure thd se-amp-demo --freq 1k --v-in-peak 0.1
+        --input-source V2 --signal v(/output_probe)`: 0.5 sec wall,
+        THD = 15.9%, exit 0, без OOM.
+      - `bridge edit-and-resim se-amp-demo --set R2=330 --measure gain
+        --measure thd --freq 1k --v-in-peak 0.1 --input-source V2
+        --output-signal v(/output_probe)`: valid JSON delta —
+        gain_db Δ ≈ +0.4 dB, thd_percent Δ = +2.49% absolute /
+        +15.7% relative (physically sensible: больший R_k смещает
+        bias, тогда выше small-signal gain, но усиливается clipping
+        → THD растёт).
   - **+52 теста**: 19 domain (validators / JSON round-trip / NaN-
     forbid / frozen-immutability), 19 application use-case (config
     validators / happy path single&multi-metric / edits ordering /
