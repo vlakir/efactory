@@ -61,9 +61,28 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-
-
-
+- **T161** — [taken 2026-05-30, ветка `T161-sim-run-empty-netlist`]
+  **Defensive guard для пустого / несуществующего NETLIST argument
+  в CLI sim-run / measure / plot subcommands.** Текущее поведение
+  при `uv run efactory bridge sim-run op ""` — `IsADirectoryError:
+  '.'` (пустая строка → `Path('.')` → `read_text()` на директории),
+  при `... /tmp/does-not-exist.cir` — `FileNotFoundError`. Оба
+  падают rich-traceback'ом с exit=1. Затрагиваются 8 entry points:
+  `bridge sim-run {op,tran,ac}` (через общий `_run_sim_and_report`),
+  `bridge measure {gain,bandwidth,thd}`, `bridge plot {ac,tran}`
+  (scope расширен с original BACKLOG-записи sim-run+measure до
+  всех netlist-принимающих subcommands — class bug одинаковый,
+  helper-fix единый, см. обсуждение 2026-05-30).
+  **Acceptance:**
+  - При пустом / несуществующем NETLIST CLI печатает в stderr
+    `Netlist file not found: <path>` и `raise typer.Exit(code=2)`
+    (вместо traceback в `pathlib._local`).
+  - Parametrized integration-тест покрывает все 8 subcommands
+    × 2 невалидных argument'а (empty `""` + non-existent path)
+    = 16 кейсов.
+  - Bridge sweep вне scope (принимает `--schematic`, не netlist);
+    если там обнаружится аналогичный bug — заводим отдельной
+    задачей.
 ## Done
 
 - **T157** — [closed 2026-05-30, PR #90] **De-engineering persistent
