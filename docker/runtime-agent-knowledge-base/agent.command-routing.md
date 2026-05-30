@@ -23,6 +23,7 @@ tags: [agent, slash-commands, routing, scope]
 | «какой gain», «коэффициент усиления», «K» | `/measure-gain --freq <Hz>` |
 | «какая полоса», «bandwidth», «-3 dB полоса» | `/measure-bandwidth` |
 | «THD», «искажения», «гармоники» | `/measure-thd --freq <Hz> --v-in-peak <V>` |
+| «как зависит X от R/C», «параметрический sweep», «варьировать Rk», «таблица gain vs ...», «sweep по 1-2 компонентам» | `/sweep --metric <op|gain|bandwidth|thd> --param REF=v1,v2,...` |
 | «создай проект», «новый проект <NAME>» | `/project-create <NAME>` |
 | «запусти симуляцию», «.op / .tran / .ac», «прогони netlist» | `/sim-run` |
 | «переключись на проект <NAME>» | `/project-use <NAME>` (display-only) |

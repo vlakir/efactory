@@ -34,7 +34,102 @@ T-ID между релизами — `CHANGELOG.md` единственное per
      версию `[N.M.0]`. При закрытии milestone — переименовывается
      в очередную версию, ниже создаётся новая пустая `[Unreleased]`. -->
 
+### Fixed
+
+- **T144 (absorbed by T022) — `bridge sweep` numerical output gap.**
+  KiCad SPICE export встраивал Simulator-card директиву из
+  `.kicad_sch` (`.tran 10u 80m 10m uic` и т.п.) в netlist; wrapper
+  добавлял свою (`.OP` при `OpAnalysis`) поверх, но ngspice `run`
+  без аргумента запускал **первую** в queue — встроенную `.tran` —
+  а appended `.OP` оставался в queue и `write all` писал результаты
+  не той analysis → `operating_points={}` для tube-схем (включая
+  `se-amp-demo`). Fix: `build_wrapper` стрипит все top-level analysis
+  directives (`_EMBEDDED_ANALYSIS_RE`) из netlist перед вставкой своей.
+  Smoke post-fix: sweep по `R2` на `se-amp-demo` теперь печатает все
+  22 v/i traces per combination. +15 regression-тестов в
+  `test_ngspice_simulator.py`.
+
 ### Added
+
+- **T022 — `bridge sweep` generalised: tabular output + ASCII plot
+  + 4 metric'а.** Параметрический пробег SPICE с aligned text /
+  CSV / JSON output + опциональный plotext-график; absorbs T144
+  (см. Fixed). Третий шаг analysis-first ordering Фазы 2 после
+  T023 (metrics) + T024 (plot).
+  - **Domain VO**: `SweepConfig` (Pydantic frozen, model_validator
+    на A1 — 5 строго совместимых `(metric, analysis, mode)` пар:
+    `(op,op)`, `(gain+small,ac)`, `(gain+large,tran)`, `(bandwidth,ac)`,
+    `(thd,tran)`; любая другая → ValidationError 'incompatible');
+    auto-mapping `--analysis` из `--metric`+`--mode`; required-fields
+    per metric (`frequency_hz`, `v_in_peak`, `f_low/high_hz`).
+    `SweepRun` расширен опциональным `values: dict | None`
+    (A4 backward-compat — `result` остаётся для legacy callers).
+  - **Use case** (`application/bridge_sweep.py`): metric dispatch
+    через `_run_one_combination` + `_measure_values` helper'ы.
+    `op` → existing `sim_run(OpAnalysis)` + `_op_values()`;
+    `gain` → `measure_gain` → `{gain_db, gain_linear}`;
+    `bandwidth` → `measure_bandwidth` → `{f_low_hz, f_high_hz,
+    bandwidth_hz}`; `thd` → `measure_thd` → `{thd_percent,
+    dominant_harmonic_n, dominant_harmonic_percent}`. Continue-on-
+    failure (Q-D → a) — sim/export/extract error → `error=...` +
+    `values=None`, sweep не аборт. Hard cap `MAX_COMBINATIONS_DEFAULT=
+    100`, soft warn `SOFT_WARN_COMBINATIONS=20`; override через
+    `max_combinations`. +10 unit tests с fake-port'ами.
+  - **CLI** `bridge sweep <PROJECT> --schematic <path> --param REF=v1,...
+    [+13 новых флагов]`: `--metric op|gain|bandwidth|thd` (default
+    `op`), `--analysis op|tran|ac` (auto-mapping override), `--mode
+    small|large`, `--freq Hz`, `--f-low Hz`, `--f-high Hz`,
+    `--v-in-peak V`, `--output-signal v(...)`, `--input-signal v(...)`,
+    `--output text|csv|json` (default `text`), `--output-file PATH`
+    (запись в файл + 1-line stdout summary, Q-F → b), `--plot`,
+    `--plot-y <field>`, `--plot-x-scale auto|linear|log` (default
+    `auto`), `--max-combinations N`.
+  - **Renderers** (`adapters/inbound/cli/sweep_table_renderer.py`):
+    `render_sweep_text` (aligned plain-text без `tabulate`),
+    `render_sweep_csv` (RFC 4180 stdlib `csv.writer`),
+    `render_sweep_json` (pretty-print indent=2). Колонки per
+    metric (A5 mapping): `op` — union all `values` keys; fixed
+    columns для gain/bandwidth/thd; failed combination — FAILED
+    marker (text) / empty cells (CSV) / error key (JSON). +17
+    unit tests.
+  - **Plot extension** (`plot_renderer.py`): `render_sweep_plot(
+    rows, x_param, y_field, group_by, x_scale)` — single-trace
+    для 1-param, multi-line для 2-param (Q-E → b). `_detect_x_scale`
+    (A8) log-space algorithm: sort positive, `log10`-diffs,
+    `stdev/mean < 0.10` И `mean > 0.18 ≈ log10(1.5)` → log;
+    иначе linear. Robust к non-sorted input. +14 unit tests.
+  - **Slash-команда `/sweep`** (`docker/runtime-agent-commands/
+    sweep.md`) с pitfalls section (N-cap, metric/analysis compat,
+    input-signal для gain-large, >2 param plot disable).
+  - **KB sync (T134 правило)**: Level 1 — `agent.command-routing`
+    обновлён строкой для `/sweep`; Level 2 — parametrized regression
+    case в `test_control_examples.py` (`/sweep` в expected_directive).
+  - **`docker/runtime-agent-CLAUDE.md`** обновлён (новая slash-команда
+    в списке + `T022` в заголовке).
+  - **Out of scope**: parallel SPICE (BACKLOG), sweep по
+    `.options`/`temp`/model parameters, adaptive sweep / golden-
+    section. T021 (delta) — следующая Фаза 2 задача, использует
+    T022 как фундамент.
+  - **Phase D follow-up: `--input-source <REF>`** — обнаружено в
+    Level 3 smoke на se-amp-demo: measure_* auto-detect падает
+    ambiguity'ем на multi-V netlist'ах (SE amp с V1=B+ и V2=input).
+    Добавлен `SweepConfig.input_source` поле + CLI флаг + проброс
+    в все три measure_* use cases. Slash-pitfalls дополнен
+    multi-V примером.
+  - **Level 3 smoke (3/3 scenarios на real agent через docker run
+    headless с bind-mount overlay)**: (1) gain vs Rk на multi-V
+    schematic — `--input-source V2` пробрасывается без ambiguity;
+    (2) clean op sweep + RFC-4180 CSV → файл; (3) bandwidth vs
+    Cin + ASCII plot — agent использует `/sweep --metric bandwidth
+    --plot`, не velociped'ит, корректная physics-interpretation
+    (LF limit от OPT primary L, не Cin). KB sync действительно
+    работает — agent выбирает efactory tools.
+  - **Pre-push gates** все 5 зелёные. Pytest: 1230 passed, 9
+    skipped, coverage 85.32%. Smoke на `se-amp-demo`: aligned
+    tabular output × 22 OP signals per combination.
+  - Spec — `specs/T022-bridge-sweep/spec.md` (Analyzed: 10 Clarify
+    Q + 14 Analyze issues — 2 Critical разрешены in-spec, 6
+    Warning с predeclared resolutions, 6 Note).
 
 - **T156 — `efactory kb add --body "..."` inline body option.** UX
   fix обнаружен в smoke validation T134 2026-05-27: agent в

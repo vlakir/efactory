@@ -206,7 +206,7 @@ async def _run_tran_gain(schematic: Path, tmp_path: Path) -> float:
         schematic, tmp_path / (schematic.stem + '.cir'),
     )
     result = await NgspiceSimulator(am).run(
-        netlist, TranAnalysis(t_step=1e-5, t_stop=30e-3),
+        netlist, TranAnalysis(t_step=1e-5, t_stop=30e-3, uic=True),
     )
     assert result.time_series is not None
     ts = result.time_series

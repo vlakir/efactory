@@ -27,6 +27,7 @@ _EXPECTED_COMMANDS = {
     'plot-tran',
     'kb-search',
     'kb-add',
+    'sweep',  # T022 Phase D
 }
 _REQUIRED_FRONTMATTER = {'description', 'argument-hint', 'allowed-tools'}
 

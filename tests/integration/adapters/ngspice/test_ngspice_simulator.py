@@ -187,6 +187,113 @@ def test_build_wrapper_strips_dot_end_from_netlist() -> None:
     assert wrapper.rstrip().endswith('.END')
 
 
+def test_build_wrapper_strips_embedded_analysis_directive(
+    embedded: str,
+) -> None:
+    """
+    T144 root-cause: KiCad SPICE export встраивает sim-command (`.tran`,
+    `.ac` и т.п.) в netlist из `.kicad_sch` Simulator-секции. Если её
+    оставить, ngspice выполнит **её** при `run`, а наш appended `.OP`
+    (или другой override) останется в queue и `write all` напишет
+    результаты не той analysis → operating_points={}.
+
+    Фикс: стрипим **все** top-level analysis directives из netlist
+    перед вставкой собственной.
+    """
+    netlist = (
+        '* tube schematic with embedded directive\n'
+        f'{embedded}\n'
+        'V1 in 0 dc=1\nR1 in 0 1k\n'
+    )
+    raw = Path('/tmp/out.raw')
+
+    wrapper = build_wrapper(netlist, OpAnalysis(), raw)
+
+    # Точная embedded строка не должна остаться (line-based, чтобы
+    # не путаться с appended `.OP` от `OpAnalysis` в случае
+    # embedded='.OP').
+    wrapper_lines = [line.strip() for line in wrapper.splitlines()]
+    assert embedded.strip() not in wrapper_lines
+    # Наша `.OP` директива добавлена ровно одна.
+    op_lines = [line for line in wrapper_lines if line == '.OP']
+    assert op_lines == ['.OP']
+
+
+# pytest.fixture parametrize: каждая директива, которую KiCad может встроить.
+# `.op` без args вынесен в отдельный тест ниже — он collide'ит с appended
+# `.OP` от `OpAnalysis()`, не distinguishable line-based assertion'ом.
+@pytest.fixture(
+    params=[
+        '.tran 10u 80m 10m uic',
+        '.tran 1us 1ms',
+        '.ac dec 10 1 1Meg',
+        '.AC dec 100 10 1k',
+        '.dc V1 0 5 0.1',
+        '.four 1000 v(out)',
+        '.noise v(out) V1 dec 10 1 1Meg',
+        '.tf v(out) V1',
+        '.sens v(out)',
+        '.disto dec 10 1k 10k',
+        '  .tran 1u 1m',  # leading whitespace ignored
+    ],
+)
+def embedded(request: pytest.FixtureRequest) -> str:
+    return str(request.param)
+
+
+@pytest.mark.parametrize('embedded_op', ['.op', '.OP'])
+def test_build_wrapper_strips_embedded_op_without_collision(
+    embedded_op: str,
+) -> None:
+    """
+    Edge: embedded `.op`/`.OP` collide с appended `.OP` от
+    `OpAnalysis()`. Проверяем через `TranAnalysis` (appended `.TRAN`,
+    не `.OP`) — тогда `.OP` в wrapper'е должен полностью отсутствовать.
+    """
+    netlist = f'* embedded {embedded_op}\n{embedded_op}\nV1 in 0 1\nR1 in 0 1k\n'
+    raw = Path('/tmp/out.raw')
+
+    wrapper = build_wrapper(
+        netlist,
+        TranAnalysis(t_step=1e-6, t_stop=1e-3),
+        raw,
+    )
+
+    wrapper_lines = [line.strip().lower() for line in wrapper.splitlines()]
+    assert '.op' not in wrapper_lines
+    assert any(line.startswith('.tran') for line in wrapper_lines)
+
+
+def test_build_wrapper_keeps_user_comments_and_components() -> None:
+    """
+    Стрип analysis directives не должен задеть комменты и компоненты,
+    даже если их строка начинается с похожей подстроки (e.g. `.subckt`).
+    """
+    netlist = (
+        '* .tran demo\n'  # comment упоминающий .tran
+        '.subckt MY_BLOCK in out\n'
+        '  R_internal in out 10k\n'
+        '.ends MY_BLOCK\n'
+        'V1 in 0 dc=1\nR1 in 0 1k\n'
+        '.tran 1u 1m\n'  # actual directive — должна уйти
+    )
+    raw = Path('/tmp/out.raw')
+
+    wrapper = build_wrapper(netlist, OpAnalysis(), raw)
+
+    # Комменты и subckt сохранены.
+    assert '* .tran demo' in wrapper
+    assert '.subckt MY_BLOCK' in wrapper
+    assert '.ends MY_BLOCK' in wrapper
+    # Реальная .tran директива удалена.
+    tran_lines = [
+        line for line in wrapper.splitlines()
+        if line.strip().lower().startswith('.tran')
+    ]
+    assert tran_lines == []
+    assert '.OP' in wrapper
+
+
 def test_build_wrapper_substitutes_gnd_token_with_zero() -> None:
     """KiCad SPICE export даёт ground как `GND`; ngspice требует `0`."""
     netlist = '* rc\nV1 GND /in dc=1\nR1 /in /out 1k\nC1 /out GND 1u\n'

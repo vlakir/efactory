@@ -580,25 +580,10 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   `/clear` после симуляции и получит свежий контекст. Триггер —
   когда захочется доп. seamless.
 
-- **T144** — [2026-05-26, заведено по итогам прогона 5 сценариев T016
-  на se-amp-demo] **`efactory bridge sweep`: tabular numerical output
-  + CSV.** Runner сейчас отрабатывает все combination'ы и пишет per-
-  combination `.cir`, но **в stdout печатает только лейблы** (`[R2=330] …`),
-  никаких numerical results. Причина: сгенерированные netlist'ы
-  содержат `.tran` без `.print` / `.control`, парсер из `.raw` не
-  выкачивается. По `--help` обещано «key voltages per run», по факту —
-  пусто. Главный gap для повседневной работы: sweep по катодному
-  резистору / B+ / Rg — самый частый use case в проектировании
-  ламповых каскадов, сейчас даёт ноль полезного output из коробки
-  (агент проверил вручную через `ngspice -b` — физика правильная,
-  значит проблема только в извлечении).
-  Acceptance:
-  - В per-combination netlist класть `.control { op; wrdata <file>
-    v(<nodes>) i(<sources>); }` либо честный `.raw` export.
-  - Парсер собирает values и печатает tabular: `param V(plate) V(K)
-    I(V1)` в одну таблицу для всех combination'ов.
-  - Опциональный `--output csv` / `--output json` для пост-обработки.
-  Приоритет высокий (без этого sweep не используется).
+<!-- T144 absorbed by T022 (2026-05-27): sweep tabular numerical output
+     + CSV/JSON gap входит в Phase A scope T022 (Tabular output via
+     metrics or raw signals + --output csv|json + --output-file). См.
+     BOARD.md → Doing → T022 + specs/T022-bridge-sweep/spec.md. -->
 
 - **T145** — [2026-05-26, заведено по итогам прогона 5 сценариев T016]
   **`efactory bridge sim-run op`: auto-fallback на transient-to-op
@@ -856,9 +841,12 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   результатов (до/после).
   Acceptance: после изменения схемы выводится дельта по ключевым
   метрикам (gain, bandwidth, THD).
-- **T022** — [2026-05-15] Параметрический sweep (`bridge_sweep`)
-  с визуализацией.
-  Acceptance: sweep по 1-2 параметрам строит таблицу + график.
+<!-- T022 переехала в BOARD.md → Doing 2026-05-27. Top-level scope
+     подтверждён в чате (B → c orthogonal `--analysis` + `--metric`;
+     A/C/D/E/F/G/H/I — по рекомендации). T144 absorbed. Spec —
+     specs/T022-bridge-sweep/spec.md (Draft, готов к Clarify). -->
+<!-- T144 absorbed by T022 (2026-05-27): sweep tabular output + CSV
+     gap входит в Phase A scope T022. См. запись T022 в BOARD.md. -->
 <!-- T023 переехала в BOARD.md → Doing 2026-05-26 после clarify
      прохода (10 вопросов, все «по рекомендации»). Phase margin
      вынесен в T153 (Q-B → c) — отдельный спек, когда появится
@@ -893,6 +881,72 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   --loop-break-node <node>` возвращает `(margin_deg: float,
   crossover_hz: float)`; собственный spec по полному ритуалу
   (spec → clarify → analyze).
+
+- **T157** — [2026-05-27, заведено по итогам T022 retro / arch review]
+  **De-engineering persistent state: filesystem as single source of
+  truth.** Архитектурный refactor — убрать legacy DB-слой (legacy
+  projects+phases в SQLite + Kùzu graph-stub), filesystem становится
+  единственным источником истины для project metadata.
+
+  **Motivation:** legacy persistent state (T085-T099 phase) появился
+  как часть hex foundation до ADR 2026-05-19 «Tool surface = Bash +
+  CLI + filesystem, не MCP». Сейчас:
+  - **`projects` table** дублирует filesystem listing
+    (`EFACTORY_PROJECTS_ROOT`). `reindex_projects` use case существует
+    именно потому что БД может разойтись с реальностью на диске —
+    smoking gun, что FS уже source of truth.
+  - **`phases` table** могло бы жить в `project.yaml` manifest
+    (already есть для T014 templates).
+  - **Kùzu** установлен (~21 MB venv), но только smoke test'ится в
+    `tests/integration/adapters/graph_store/test_kuzu_smoke.py` —
+    production-адаптер физически отсутствует, ни один use case не
+    использует. Запланирован «для T004 / T005 / T037» (T004 закрыт
+    без Kùzu; T005 / T037 — будущие).
+
+  **Scope (3-4 phase TDD):**
+  - Phase A: replace `MetadataRepository` outbound port →
+    `FileSystemProjectRepository` (scan `EFACTORY_PROJECTS_ROOT` +
+    read `project.yaml`). Per-call latency ms-class для десятков
+    директорий — приемлемо.
+  - Phase B: phases в `project.yaml` (extension существующего
+    manifest format). Migration script для existing
+    `<PROJECT>/.efactory/db.sqlite` → `project.yaml` phases section.
+  - Phase C: delete `src/adapters/outbound/persistence_sql/` +
+    `tests/integration/adapters/graph_store/test_kuzu_smoke.py` +
+    `src/adapters/outbound/graph_store/` references в README'ях.
+  - Phase D: удалить `sqlalchemy>=2.x`, `aiosqlite>=0.22`,
+    `alembic>=1.18`, `kuzu>=0.11.3` из `pyproject.toml`. Снижение
+    venv ~30-40 MB + Docker image. CHANGELOG + ADR.
+
+  **ADR в DECISIONS.md** — «Persistent state strategy: filesystem
+  as single source of truth». Зафиксировать: DB вводится **только**
+  под конкретный future use case при scale (e.g. T030 SPICE-models
+  library при >1000 entries; cross-project sim-results trend
+  analysis; real BOM/inventory tracking). С чистого листа, не
+  legacy schema. Возможный stack: SQLite без SQLAlchemy ORM (raw +
+  aiosqlite) или sqlite-vec / DuckDB под analytics.
+
+  **Triggers (когда вернуться к DB):**
+  - T030 model_import_url при scale > 1000 моделей (FTS5 нужен).
+  - Sim-results archive @ scale > 1000 cross-project (trend analysis).
+  - KB > 100 entries (semantic search через sqlite-vec / embeddings).
+  - Real BOM/inventory с десятками проектов × сотнями компонентов.
+
+  **Acceptance:**
+  - `MetadataRepository` removed; `FileSystemProjectRepository`
+    проходит все existing test'ы create/get/list/update/delete/
+    reindex.
+  - `phases.status` через `project.yaml`; migration tested на
+    real `~/efactory-projects/` snapshot.
+  - venv size reduction ≥ 25 MB; Docker image baseline ≥ 25 MB меньше.
+  - All 5 pre-push gates green; no regression в smoke на
+    `se-amp-demo` / `sweep_test`.
+  - ADR в DECISIONS.md записан.
+
+  **Триггер**: post-T022 squash-merge (Phase 2 milestone retro
+  action). Реализация через полный методический ритуал
+  (spec → clarify → analyze → 4 phases TDD), новая ветка `T157-de-
+  engineering-persistent-state`.
 
 ### Фаза 3 (+2 недели)
 

@@ -13,11 +13,17 @@ from pydantic import ValidationError
 
 from adapters.inbound.cli.plot_renderer import (
     render_ac_sweep,
+    render_sweep_plot,
     render_time_series,
 )
 from adapters.inbound.cli.spice_units import (
     SpiceNumberFormatError,
     parse_spice_number,
+)
+from adapters.inbound.cli.sweep_table_renderer import (
+    render_sweep_csv,
+    render_sweep_json,
+    render_sweep_text,
 )
 from adapters.inbound.cli.template_materializer import (
     TemplateConflictError,
@@ -26,7 +32,13 @@ from adapters.inbound.cli.template_materializer import (
     materialize_template,
 )
 from application.add_decision import add_decision as add_decision_use_case
-from application.bridge_sweep import SweepRun, bridge_sweep
+from application.bridge_sweep import (
+    MAX_COMBINATIONS_DEFAULT,
+    SOFT_WARN_COMBINATIONS,
+    SweepConfig,
+    SweepRun,
+    bridge_sweep,
+)
 from application.create_project import create_project as create_project_use_case
 from application.delete_project import delete_project as delete_project_use_case
 from application.design_to_netlist import (
@@ -123,6 +135,19 @@ if TYPE_CHECKING:
     from ports.outbound.session_logger import SessionLogger
     from ports.outbound.simulator import Simulator
     from ports.outbound.spice_model_library import SpiceModelLibrary
+
+
+# Per-metric Y-field default для --plot (sweep): какую колонку
+# строим по умолчанию. `op` → None (требует явный --plot-y).
+_DEFAULT_PLOT_Y: dict[str, str] = {
+    'gain': 'gain_db',
+    'bandwidth': 'bandwidth_hz',
+    'thd': 'thd_percent',
+}
+
+# Max params для sweep plot (1 → single line, 2 → multi-line group_by,
+# >2 → plot disabled).
+_PLOT_MAX_PARAMS = 2
 
 
 async def _log_command[T](
@@ -1685,9 +1710,123 @@ def build_app(
                 '--param',
                 help='REF=v1,v2,v3 (можно несколько раз). Cartesian '
                 'product даёт N комбинаций. Пример: --param R1=1k,10k '
-                '--param C1=100n,1u → 4 запуска OP',
+                '--param C1=100n,1u → 4 запуска',
             ),
         ],
+        metric: Annotated[
+            str,
+            typer.Option(
+                '--metric',
+                help='op | gain | bandwidth | thd (default op)',
+            ),
+        ] = 'op',
+        analysis: Annotated[
+            str | None,
+            typer.Option(
+                '--analysis',
+                help='op | tran | ac — overrides auto-mapping из --metric',
+            ),
+        ] = None,
+        mode: Annotated[
+            str | None,
+            typer.Option(
+                '--mode',
+                help='small | large (только для --metric=gain, default small)',
+            ),
+        ] = None,
+        freq: Annotated[
+            str | None,
+            typer.Option(
+                '--freq',
+                help='Частота для gain/thd (SPICE notation: 1k, 1Meg)',
+            ),
+        ] = None,
+        f_low: Annotated[
+            str,
+            typer.Option(
+                '--f-low',
+                help='--metric=bandwidth lower bound (default 1)',
+            ),
+        ] = '1',
+        f_high: Annotated[
+            str,
+            typer.Option(
+                '--f-high',
+                help='--metric=bandwidth upper bound (default 1Meg)',
+            ),
+        ] = '1Meg',
+        v_in_peak: Annotated[
+            float | None,
+            typer.Option(
+                '--v-in-peak',
+                help='Input amplitude V (gain-large, thd)',
+            ),
+        ] = None,
+        output_signal: Annotated[
+            str,
+            typer.Option(
+                '--output-signal',
+                help='Trace name для measure_* (default v(load))',
+            ),
+        ] = 'v(load)',
+        input_signal: Annotated[
+            str | None,
+            typer.Option(
+                '--input-signal',
+                help='Input trace для --metric=gain --mode=large',
+            ),
+        ] = None,
+        input_source: Annotated[
+            str | None,
+            typer.Option(
+                '--input-source',
+                help='V-source ref для injection (multi-V netlist'
+                'ах: se-amp с B+/input). Без него — auto-detect '
+                'single V-source, ambiguity → error.',
+            ),
+        ] = None,
+        output_format: Annotated[
+            str,
+            typer.Option(
+                '--output',
+                '--output-format',
+                help='text | csv | json (default text)',
+            ),
+        ] = 'text',
+        output_file: Annotated[
+            str | None,
+            typer.Option(
+                '--output-file',
+                help='Записать output в файл (вместо stdout); '
+                'stdout печатает 1-line summary',
+            ),
+        ] = None,
+        plot: Annotated[
+            bool,
+            typer.Option('--plot', help='ASCII plot после таблицы'),
+        ] = False,
+        plot_y: Annotated[
+            str | None,
+            typer.Option(
+                '--plot-y',
+                help='Y-колонка plot (default: gain_db / bandwidth_hz / '
+                'thd_percent в зависимости от --metric; обязателен для op)',
+            ),
+        ] = None,
+        plot_x_scale: Annotated[
+            str,
+            typer.Option(
+                '--plot-x-scale',
+                help='auto | linear | log (default auto)',
+            ),
+        ] = 'auto',
+        max_combinations: Annotated[
+            int,
+            typer.Option(
+                '--max-combinations',
+                help=f'Hard cap для N (default {MAX_COMBINATIONS_DEFAULT})',
+            ),
+        ] = MAX_COMBINATIONS_DEFAULT,
         netlist_dir: Annotated[
             str | None,
             typer.Option(
@@ -1701,13 +1840,11 @@ def build_app(
         ] = 60.0,
     ) -> None:
         """
-        T004b Phase 1: параметрический OP sweep.
+        T022: параметрический sweep с tabular output + ASCII plot.
 
-        Для каждой combination параметров: копия schematic → apply
-        value edits → kicad-cli netlist → ngspice OP. Failure на
-        конкретной combination не аборт sweep'а — записывается с
-        `error=...`. Output: tabular print parameters + key voltages
-        per run. TRAN/AC sweep'ы — Phase 2 backlog T021/T022.
+        Metric dispatch: op (operating_points), gain (gain_db /
+        gain_linear), bandwidth (f_low_hz / f_high_hz / bandwidth_hz),
+        thd (thd_percent / dominant_harmonic_n / dominant_harmonic_percent).
         """
         params_dict: dict[str, list[str]] = {}
         for spec_str in param:
@@ -1721,6 +1858,57 @@ def build_app(
             params_dict[r.strip()] = [
                 v.strip() for v in vals_str.split(',') if v.strip()
             ]
+
+        # Build SweepConfig (validation в Pydantic raises ValueError →
+        # typer.Exit(2) с понятным сообщением).
+        try:
+            cfg_kwargs: dict[str, object] = {
+                'metric': metric,
+                'output_signal': output_signal,
+            }
+            if analysis is not None:
+                cfg_kwargs['analysis'] = analysis
+            if mode is not None:
+                cfg_kwargs['mode'] = mode
+            if freq is not None:
+                cfg_kwargs['frequency_hz'] = parse_spice_number(freq)
+            cfg_kwargs['f_low_hz'] = parse_spice_number(f_low)
+            cfg_kwargs['f_high_hz'] = parse_spice_number(f_high)
+            if v_in_peak is not None:
+                cfg_kwargs['v_in_peak'] = v_in_peak
+            if input_signal is not None:
+                cfg_kwargs['input_signal'] = input_signal
+            if input_source is not None:
+                cfg_kwargs['input_source'] = input_source
+            config = SweepConfig(**cfg_kwargs)  # type: ignore[arg-type]
+        except (ValueError, ValidationError) as exc:
+            typer.echo(f'SweepConfig: {exc}', err=True)
+            raise typer.Exit(code=2) from exc
+
+        if output_format not in ('text', 'csv', 'json'):
+            typer.echo(
+                f'--output: {output_format!r}; ожидалось text | csv | json',
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if plot_x_scale not in ('auto', 'linear', 'log'):
+            typer.echo(
+                f'--plot-x-scale: {plot_x_scale!r}; ожидалось auto | linear | log',
+                err=True,
+            )
+            raise typer.Exit(code=2)
+
+        # N pre-check (soft warn).
+        n_combos = 1
+        for vlist in params_dict.values():
+            n_combos *= len(vlist)
+        if n_combos > SOFT_WARN_COMBINATIONS:
+            est_min = max(1, (n_combos * int(timeout)) // 60)
+            typer.echo(
+                f'Warning: {n_combos} combinations '
+                f'(estimated ~{est_min} min upper-bound runtime). Continuing.',
+                err=True,
+            )
 
         async def _resolve_path() -> Path:
             project_obj = await get_project_use_case(
@@ -1742,31 +1930,82 @@ def build_app(
             return await bridge_sweep(
                 schematic=schematic_path,
                 parameters=params_dict,
-                analysis=OpAnalysis(),
+                config=config,
                 exporter=schematic_exporter,
                 simulator=simulator,
+                netlist_editor=netlist_editor,
                 netlist_dir=nd,
                 timeout_seconds=timeout,
+                max_combinations=max_combinations,
             )
 
-        runs = asyncio.run(
-            _log_command(
-                session_logger,
-                'bridge.sweep',
-                project=project,
-                payload={'schematic': schematic, 'param': param},
-                fn=_run,
-            ),
-        )
-        typer.echo(f'Sweep complete: {len(runs)} combinations.')
-        for run in runs:
-            params_repr = ' '.join(f'{k}={v}' for k, v in run.parameters.items())
-            if run.result is None:
-                typer.echo(f'  [{params_repr}]  FAILED: {run.error}')
-                continue
-            op = run.result.operating_points or {}
-            op_repr = ' '.join(f'{k}={v:.4g}' for k, v in sorted(op.items()))
-            typer.echo(f'  [{params_repr}]  {op_repr}')
+        try:
+            runs = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'bridge.sweep',
+                    project=project,
+                    payload={
+                        'schematic': schematic,
+                        'param': param,
+                        'metric': metric,
+                        'output': output_format,
+                    },
+                    fn=_run,
+                ),
+            )
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+
+        # Render tabular output.
+        if output_format == 'csv':
+            content = render_sweep_csv(runs, metric=metric)  # type: ignore[arg-type]
+        elif output_format == 'json':
+            content = render_sweep_json(runs, metric=metric)  # type: ignore[arg-type]
+        else:
+            content = render_sweep_text(runs, metric=metric)  # type: ignore[arg-type]
+
+        if output_file is not None:
+            out_path = Path(output_file).resolve()
+            out_path.write_text(content, encoding='utf-8')
+            typer.echo(f'Sweep complete: {len(runs)} rows → {out_path}')
+        else:
+            typer.echo(f'Sweep complete: {len(runs)} combinations.')
+            typer.echo(content)
+
+        # Plot (опционально).
+        if plot:
+            y_field = plot_y or _DEFAULT_PLOT_Y.get(metric)
+            if y_field is None:
+                typer.echo(
+                    '--plot для --metric=op требует --plot-y <signal-name>; '
+                    'plot отключён.',
+                    err=True,
+                )
+            else:
+                refs = list(params_dict)
+                if len(refs) > _PLOT_MAX_PARAMS:
+                    typer.echo(
+                        f'--plot не поддерживает >{_PLOT_MAX_PARAMS} параметров '
+                        f'(got {len(refs)}); таблица выведена, plot отключён.',
+                        err=True,
+                    )
+                else:
+                    try:
+                        plot_str = render_sweep_plot(
+                            runs,
+                            x_param=refs[0],
+                            y_field=y_field,
+                            group_by=refs[1] if len(refs) == _PLOT_MAX_PARAMS else None,
+                            x_scale=plot_x_scale,  # type: ignore[arg-type]
+                        )
+                        typer.echo(plot_str)
+                    except ValueError as exc:
+                        typer.echo(
+                            f'Plot disabled: {exc}',
+                            err=True,
+                        )
 
     # === bridge measure <gain|bandwidth|thd> (T023 Phase C) ===
 

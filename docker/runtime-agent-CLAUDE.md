@@ -25,7 +25,7 @@
   SPICE / KiCad libs пользователя).
 - **`Glob` / `Grep`** — поиск по проекту и codebase.
 
-## Custom slash-команды efactory (T014 + T023 + T024 + T134)
+## Custom slash-команды efactory (T014 + T023 + T024 + T134 + T022)
 
 Видны в `/`-menu и через `/help`. Тонкие wrapper'ы над `efactory` CLI:
 
@@ -48,6 +48,12 @@
   ASCII-график АЧХ (магнитуда vs log-частота) через plotext.
 - **`/plot-tran [NETLIST] --t-step <step> --t-stop <stop>
   [--signal v(...)]`** — ASCII-график waveform (signal vs time).
+- **`/sweep <PROJECT> --schematic <abs.kicad_sch> --param REF=v1,v2,...
+  [--metric op|gain|bandwidth|thd] [--freq Hz] [--output text|csv|json]
+  [--output-file PATH] [--plot]`** — параметрический sweep по 1-2
+  component values с aligned tabular output + опциональный ASCII plot.
+  Default `--metric op`. Soft warn N>20; hard cap N>100 (override
+  через `--max-combinations`).
 - **`/kb-search <query>`** — поиск по Knowledge Base (token-AND).
   Используй ПЕРЕД тем, как изобретать решение: «как сделать X»,
   «pitfall с Y», «формула для Z».
