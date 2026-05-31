@@ -854,18 +854,11 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   filter — в `templates/`.
   Acceptance: `/project create --template se-amp NAME` создаёт
   работающий проект с предзаполненной схемой и моделями.
-- **T153** — [2026-05-26, deferred from T023 Clarify Q-B] **`bridge
-  measure phase-margin` как отдельная задача.** Отделён от T023 потому
-  что: (1) open-loop SE/PP усилители (наш базовый use case Фазы 2)
-  phase margin не имеют — концепция применима только к feedback-loop
-  схемам; (2) loop-cutting требует caller-side hint'а на break node и
-  собственной дисциплины (AC stimulus + return measurement); (3) у
-  efactory пока нет feedback-фикстур в `data/templates/`. Триггер:
-  появление первой feedback-схемы (NFB tube amp / op-amp фикстура).
-  Acceptance: `efactory bridge measure phase-margin <schematic>
-  --loop-break-node <node>` возвращает `(margin_deg: float,
-  crossover_hz: float)`; собственный spec по полному ритуалу
-  (spec → clarify → analyze).
+<!-- T153 переехала в BOARD.md → Doing 2026-05-31. Phase A scope
+     включает создание первой feedback-фикстуры (триггер закрывается
+     внутри задачи). Spec — specs/T153-phase-margin/spec.md (Draft,
+     готов к Clarify). -->
+
 
 ### Фаза 3 (+2 недели)
 
