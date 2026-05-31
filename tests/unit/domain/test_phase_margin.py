@@ -49,8 +49,9 @@ def test_measurement_minimal_happy_path() -> None:
 def test_measurement_full_payload_happy() -> None:
     auto = AutoDetectInfo(
         chosen_node='/fb_node',
+        chosen_element_ref='C_fb_block',
         confidence=0.85,
-        alternatives=(('/out', 0.6), ('/cathode', 0.4)),
+        alternatives=(('/out', 'R_load', 0.6), ('/cathode', 'C_k', 0.4)),
         algorithm_notes='single dominant cycle; passive feedback path',
     )
     m = _make_measurement(
@@ -171,18 +172,21 @@ def test_measurement_extra_crossovers_nan_rejected() -> None:
 def test_auto_detect_info_happy() -> None:
     info = AutoDetectInfo(
         chosen_node='/fb_node',
+        chosen_element_ref='C_fb_block',
         confidence=0.92,
-        alternatives=(('/cathode', 0.55),),
+        alternatives=(('/cathode', 'C_k_bypass', 0.55),),
         algorithm_notes='passive feedback path detected',
     )
     assert info.chosen_node == '/fb_node'
+    assert info.chosen_element_ref == 'C_fb_block'
     assert info.confidence == pytest.approx(0.92)
-    assert info.alternatives == (('/cathode', 0.55),)
+    assert info.alternatives == (('/cathode', 'C_k_bypass', 0.55),)
 
 
 def test_auto_detect_info_empty_alternatives_allowed() -> None:
     info = AutoDetectInfo(
         chosen_node='/fb',
+        chosen_element_ref='R_fb',
         confidence=1.0,
         alternatives=(),
         algorithm_notes='only one cycle',
@@ -195,6 +199,7 @@ def test_auto_detect_info_confidence_range(bad: float) -> None:
     with pytest.raises(ValidationError, match='confidence'):
         AutoDetectInfo(
             chosen_node='/fb',
+            chosen_element_ref='R_fb',
             confidence=bad,
             alternatives=(),
             algorithm_notes='',
@@ -205,6 +210,18 @@ def test_auto_detect_info_chosen_node_non_empty() -> None:
     with pytest.raises(ValidationError, match='chosen_node'):
         AutoDetectInfo(
             chosen_node='',
+            chosen_element_ref='R_fb',
+            confidence=0.5,
+            alternatives=(),
+            algorithm_notes='x',
+        )
+
+
+def test_auto_detect_info_chosen_element_ref_non_empty() -> None:
+    with pytest.raises(ValidationError, match='chosen_element_ref'):
+        AutoDetectInfo(
+            chosen_node='/fb',
+            chosen_element_ref='',
             confidence=0.5,
             alternatives=(),
             algorithm_notes='x',
@@ -215,8 +232,9 @@ def test_auto_detect_info_alternative_confidence_in_range() -> None:
     with pytest.raises(ValidationError, match='alternatives'):
         AutoDetectInfo(
             chosen_node='/fb',
+            chosen_element_ref='R_fb',
             confidence=0.5,
-            alternatives=(('/out', 1.5),),
+            alternatives=(('/out', 'R_load', 1.5),),
             algorithm_notes='',
         )
 
@@ -225,8 +243,20 @@ def test_auto_detect_info_alternative_node_non_empty() -> None:
     with pytest.raises(ValidationError, match='alternatives'):
         AutoDetectInfo(
             chosen_node='/fb',
+            chosen_element_ref='R_fb',
             confidence=0.5,
-            alternatives=(('', 0.4),),
+            alternatives=(('', 'R_load', 0.4),),
+            algorithm_notes='',
+        )
+
+
+def test_auto_detect_info_alternative_element_ref_non_empty() -> None:
+    with pytest.raises(ValidationError, match='alternatives'):
+        AutoDetectInfo(
+            chosen_node='/fb',
+            chosen_element_ref='R_fb',
+            confidence=0.5,
+            alternatives=(('/out', '', 0.4),),
             algorithm_notes='',
         )
 
@@ -235,8 +265,9 @@ def test_auto_detect_info_alternative_nan_confidence_rejected() -> None:
     with pytest.raises(ValidationError, match='alternatives'):
         AutoDetectInfo(
             chosen_node='/fb',
+            chosen_element_ref='R_fb',
             confidence=0.5,
-            alternatives=(('/out', math.nan),),
+            alternatives=(('/out', 'R_load', math.nan),),
             algorithm_notes='',
         )
 
@@ -244,6 +275,7 @@ def test_auto_detect_info_alternative_nan_confidence_rejected() -> None:
 def test_auto_detect_info_is_frozen() -> None:
     info = AutoDetectInfo(
         chosen_node='/fb',
+        chosen_element_ref='R_fb',
         confidence=0.5,
         alternatives=(),
         algorithm_notes='',
@@ -262,9 +294,11 @@ def test_feedback_cycle_happy() -> None:
         forward_path_score=0.9,
         feedback_path_score=0.85,
         suggested_break_node='/fb',
+        suggested_break_element_ref='R_fb',
         confidence=0.78,
     )
     assert cycle.suggested_break_node == '/fb'
+    assert cycle.suggested_break_element_ref == 'R_fb'
     assert cycle.confidence == pytest.approx(0.78)
 
 
@@ -280,6 +314,7 @@ def test_feedback_cycle_scores_in_unit_range(field: str, bad: float) -> None:
         'forward_path_score': 0.5,
         'feedback_path_score': 0.5,
         'suggested_break_node': '/a',
+        'suggested_break_element_ref': 'R1',
         'confidence': 0.5,
     }
     base[field] = bad
@@ -295,6 +330,33 @@ def test_feedback_cycle_suggested_break_must_be_in_nodes() -> None:
             forward_path_score=0.5,
             feedback_path_score=0.5,
             suggested_break_node='/nonexistent',
+            suggested_break_element_ref='R1',
+            confidence=0.5,
+        )
+
+
+def test_feedback_cycle_suggested_break_element_must_be_in_elements() -> None:
+    with pytest.raises(ValidationError, match='suggested_break_element_ref'):
+        FeedbackCycle(
+            nodes=('/a',),
+            elements=('R1',),
+            forward_path_score=0.5,
+            feedback_path_score=0.5,
+            suggested_break_node='/a',
+            suggested_break_element_ref='NONEXISTENT',
+            confidence=0.5,
+        )
+
+
+def test_feedback_cycle_suggested_break_element_ref_non_empty() -> None:
+    with pytest.raises(ValidationError, match='suggested_break_element_ref'):
+        FeedbackCycle(
+            nodes=('/a',),
+            elements=('R1',),
+            forward_path_score=0.5,
+            feedback_path_score=0.5,
+            suggested_break_node='/a',
+            suggested_break_element_ref='',
             confidence=0.5,
         )
 
@@ -307,6 +369,7 @@ def test_feedback_cycle_nodes_non_empty() -> None:
             forward_path_score=0.5,
             feedback_path_score=0.5,
             suggested_break_node='/a',
+            suggested_break_element_ref='R1',
             confidence=0.5,
         )
 
@@ -319,6 +382,7 @@ def test_feedback_cycle_elements_non_empty() -> None:
             forward_path_score=0.5,
             feedback_path_score=0.5,
             suggested_break_node='/a',
+            suggested_break_element_ref='R1',
             confidence=0.5,
         )
 
@@ -330,6 +394,7 @@ def test_feedback_cycle_is_frozen() -> None:
         forward_path_score=0.5,
         feedback_path_score=0.5,
         suggested_break_node='/a',
+        suggested_break_element_ref='R1',
         confidence=0.5,
     )
     with pytest.raises(ValidationError):

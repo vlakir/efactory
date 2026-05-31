@@ -25,7 +25,101 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-01 — T153 ADR-T153d: edge vs node — break контракт через пару (node, element_ref)
+
+- **Контекст.** При старте T153 Phase B.3 (NgspiceInjectionNetlistPatcher
+  adapter) обнаружено: контракты `InjectionNetlistPatcher`
+  (ADR-T153c) и `InjectionStrategy.prepare` (ADR-T153a) принимают
+  только `break_node: str`, но имя нета не определяет однозначно,
+  какой именно edge режется. К типовому break-неду подключены 2-3
+  элемента; convention «first/last line stays» брittle к порядку
+  элементов в KiCad-exported netlist'е.
+
+  В Phase A NFB SE amp фикстуре `/sec_a` connects three passive
+  elements (L_sec OPT secondary, R_load, C_fb_block). Эвристики
+  «active vs passive» не помогают — break point в чисто passive-
+  территории. Caller (NetlistGraphAnalyzer auto-detect или explicit
+  CLI override) должен указать пару `(node, element_ref)` — это
+  ровно один wire в circuit graph.
+
+- **Решение.** **Edge-based contract — все API получают
+  `break_element_ref: str` рядом с `break_node`.**
+
+  Port `InjectionNetlistPatcher` (ADR-T153c) — 4 метода:
+  `insert_voltage_source / insert_current_source / open_break /
+  short_break` — обязательный keyword `break_element_ref: str`.
+  Adapter режет именно в строке этого элемента.
+
+  Domain `InjectionStrategy.prepare(...)` ABC (ADR-T153a):
+  `prepare(netlist, *, break_node, break_element_ref) ->
+  InjectionSetup`. 4 concrete impl пробрасывают arg в patcher.
+
+  Domain VO `AutoDetectInfo` / `FeedbackCycle` (Phase B.1) —
+  расширяются полями `chosen_element_ref` / `suggested_break_element_ref`
+  с validator'ом «ref ∈ elements».
+
+  CLI — `--loop-break-node <node> --loop-break-element <ref>` пара
+  (оба обязательны при explicit override; explicit без partner-флага
+  → exit 2 + actionable).
+
+  `NetlistGraphAnalyzer` (ADR-T153b, ещё не имплементирован) —
+  возвращает edge-pair, не node. Heuristic «highest-impedance
+  feedback edge» уже работала на edge-level в spec'е §3, просто
+  терминологически называлась «break node».
+
+- **Альтернативы рассмотрены.**
+
+  - **Forward partition** — set-based `forward_elements: tuple[str,
+    ...]`. Более общий contract, но избыточный: классическая
+    Middlebrook / Rosenstark методология режет ровно один wire.
+    Set-based усложняет API и не даёт benefit для existing methods.
+  - **Adapter сам выбирает edge через NetlistGraphAnalyzer.**
+    Отвергнуто: нарушение hexagonal arch (adapter не должен звать
+    domain analyzer); cyclic dep. Auto-detect — отдельная concern
+    в `application/detect_feedback_break_node` use case.
+  - **Convention «first/last line element»** — brittle к порядку
+    элементов в KiCad netlist'е (silent breakage при перерисовке).
+    Отвергнуто.
+  - **Element-type heuristic «passive → fwd, active → rev»** —
+    fails на all-passive break point (NFB SE amp /sec_a). Отвергнуто.
+
+- **Последствия.**
+
+  - **+** Контракт break точки — однозначен и robust к netlist
+    reordering: `(node, element_ref)` идентифицирует уникальный
+    edge в graph'е.
+  - **+** Adapter B.3 имеет deterministic «найти строку с
+    element_ref, переименовать в ней break_node → __fwd».
+  - **+** CLI explicit override понятный — оба флага обязательны
+    одновременно (exit 2 если один без другого).
+  - **+** Auto-detect (Graph Analyzer) уже работает на edge-level
+    концептуально — формализация терминологии.
+  - **−** Retroactive patch'и Phase B.1 + B.2 — 2 повторных
+    коммита (`T153 Phase B.1 patch` + `T153 Phase B.2 patch`) перед
+    `T153 Phase B.3` new. Фиксируется как уроки в `[Unreleased]`
+    retro: «scope review между фазами полезен — обнаружили abstraction
+    bug до B.3 implementation».
+  - **−** `AutoDetectInfo.alternatives` структура раздувается
+    (`tuple[node, element_ref, confidence]` вместо `tuple[node,
+    confidence]`). Acceptable: edge-pair — primary semantic unit.
+  - **±** Spec §3 Loop break + §5 Key Entities обновлены inline
+    (раздел «Clarify revision 2026-06-01: edge vs node» добавлен в
+    spec.md).
+
+- **Замечание к ADR-T153a / ADR-T153c.** Подзаголовки кодовых блоков
+  в этих двух ADR'ах содержат старые signatures `break_node` only —
+  как исторический snapshot моментa принятия. Подзаголовки **не
+  редактируются** (правило ADR-Lite); реальные signatures
+  поддерживаются ADR-T153d.
+
+
 ### 2026-06-01 — T153 ADR-T153c: InjectionNetlistPatcher как отдельный outbound port
+
+> **Уточнено ADR-T153d (2026-06-01)** — все 4 port-метода получили
+> обязательный keyword `break_element_ref: str` для однозначной
+> edge-identification. См. ADR-T153d.
+
+
 
 - **Контекст.** T153 Phase B.2 — реализация четырёх `InjectionStrategy`
   impl. Каждая strategy в методе `prepare(netlist, break_node)` должна
@@ -158,6 +252,10 @@ ADR-Lite: компактный лог архитектурных решений 
 
 
 ### 2026-05-31 — T153 ADR-T153a: четыре loop-gain methodologies, strategy pattern
+
+> **Уточнено ADR-T153d (2026-06-01)** — `InjectionStrategy.prepare`
+> ABC получила обязательный keyword `break_element_ref: str`
+> (edge-vs-node refinement). См. ADR-T153d.
 
 - **Контекст.** T153 (`bridge measure phase-margin`) реализуется
   полнофункционально (не MVP), включая 4 методологии измерения

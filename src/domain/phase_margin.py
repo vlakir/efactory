@@ -78,21 +78,33 @@ def _compute_relative_percent(
 
 
 class AutoDetectInfo(BaseModel):
-    """Результат auto-detect break node графовым анализатором."""
+    """
+    Результат auto-detect break edge графовым анализатором.
+
+    Edge определяется парой `(chosen_node, chosen_element_ref)` —
+    ровно один wire в circuit graph (ADR-T153d, 2026-06-01).
+    """
 
     model_config = _FROZEN
 
     chosen_node: Annotated[str, Field(min_length=1)]
+    chosen_element_ref: Annotated[str, Field(min_length=1)]
     confidence: Annotated[float, Field(ge=0.0, le=1.0, allow_inf_nan=False)]
-    alternatives: tuple[tuple[str, float], ...] = ()
+    alternatives: tuple[tuple[str, str, float], ...] = ()
     algorithm_notes: str = ''
 
     @model_validator(mode='after')
     def _check_alternatives(self) -> Self:
-        for idx, (node, conf) in enumerate(self.alternatives):
+        for idx, (node, element_ref, conf) in enumerate(self.alternatives):
             if not node:
                 msg = (
                     f'AutoDetectInfo.alternatives[{idx}]: node name must '
+                    f'be a non-empty string.'
+                )
+                raise ValueError(msg)
+            if not element_ref:
+                msg = (
+                    f'AutoDetectInfo.alternatives[{idx}]: element_ref must '
                     f'be a non-empty string.'
                 )
                 raise ValueError(msg)
@@ -117,6 +129,9 @@ class FeedbackCycle(BaseModel):
 
     Используется как промежуточное VO между `parse(netlist)` и
     `score_break_candidates(cycles)` (ADR-T153b).
+
+    Suggested break edge — пара `(suggested_break_node,
+    suggested_break_element_ref)` (ADR-T153d, 2026-06-01).
     """
 
     model_config = _FROZEN
@@ -126,6 +141,7 @@ class FeedbackCycle(BaseModel):
     forward_path_score: Annotated[float, Field(ge=0.0, le=1.0, allow_inf_nan=False)]
     feedback_path_score: Annotated[float, Field(ge=0.0, le=1.0, allow_inf_nan=False)]
     suggested_break_node: Annotated[str, Field(min_length=1)]
+    suggested_break_element_ref: Annotated[str, Field(min_length=1)]
     confidence: Annotated[float, Field(ge=0.0, le=1.0, allow_inf_nan=False)]
 
     @model_validator(mode='after')
@@ -135,6 +151,17 @@ class FeedbackCycle(BaseModel):
                 f'FeedbackCycle: suggested_break_node '
                 f'{self.suggested_break_node!r} not in nodes '
                 f'{list(self.nodes)!r}.'
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode='after')
+    def _check_break_element_in_elements(self) -> Self:
+        if self.suggested_break_element_ref not in self.elements:
+            msg = (
+                f'FeedbackCycle: suggested_break_element_ref '
+                f'{self.suggested_break_element_ref!r} not in elements '
+                f'{list(self.elements)!r}.'
             )
             raise ValueError(msg)
         return self

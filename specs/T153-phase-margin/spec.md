@@ -127,15 +127,19 @@ gain / bandwidth / THD: эти меряются как-есть на netlist'е 
 
 ### Loop break — explicit или auto-detect
 
-- **ДОЛЖНА** поддерживать **два способа** определить break node
-  (Q3=b):
-  - **Explicit override:** `--loop-break-node <node>` — имя SPICE-нета,
-    в котором будет применена инжекция. Никаких heuristics, прямой
-    приказ caller'у.
-  - **Heuristic auto-detect (default):** при отсутствии флага tool
+- **ДОЛЖНА** поддерживать **два способа** определить break edge
+  (Q3=b; revision 2026-06-01 — edge, не node; pair `node +
+  element_ref` задаёт уникальный wire в circuit graph):
+  - **Explicit override:** `--loop-break-node <node>
+    --loop-break-element <element_ref>` — обе строки **обязательны**
+    одновременно. Никаких heuristics, прямой приказ caller'у. Если
+    указан только один из флагов → exit 2 + actionable error
+    «оба флага требуются для explicit override».
+  - **Heuristic auto-detect (default):** при отсутствии флагов tool
     строит граф netlist'а, ищет cycle'ы, классифицирует пути на
     forward / feedback по element-type heuristics, выбирает наиболее
-    вероятный break node + рассчитывает confidence score.
+    вероятный break edge `(node, element_ref)` + рассчитывает
+    confidence score.
 - **ДОЛЖНА** при auto-detect выдавать **confirmation prompt** в text
   output:
   - В interactive TTY-режиме (`stdin.isatty()`) — печатать «detected
@@ -236,7 +240,7 @@ gain / bandwidth / THD: эти меряются как-есть на netlist'е 
 - **ДОЛЖНА** иметь stable интерфейс:
   ```
   bridge measure phase-margin <NETLIST>
-      [--loop-break-node <node>]   # default: heuristic auto-detect
+      [--loop-break-node <node> --loop-break-element <ref>]  # explicit pair (revision 2026-06-01); default: auto-detect
       [--confidence-threshold 0.8]
       [--no-confirm]
       [--injection-method {middlebrook-voltage,middlebrook-current,tian,rosenstark-return-ratio}]
@@ -407,23 +411,29 @@ gain / bandwidth / THD: эти меряются как-есть на netlist'е 
 
 - **`AutoDetectInfo`** (frozen Pydantic VO):
   - `chosen_node: str`,
+  - `chosen_element_ref: str` (edge-vs-node revision 2026-06-01;
+    ref элемента, через который физически режется loop),
   - `confidence: float ∈ [0, 1]`,
-  - `alternatives: list[tuple[str, float]]` — top-N candidates с
-    confidence,
+  - `alternatives: tuple[tuple[str, str, float], ...]` — top-N
+    candidates `(node, element_ref, confidence)`,
   - `algorithm_notes: str` — short human-readable.
 
 - **`FeedbackCycle`** (frozen, used internally by graph analyzer):
-  - `nodes: list[str]`, `elements: list[str]`,
+  - `nodes: tuple[str, ...]`, `elements: tuple[str, ...]`,
   - `forward_path_score: float`, `feedback_path_score: float`,
-  - `suggested_break_node: str`, `confidence: float`.
+  - `suggested_break_node: str` (∈ `nodes`),
+  - `suggested_break_element_ref: str` (∈ `elements`, edge-vs-node
+    revision 2026-06-01),
+  - `confidence: float`.
 
 ### Injection strategies (ABC + 4 impls)
 
 - **`InjectionStrategy`** (abstract base, `domain/phase_margin.py`):
-  - `def patch(netlist: str, break_node: str) -> InjectionPatch:
-    return list of source patches + probe-pair nodes`.
-  - `def combine(sweep_v: AcSweep, sweep_i: AcSweep | None) ->
-    LoopGain: T(jω) calculated по method-specific formula`.
+  - `def prepare(netlist: str, *, break_node: str,
+    break_element_ref: str) -> InjectionSetup` (edge-vs-node revision
+    2026-06-01: edge определяется парой node+element_ref).
+  - `def combine(sweeps: tuple[AcSweep, ...], setup: InjectionSetup)
+    -> LoopGain: T(jω) calculated по method-specific formula`.
 
 - **`MiddlebrookVoltageStrategy`**: voltage source insertion +
   single sweep + `T = -V(rev)/V(fwd)`.
@@ -1147,3 +1157,131 @@ Agent читает это при выборе method для конкретной
 ### Phase 0 entry checklist
 
 После закрытия Critical issues → Phase 0 ADR drafts → Phase A.
+
+---
+
+## Clarify revision 2026-06-01 — edge vs node
+
+Обнаружено при старте Phase B.3 (NgspiceInjectionNetlistPatcher
+adapter). Затрагивает Phase B.1 (domain VO) и Phase B.2
+(InjectionStrategy ABC + 4 impl) — оба заведены через retroactive
+patch'и.
+
+### Проблема
+
+ADR-T153c определил `InjectionNetlistPatcher.insert_voltage_source(
+netlist, *, break_node: str, ...)` — port принимает только имя
+SPICE-нета. Аналогично `InjectionStrategy.prepare(netlist, *,
+break_node)`. Контракт **не определяет однозначно topology cut**:
+
+К типовому break-неду подключены 2-3 элемента. Например, в Phase A
+NFB SE amp фикстуре нет `/sec_a` соединяет три элемента:
+`L_sec` (OPT secondary), `R_load` (8 Ω нагрузка), `C_fb_block`
+(feedback cap). Чтобы измерить loop-gain, source должен встать
+**именно** в feedback-провод `C_fb_block ↔ /sec_a`, а не в OPT- или
+load-edge. Конвенция «split node» сама по себе этого выбора не
+делает.
+
+Heuristic вроде «first-line element остаётся, last-line — на N_fwd»
+работает только пока порядок элементов в netlist'е стабилен. KiCad-
+exporter порядок не гарантирует, любая перерисовка / замена
+элемента ломает конвенцию silently — пара тестов проходит, физика
+ломается.
+
+Эвристики по element-type (active vs passive) не помогают тоже:
+break point деревенно может находиться в чисто passive-территории
+(как `/sec_a` в NFB SE amp).
+
+### Решение
+
+**Edge вместо node.** Контракт breaking определяется парой
+`(break_node, break_element_ref)` — ровно один wire в circuit graph.
+
+**Port API расширяется** — все 4 метода
+`InjectionNetlistPatcher` получают обязательный keyword
+`break_element_ref: str`:
+
+```python
+def insert_voltage_source(
+    self,
+    netlist: str,
+    *,
+    break_node: str,
+    break_element_ref: str,
+    source_ref: str,
+    ac_magnitude: float = 1.0,
+) -> NetlistPatchResult: ...
+```
+
+Семантика: **в строке элемента `break_element_ref`** заменить ссылку
+на `break_node` на новое имя `<break_node>__fwd`. Остальные строки
+с `break_node` не трогаются. Source мостит `__fwd ↔ break_node` (или
+к земле, для current/Rosenstark).
+
+**Domain VO `AutoDetectInfo`** и **`FeedbackCycle`** (Phase B.1)
+расширяются полем `chosen_element_ref: str` / `suggested_break_element_ref:
+str` соответственно. Validator: ref ∈ `elements`.
+
+**`InjectionStrategy.prepare(...)` ABC** — keyword `break_element_ref`
+становится обязательным; 4 concrete impl пробрасывают arg в
+patcher.
+
+**`measure_phase_margin` use case** — принимает `break_node +
+break_element_ref` от auto-detect (`NetlistGraphAnalyzer`) или
+explicit CLI override.
+
+**`NetlistGraphAnalyzer`** (ещё не имплементирован, ADR-T153b
+описывает) — возвращает edge-pair, не только node. Heuristic
+«highest-impedance feedback edge» уже работала на edge-level в
+spec'е §3 («edge cut»), просто терминологически называлась
+«break node».
+
+**CLI** — два опциональных флага вместо одного:
+
+```
+--loop-break-node <node> --loop-break-element <ref>
+```
+
+Оба обязательны при explicit override (если один указан без
+другого — exit 2 + actionable). Auto-detect возвращает обе строки
+вместе.
+
+`AutoDetectInfo.alternatives` — `tuple[tuple[node, element_ref,
+confidence], ...]` (раньше `tuple[tuple[node, confidence], ...]`).
+
+### Почему ровно один element-ref, а не «forward partition»
+
+Set-based partition (`forward_elements: tuple[str, ...]`) — более
+общий contract, но избыточный. В классической Middlebrook /
+Rosenstark loop-cut методологии разрыв происходит в **одном
+проводе** — это физика, не упрощение. Если нужен более сложный
+patch (split нескольких эджей одного нета) — это другой
+methodology, и нужен отдельный port-метод. Пока не нужно.
+
+### Что **не** меняется
+
+- Кол-во methodologies (4) — те же.
+- Combine-формулы Middlebrook/Tian/Rosenstark — те же.
+- `LoopGain` / `InjectionSetup` / `NetlistPatchResult` / `ProbePair`
+  — не трогаются.
+- CLI семантика (`--injection-method`, `--f-low/--f-high`,
+  `--with-gain-margin`, etc.) — без изменений.
+- Spec §4 Success Criteria, §6 Assumptions, §7 Out of Scope — без
+  изменений.
+- ADR-T153a общая мотивация — без изменений; ADR-T153c общая
+  мотивация — без изменений. Меняются только signatures в их code-
+  блоках (patch-комментарий в DECISIONS.md ниже фиксирует это).
+
+### Откатные действия
+
+| Артефакт | Действие |
+| --- | --- |
+| `src/domain/phase_margin.py` (B.1) | Расширить `AutoDetectInfo` / `FeedbackCycle` + validators. Retroactive commit `T153 Phase B.1 patch`. |
+| `src/ports/outbound/injection_netlist_patcher.py` (B.2) | Добавить `break_element_ref` в 4 метода. Retroactive commit `T153 Phase B.2 patch`. |
+| `src/domain/phase_margin_injection.py` (B.2) | `prepare()` ABC + 4 impl signature. Retroactive commit (тот же). |
+| Tests (B.1 + B.2) | Обновить existing + добавить новые для validators. Те же retroactive commits. |
+| `src/adapters/outbound/ngspice/injection_patcher.py` (B.3 new) | Реализация с edge-aware split. Новый commit `T153 Phase B.3`. |
+| `DECISIONS.md` ADR-T153a / ADR-T153c | Patch-параграф «2026-06-01 revision» в каждый. |
+| `specs/.../spec.md` §3 Loop break + §5 Key Entities | Обновляются inline. |
+
+Vladimir подтвердил edge-based design 2026-06-01 при старте B.3.
