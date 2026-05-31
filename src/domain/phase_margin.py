@@ -48,6 +48,46 @@ InjectionMethod = Literal[
 StabilityClass = Literal['high', 'adequate', 'marginal', 'risky']
 
 
+# ----------------------------------------------------- domain errors ----
+
+
+class LoopBreakNodeNotFoundError(ValueError):
+    """
+    Explicit break edge `(node, element_ref)` не найден в netlist'е.
+
+    Raised when:
+    * `break_element_ref` отсутствует в top-level элементных строках;
+    * `break_node` отсутствует среди pin'ов указанного элемента.
+
+    Phase B.4: explicit-override-only path. В Phase B.5 auto-detect
+    может raise тот же error при rejected confidence (для consistency).
+    """
+
+
+class NoUnityGainCrossoverError(ValueError):
+    """
+    Loop gain `|T(jω)|` нигде не пересекает unity (0 dB) сверху вниз.
+
+    Включает edge cases:
+    * `|T|` всегда ≤ 1 во всём свеппе (Spec Q5=a — «loop gain below
+      unity; nothing to measure»);
+    * `|T|` поднимается выше 1 и обратно опускается, но без чистого
+      DOWNWARD crossing'а 0 dB (non-monotonic edge case).
+
+    Не путать с `LoopGainAlwaysAboveUnityError`: тот — для случая когда
+    `|T|` всегда > 1.
+    """
+
+
+class LoopGainAlwaysAboveUnityError(ValueError):
+    """
+    Loop gain `|T(jω)|` всегда > 1 во всём свеппе.
+
+    Spec Q5=c — actionable error: «расширь `--f-high`». Crossover лежит
+    за верхней границей текущего sweep'а.
+    """
+
+
 # Spec §5 (Clarify Q10=b) stability thresholds в градусах.
 _STABILITY_HIGH_MIN_DEG = 60.0
 _STABILITY_ADEQUATE_MIN_DEG = 45.0
