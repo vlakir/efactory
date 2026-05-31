@@ -3,9 +3,11 @@ FilesystemSpiceModelLibrary — generic adapter для библиотеки SPIC
 
 Scan структуры `<root>/<category>/<source>/*.{lib,inc,cir}`:
 
-- `<category>` ∈ `tubes` / `transformers` / `loads` (`ComponentCategory`).
+- `<category>` ∈ `tubes` / `transformers` / `loads` / `diodes` / `opamps`
+  (`ComponentCategory`).
 - `<source>` для tubes — `koren / ayumi / duncan / custom` (T006); для
-  transformers / loads — `generic` или vendor-specific (T007).
+  transformers / loads / diodes / opamps — `generic` или vendor-specific
+  (T007 / T101 / T153).
 
 Для каждого файла парсим первую `.SUBCKT` строку: имя + пины.
 Subcategory определяется в порядке приоритета (T007 C2):
@@ -87,6 +89,7 @@ _CATEGORY_DIR_NAMES: Final[dict[str, ComponentCategory]] = {
     'transformers': ComponentCategory.TRANSFORMER,
     'loads': ComponentCategory.LOAD,
     'diodes': ComponentCategory.DIODE,
+    'opamps': ComponentCategory.OPAMP,
 }
 
 

@@ -27,12 +27,13 @@ SpiceModelId = Annotated[str, AfterValidator(_validate_id)]
 
 
 class ComponentCategory(StrEnum):
-    """Класс электронного компонента (T007 generalization, T101 диоды)."""
+    """Класс электронного компонента (T007 generalization, T101 диоды, T153 opamp)."""
 
     TUBE = 'tube'
     TRANSFORMER = 'transformer'
     LOAD = 'load'
     DIODE = 'diode'
+    OPAMP = 'opamp'
 
 
 class TubeType(StrEnum):
@@ -67,6 +68,13 @@ class DiodeKind(StrEnum):
     SCHOTTKY = 'schottky'  # Schottky (BAT85, 1N5817, ...)
     ZENER = 'zener'  # voltage reference
     LED = 'led'  # light-emitting
+
+
+class OpampKind(StrEnum):
+    """Подкатегория для category=OPAMP (T153, cross-validation reference)."""
+
+    SINGLE_POLE = 'single_pole'  # macromodel: VCCS + RC + buffer + Rout
+    # future: TWO_POLE, FULL_VENDOR (LM741/OPA134 import — T030)
 
 
 class ModelSource(StrEnum):
@@ -133,3 +141,11 @@ class SpiceModel(BaseModel):
             msg = f'diode_kind accessor invalid for category={self.category.value}'
             raise ValueError(msg)
         return DiodeKind(self.subcategory)
+
+    @property
+    def opamp_kind(self) -> OpampKind:
+        """Typed accessor для category=OPAMP; raises иначе."""
+        if self.category is not ComponentCategory.OPAMP:
+            msg = f'opamp_kind accessor invalid for category={self.category.value}'
+            raise ValueError(msg)
+        return OpampKind(self.subcategory)

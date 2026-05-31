@@ -928,8 +928,16 @@ Phase A planning: «op-amp inverting fixture для cross-validation» —
 SPICE `.subckt` (Voltage-Controlled Voltage Source E + RC dominant
 pole + output resistor). ~10-15 строк. Не production-grade,
 достаточно для unit tests. Положить в
-`data/models/opamps/generic_opamp.subckt`. Не конкретная модель типа
-LM741/OPA134 — это T030 (model_import_url) future task.
+`data/models/opamps/generic/GENERIC_OPAMP.lib` (option B chosen
+2026-05-31: full ComponentCategory integration, не helper-папка —
+позволяет `efactory opamp list/show` + user overlay). Не конкретная
+модель типа LM741/OPA134 — это T030 (model_import_url) future task.
+
+**Phase A.1 closed 2026-05-31:** Topology G·R·C·E·Rout
+(gm=1, R1=100k → A0=100 dB; C1=159.155n → fp=10 Hz, GBW=1 MHz;
+Rout=50 Ω). Acceptance tests на open-loop AC sweep дают expected
+A0, GBW, -90° phase at GBW, Rout divider. Adapter / CLI / docs
+обновлены под `ComponentCategory.OPAMP` + `OpampKind.SINGLE_POLE`.
 
 **C3. NetlistGraphAnalyzer placement — `domain/` vs `application/`.**
 

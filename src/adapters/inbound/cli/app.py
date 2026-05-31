@@ -965,6 +965,11 @@ def build_app(
         ComponentCategory.DIODE,
         'No diode models found.',
     )
+    _register_model_subapp(
+        'opamp',
+        ComponentCategory.OPAMP,
+        'No opamp models found.',
+    )
 
     # T146: SPICE-models static validator (`efactory lib validate <file>`).
     lib_app = typer.Typer(no_args_is_help=True, add_completion=False)
