@@ -37,19 +37,33 @@ _SE_AMP_BUILDER_PATH = (
     / 'schematic_kicad'
     / 'test_se_amp_facade.py'
 )
+_NFB_SE_AMP_BUILDER_PATH = (
+    _REPO_ROOT
+    / 'tests'
+    / 'integration'
+    / 'adapters'
+    / 'schematic_kicad'
+    / 'test_nfb_se_amp_facade.py'
+)
 
 
-def _import_se_amp_builder() -> object:
+def _import_builder(builder_path: Path, attr: str) -> object:
     sys.path.insert(0, str(_REPO_ROOT / 'src'))
-    spec = importlib.util.spec_from_file_location(
-        'se_amp_builder', _SE_AMP_BUILDER_PATH
-    )
+    spec = importlib.util.spec_from_file_location(builder_path.stem, builder_path)
     if spec is None or spec.loader is None:
-        msg = f'Cannot import builder from {_SE_AMP_BUILDER_PATH}'
+        msg = f'Cannot import builder from {builder_path}'
         raise RuntimeError(msg)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module._build_se_amp  # type: ignore[attr-defined]  # noqa: SLF001
+    return getattr(module, attr)
+
+
+def _import_se_amp_builder() -> object:
+    return _import_builder(_SE_AMP_BUILDER_PATH, '_build_se_amp')
+
+
+def _import_nfb_se_amp_builder() -> object:
+    return _import_builder(_NFB_SE_AMP_BUILDER_PATH, '_build_nfb_se_amp')
 
 
 def _bake_se_amp(target_dir: Path) -> None:
@@ -131,7 +145,100 @@ def _bake_se_amp(target_dir: Path) -> None:
     )
 
 
-_BAKERS: dict[str, object] = {'se-amp': _bake_se_amp}
+def _bake_nfb_se_amp(target_dir: Path) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    sch_path = target_dir / f'{PROJECT_NAME_PLACEHOLDER}.kicad_sch'
+    build = _import_nfb_se_amp_builder()
+    build(sch_path)  # type: ignore[operator]
+
+    # Тот же post-process replace `<repo>/data/models/.../X.lib` →
+    # `models/X.lib` (см. `_bake_se_amp` для обоснования).
+    sch_text = sch_path.read_text(encoding='utf-8')
+    sch_text = sch_text.replace(
+        str(_MODELS_DIR / 'tubes' / 'custom' / '6N1P.lib'),
+        'models/6N1P.lib',
+    )
+    sch_text = sch_text.replace(
+        str(_MODELS_DIR / 'tubes' / 'custom' / '6P14P.lib'),
+        'models/6P14P.lib',
+    )
+    sch_text = sch_text.replace(
+        str(_MODELS_DIR / 'transformers' / 'generic' / 'OPT_SE_5K_8.lib'),
+        'models/OPT_SE_5K_8.lib',
+    )
+    sch_path.write_text(sch_text, encoding='utf-8')
+
+    pro_name = f'{PROJECT_NAME_PLACEHOLDER}.kicad_pro'
+    pro_path = target_dir / pro_name
+    pro_path.write_text(
+        json.dumps(
+            {
+                'board': {'design_settings': {}},
+                'meta': {'filename': pro_name, 'version': 3},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+
+    models_target = target_dir / 'models'
+    models_target.mkdir(exist_ok=True)
+    shutil.copy(
+        _MODELS_DIR / 'tubes' / 'custom' / '6N1P.lib',
+        models_target / '6N1P.lib',
+    )
+    shutil.copy(
+        _MODELS_DIR / 'tubes' / 'custom' / '6P14P.lib',
+        models_target / '6P14P.lib',
+    )
+    shutil.copy(
+        _MODELS_DIR / 'transformers' / 'generic' / 'OPT_SE_5K_8.lib',
+        models_target / 'OPT_SE_5K_8.lib',
+    )
+
+    (target_dir / 'template.yaml').write_text(
+        'name: nfb-se-amp\n'
+        'description: |\n'
+        '  Двухкаскадный SE на 6Н1П (driver) + 6П14П (output) с global\n'
+        '  voltage NFB из вторички OPT 5kΩ:8Ω в катод 1-го каскада через\n'
+        '  Rfb (4.7 kΩ) + Cfb_block (10 µF). Target PM ~45-60° (T153 Phase A).\n'
+        'summary: NFB SE 6Н1П+6П14П с global feedback — фикстура для phase-margin.\n',
+        encoding='utf-8',
+    )
+
+    (target_dir / 'README.md').write_text(
+        f'# nfb-se-amp template\n\n'
+        f'Двухкаскадный single-ended audio amp с global voltage NFB:\n'
+        f'6Н1П (driver, triode) → 6П14П (output, pentode) → OPT 5kΩ:8Ω →\n'
+        f'нагрузка 8 Ω. Feedback (R_fb 4.7 kΩ + C_fb_block 10 µF) из\n'
+        f'вторички OPT в катод 1-го каскада. Target phase margin ~45-60°\n'
+        f'(analytical estimate, validate в Phase B PM-tool).\n\n'
+        f'## Файлы\n\n'
+        f'- `{PROJECT_NAME_PLACEHOLDER}.kicad_sch` — схема\n'
+        f'  (после материализации: `<имя_проекта>.kicad_sch`).\n'
+        f'- `{PROJECT_NAME_PLACEHOLDER}.kicad_pro` — KiCad project (нужен для\n'
+        f'  GUI Simulator).\n'
+        f'- `models/6N1P.lib` — driver tube.\n'
+        f'- `models/6P14P.lib` — output tube.\n'
+        f'- `models/OPT_SE_5K_8.lib` — выходной трансформатор.\n\n'
+        f'## Запуск симуляции\n\n'
+        f'    /sim-run\n'
+        f'    # или напрямую:\n'
+        f'    efactory bridge sim-run --schematic <имя_проекта>.kicad_sch\n\n'
+        f'## Phase margin (T153 Phase B+, planned)\n\n'
+        f'    /measure-phase-margin --loop-break-node /sec_a\n'
+        f'    # break node — auto-detect heuristic выберет global loop\n',
+        encoding='utf-8',
+    )
+
+
+_BAKERS: dict[str, object] = {
+    'se-amp': _bake_se_amp,
+    'nfb-se-amp': _bake_nfb_se_amp,
+}
 
 
 def main() -> int:

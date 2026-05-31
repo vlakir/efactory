@@ -1,0 +1,6 @@
+name: nfb-se-amp
+description: |
+  Двухкаскадный SE на 6Н1П (driver) + 6П14П (output) с global
+  voltage NFB из вторички OPT 5kΩ:8Ω в катод 1-го каскада через
+  Rfb (4.7 kΩ) + Cfb_block (10 µF). Target PM ~45-60° (T153 Phase A).
+summary: NFB SE 6Н1П+6П14П с global feedback — фикстура для phase-margin.
