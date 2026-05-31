@@ -6,8 +6,13 @@
 4 расширения scope — Q2/Q3/Q11/Q12 — осознанные, ради
 полнофункциональной реализации, не MVP).
 **Analyze прошёл:** 2026-05-31 (20 issues: 6 Critical, 8 Warning,
-6 Note; C3/C4 закрыты inline в FR, W2 resolved sanity-check'ом
+6 Note; C1 resolved via TDD cross-validation path после Phase 0
+research; C3/C4 закрыты inline в FR; W2 resolved sanity-check'ом
 `AcSweep` уже pydantic frozen).
+**Phase 0 scope correction (2026-05-31):** Clarify Q2=c терминология
+неточна — «Rosenstark double-injection» заменён на «Rosenstark
+return-ratio open/short-circuit (1984)»; Tian год исправлен 1998
+→ 2001 (IEEE Circuits & Devices Magazine).
 **Spin-off от:** T023 Clarify (2026-05-26) — phase margin вынесен
 отдельной задачей.
 **Размер задачи:** **большая** — multi-week milestone. Включает два
@@ -41,9 +46,13 @@ stability classification, full sweep dataset).
 **Полнофункциональность** включает (отличия от изначального MVP-видения,
 зафиксированные в Clarify 2026-05-31):
 
-- **Четыре loop-injection methodologies** (Q2=c): Middlebrook voltage,
-  Middlebrook current, Tian's method (1998), Rosenstark double-injection.
-  Strategy pattern с per-method validation reference circuits.
+- **Четыре loop-gain measurement methodologies** (Q2=c, terminology
+  corrected в Phase 0 research): Middlebrook voltage injection (1975),
+  Middlebrook current injection (1975), Tian's symmetric method (2001,
+  IEEE Circuits & Devices Magazine; часто эквивалентна Middlebrook
+  double-injection в результате), Rosenstark return-ratio open/short-
+  circuit method (1984, Int. J. Electronics). Strategy pattern с
+  per-method validation reference circuits.
 - **Heuristic auto-detect feedback break node** (Q3=b) — netlist graph
   analyzer ищет cycle'ы в circuit graph, identification forward/feedback
   paths по element-type heuristics, confidence scoring + confirmation
@@ -162,18 +171,29 @@ gain / bandwidth / THD: эти меряются как-есть на netlist'е 
      I(forward)`. Применяется для high-impedance break point'ов
      (current-mode loops). Validation reference: same op-amp setup
      для cross-check.
-  3. **`tian`** (Michael Tian, IEEE TCAS 1998): два sweep'а —
+  3. **`tian`** (Michael Tian et al., IEEE Circuits & Devices Magazine
+     2001, «Striving for Small-Signal Stability»): два sweep'а —
      voltage injection даёт `T_v(jω)` и current injection даёт
-     `T_i(jω)` в одной точке; combined `T(jω) = (T_v·T_i +
-     T_v + T_i) / (T_v·T_i - 1) · 0.5` (точная formula — в
-     Phase B Implementation Notes ADR'а). Самый точный для arbitrary
-     impedance break point'ов. Validation reference: transimpedance
-     amplifier setup с известным reference PM.
-  4. **`double_rosenstark`** (Rosenstark 1974): два sweep'а с разными
-     source positions через linear combination — robust к loading
-     effects. Validation reference: cascaded feedback с loading.
+     `T_i(jω)` в одной точке; combined через symmetric formula
+     (hypothesis: `T(jω) = (T_v·T_i − 1) / (T_v + T_i + 2)` —
+     **C1 hypothesis, verification path = TDD cross-validation на
+     op-amp reference в Phase B**, не reference-doc-based). Главное
+     преимущество — symmetric (independent от probe orientation).
+     Часто численно эквивалентна Middlebrook double-injection (1975).
+     Используется как default в Cadence Spectre `stb`. Validation
+     reference: op-amp inverting amp + tube NFB cross-check.
+  4. **`rosenstark_return_ratio`** (Sol Rosenstark, Int. J. Electronics
+     1984, «Loop gain measurements in feedback amplifiers»): не
+     injection-based — анализ break point под двумя нагрузками,
+     open-circuit и short-circuit. Combined formula (hypothesis,
+     verification как у Tian): `T_RR = (T_oc · T_sc + T_oc + T_sc) /
+     (T_oc · T_sc − 1)`. Академически интересен как cross-validation
+     methodology vs Middlebrook-семейства; в commercial SPICE tools
+     не используется как default, но даёт independent verification.
+     Validation reference: same op-amp setup для cross-check всеми
+     методами.
 - **ДОЛЖНА** иметь CLI flag `--injection-method
-  {middlebrook-voltage,middlebrook-current,tian,double-rosenstark}`
+  {middlebrook-voltage,middlebrook-current,tian,rosenstark-return-ratio}`
   (default = `middlebrook-voltage`).
 - **ДОЛЖНА** делать patching netlist'а **без мутации исходного
   файла** — патч живёт во временном `.cir` (T021 уже использует
@@ -219,7 +239,7 @@ gain / bandwidth / THD: эти меряются как-есть на netlist'е 
       [--loop-break-node <node>]   # default: heuristic auto-detect
       [--confidence-threshold 0.8]
       [--no-confirm]
-      [--injection-method {middlebrook-voltage,middlebrook-current,tian,double-rosenstark}]
+      [--injection-method {middlebrook-voltage,middlebrook-current,tian,rosenstark-return-ratio}]
       [--with-gain-margin]
       [--f-low <Hz>] [--f-high <Hz>] [--points-per-decade <N>]
       [--save-result] [--results-dir <path>]
@@ -358,7 +378,7 @@ gain / bandwidth / THD: эти меряются как-есть на netlist'е 
   - `crossover_hz: float` — частота unity-gain crossover.
   - `measured_at_node: str` — имя ноды, в которой применён injection.
   - `injection_method: Literal["middlebrook_voltage",
-    "middlebrook_current", "tian", "double_rosenstark"]`.
+    "middlebrook_current", "tian", "rosenstark_return_ratio"]`.
   - `stability_class: Literal["high", "adequate", "marginal",
     "risky"]` (Q10=b): high > 60°, 45-60° adequate, 30-45° marginal,
     ≤ 30° risky.
@@ -411,8 +431,9 @@ gain / bandwidth / THD: эти меряются как-есть на netlist'е 
   single sweep + `T = -I(rev)/I(fwd)`.
 - **`TianStrategy`**: voltage + current sweeps → Tian combine
   formula.
-- **`DoubleRosenstarkStrategy`**: two voltage sweeps с разными
-  source positions → linear combine.
+- **`RosenstarkReturnRatioStrategy`**: two sweeps на break point
+  при open-circuit + short-circuit модификациях netlist'а →
+  combined через Rosenstark formula.
 
 ### Use cases (`application/`)
 
@@ -862,24 +883,35 @@ Clarify прошёл 2026-05-31. Из 13 вопросов 9 — «по реко�
 
 ### 🔴 Critical (фиксим до Phase 0)
 
-**C1. Tian's method combine formula требует verified derivation.**
+**C1. Tian / Rosenstark combine formulas требуют verification —
+RESOLVED via TDD cross-validation path (Phase 0 decision 2026-05-31).**
 
-В FR (§3 Injection methodology) я записал «`T(jω) = (T_v·T_i + T_v +
-T_i) / (T_v·T_i - 1) · 0.5`» — это **по памяти, не сверенная**. В
-IEEE TCAS 1998 Tian paper точная формула:
+WebFetch reference docs (IEEE PDF за paywall, EDN timeout, designers-
+guide 403) **не доступны** для прямого extraction точных формул.
+Hypothesis formula (записаны в FR):
+- Tian: `T = (T_v·T_i − 1) / (T_v + T_i + 2)`.
+- Rosenstark return-ratio: `T_RR = (T_oc·T_sc + T_oc + T_sc) /
+  (T_oc·T_sc − 1)`.
 
-```
-T(jω) = 2·(T_v·T_i - 1) / (T_v + T_i + 2)
-```
+Path forward: **TDD cross-validation на op-amp reference (Phase A
+generic_opamp.subckt)**: для analytical-known PM-circuit все 4
+methods должны дать same PM ±2°. Если formula неправильная —
+каскадный fail в integration tests на этом reference, найдём
+причину в debugging. Это **gold-standard verification** (numerical
+equivalence на known reference), сильнее чем blind trust к
+reference doc. Дополнительная sanity-check возможна в Phase 0 ADR-
+T153a math derivation (мы выводим формулы сами из определения T_v
++ T_i + linear superposition).
 
-или эквивалентная нормализованная форма. Если formula
-неправильная — **все Tian results будут неправильные** (silently
-wrong numerical output, не crash). Action: в Phase 0 ADR-T153a
-обязательно verified derivation с references (Tian 1998 IEEE TCAS,
-Roberts–Sedra exam textbook). До тех пор не commit'ить формулу в
-код. Дополнительно cross-check на op-amp inverting reference (Phase
-A fixture) — Tian должен дать тот же PM ±2° что и Middlebrook
-voltage.
+Phase 0 ADR-T153a содержит:
+- Math derivation Middlebrook V/I из first principles (defined T as
+  «what gain accumulates after one full loop traversal»).
+- Tian formula derivation как symmetric improvement Middlebrook
+  double.
+- Rosenstark return-ratio formula derivation из open-circuit +
+  short-circuit responses.
+- References (Middlebrook 1975, Tian 2001, Rosenstark 1984) даже
+  если formulas verified TDD-style — для historical context.
 
 **C2. Op-amp SPICE model — отсутствует в `data/models/`.**
 
@@ -991,18 +1023,19 @@ chosen loop only.
 Action: явно в spec FR (§Crossover detection): «extra_crossovers_hz
 relates to the chosen loop (single-loop semantics maintained)».
 
-**W5. Tian's method два sweep'а — performance impact.**
+**W5. Tian/Rosenstark два sweep'а — performance impact.**
 
-Tian требует 2 AC sweeps per measurement → 2× simulator time.
-Rosenstark — тоже 2×. На больших циркуитах (NFB tube amp с OPT и
-nonlinear elements) AC sweep может занять секунды. Default
-injection-method = middlebrook_voltage (один sweep) — OK. Но если
-T021 вызывает phase-margin × 2 (before/after) с Tian — 4 sweeps. На
-большой схеме это 10+ секунд.
+Tian требует 2 AC sweeps (voltage + current) per measurement → 2×
+simulator time. Rosenstark return-ratio — тоже 2 sweeps (open + short
+circuit). На больших циркуитах (NFB tube amp с OPT и nonlinear
+elements) AC sweep может занять секунды. Default injection-method =
+middlebrook_voltage (один sweep) — OK. Но если T021 вызывает phase-
+margin × 2 (before/after) с Tian — 4 sweeps. На большой схеме это
+10+ секунд.
 
 Action: документировать в slash help / KB topic: «Tian / Rosenstark
-— accuracy at 2× simulation cost; default Middlebrook voltage
-sufficient для most cases».
+return-ratio — accuracy at 2× simulation cost; default Middlebrook
+voltage sufficient для most cases».
 
 **W6. Op-amp generic_opamp.subckt vs real op-amp models.**
 
@@ -1089,9 +1122,9 @@ Agent читает это при выборе method для конкретной
 
 ### Action items перед Phase 0
 
-1. **C1** — verified Tian formula с references (Tian 1998 IEEE TCAS,
-   Roberts–Sedra textbook) в ADR-T153a. Требует WebFetch / library
-   reference в начале Phase 0.
+1. **C1** — ✅ resolved via TDD cross-validation path в Phase B
+   (hypothesis formula в FR, verification — 4 methods × same PM
+   ±2° на op-amp reference). Reference docs не доступны WebFetch.
 2. **C2** — generic op-amp `.subckt` спроектировать в Phase A. ~10-15
    строк (E + RC dominant pole). Не блокер до Phase A start.
 3. **C3** — ✅ resolved inline в FR (Key Entities §Graph analyzer

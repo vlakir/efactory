@@ -25,6 +25,315 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-05-31 — T153 ADR-T153a: четыре loop-gain methodologies, strategy pattern
+
+- **Контекст.** T153 (`bridge measure phase-margin`) реализуется
+  полнофункционально (не MVP), включая 4 методологии измерения
+  loop-gain'а для cross-validation и академической completeness.
+  Phase 0 research показал: реально используется в commercial SPICE
+  tools 3 method-family (Middlebrook V/I, Tian/double); Rosenstark
+  return-ratio (1984) — четвёртый method, академически интересный для
+  cross-validation, в коммерческих tools не default. Vladimir
+  выбрал full landscape (II).
+
+  Дополнительная задача — все 4 methods нужно вписать в clean
+  domain abstraction чтобы future methods (например, Hurst-Lewis
+  для nonlinear circuits) добавлялись локально без слома existing
+  кода.
+
+- **Решение.** **Strategy pattern с `InjectionStrategy` ABC** +
+  4 concrete implementations:
+
+  1. **`MiddlebrookVoltageStrategy`** (default).
+     - Origin: R. D. Middlebrook, *«Measurement of Loop Gain in
+       Feedback Systems»*, International Journal of Electronics,
+       vol. 38, no. 4, pp. 485–512, April 1975.
+     - Patch: insert `Vinj N_left N_right AC 1 0` в break-нод;
+       node split так что одна сторона break = N_left,
+       другая = N_right.
+     - Math: `T_v(jω) = -V(N_right) / V(N_left)` в AC sweep
+       (linear small-signal по DC operating point).
+     - Один sweep per measurement.
+     - Best fit: voltage-mode loops, low-impedance break point
+       (op-amp output, transistor emitter follower).
+
+  2. **`MiddlebrookCurrentStrategy`**.
+     - Origin: same Middlebrook 1975 paper.
+     - Patch: insert `Iinj N_break Gnd AC 1 0` + probe-резисторы
+       0 Ω для current measurement (ngspice `i(R...)`).
+     - Math: `T_i(jω) = -I(N_right) / I(N_left)`.
+     - Один sweep.
+     - Best fit: current-mode loops, high-impedance break point
+       (tube grid, transistor base).
+
+  3. **`TianStrategy`**.
+     - Origin: Michael Tian, V. Visvanathan, J. Hantgan, K. Kundert,
+       *«Striving for Small-Signal Stability»*, IEEE Circuits &
+       Devices Magazine, vol. 17, no. 1, pp. 31–41, January 2001.
+     - Math: requires both `T_v` (от Middlebrook voltage) и
+       `T_i` (от Middlebrook current), combined через **symmetric
+       formula**:
+
+       ```
+       T(jω) = (T_v · T_i − 1) / (T_v + T_i + 2)
+       ```
+
+       (**Hypothesis** — verification path = TDD cross-validation на
+       op-amp reference circuit в Phase B. Если 3 methods Middlebrook
+       V / Middlebrook I / Tian дают one common PM ±2° на known
+       analytical reference — formula correct. Reference Tian 2001
+       paper PDF за IEEE paywall, WebFetch не доступен — но cross-
+       validation на reference дает stronger verification чем blind
+       trust в doc.)
+
+     - Два sweeps (V + I injection). 2× simulation cost vs
+       Middlebrook single.
+     - Symmetric к probe orientation — главное преимущество vs
+       Middlebrook double-injection того же года.
+     - Used as default в Cadence Spectre `stb` analysis.
+     - Often numerically equivalent с Middlebrook double-injection
+       (1975) в простых случаях.
+
+  4. **`RosenstarkReturnRatioStrategy`**.
+     - Origin: Sol Rosenstark, *«Loop gain measurements in feedback
+       amplifiers»*, International Journal of Electronics, vol. 57,
+       no. 3, pp. 415–421, 1984.
+     - Math: не injection-based. Каждый из двух sweep'ов модифицирует
+       netlist по break point:
+       - **Open-circuit**: разрезать break, замерить response с
+         opened loop → `T_oc(jω)`.
+       - **Short-circuit**: закоротить break на GND, замерить →
+         `T_sc(jω)`.
+     - Combined (hypothesis):
+
+       ```
+       T_RR(jω) = (T_oc · T_sc + T_oc + T_sc) / (T_oc · T_sc − 1)
+       ```
+
+       (verification как Tian, TDD).
+
+     - Два sweeps. Не использует injection sources — модифицирует
+       netlist topology.
+     - Independent verification methodology vs Middlebrook family.
+     - Академический интерес: каноническая formula для NFB analysis
+       без artifacts от probe injection.
+
+  **Abstraction:**
+
+  ```python
+  class InjectionStrategy(ABC):
+      method_name: ClassVar[str]  # "middlebrook_voltage", ...
+
+      @abstractmethod
+      def prepare(self, netlist: str, break_node: str) -> InjectionSetup:
+          """Patch netlist, return list of patched netlists + probe nodes."""
+
+      @abstractmethod
+      def combine(self, sweeps: list[AcSweep], setup: InjectionSetup) -> LoopGain:
+          """Math combine sweeps into T(jω) frequency response."""
+  ```
+
+  - `prepare()` возвращает list of (netlist, probe_pair) — single
+    element для Middlebrook V/I, два для Tian / Rosenstark.
+  - `combine()` принимает list of `AcSweep` (один или два) → unified
+    `LoopGain` domain type (frequency + complex T trace).
+  - Use case `measure_phase_margin` orchestrates: получить strategy,
+    запустить N sweeps через `Simulator` port, combine, найти
+    crossover, вычислить PM.
+
+  Strategy выбирается через CLI flag `--injection-method`. Default
+  = `middlebrook-voltage`.
+
+- **Альтернативы рассмотрены:**
+  - **Single Middlebrook voltage method (MVP).** Отвергнуто Vladimir-
+    ом (Clarify 2026-05-31): полнофункциональная реализация,
+    не MVP. Все 4 methods включены.
+  - **3 methods без Rosenstark.** Industrial cannon. Отвергнуто:
+    Vladimir выбрал (II) full landscape с Rosenstark для academic
+    cross-validation.
+  - **5+ methods (Hurst-Lewis, Pellegrini).** Отвергнуто: над
+    scope сейчас. Strategy pattern позволяет добавить future.
+  - **Hardcoded `if-elif`-логика вместо strategy pattern.** Отвергнуто:
+    plug-ability и тестируемость strategy pattern сильно лучше.
+    OCP-correctness (Open-Closed Principle) — добавление 5-й
+    method = новый class, не правки existing.
+  - **Formula verification только через reference docs.** Отвергнуто:
+    IEEE PDF за paywall, WebFetch недоступен. TDD cross-validation
+    на reference circuit — stronger guarantee.
+
+- **Последствия.**
+  - **Plus:** clean abstraction для future методов; testability
+    каждой strategy в isolation; cross-validation между методами в
+    integration tests = robust verification.
+  - **Plus:** Coverage academic landscape (4 methods × references) =
+    educational value для users, KB topic decision matrix.
+  - **Minus:** Tian / Rosenstark — 2 sweeps per measurement = 2×
+    simulation cost. На Phase A NFB tube amp фикстуре это секунды,
+    не блокер. Документируется в KB topic.
+  - **Minus:** formula hypothesis для Tian / Rosenstark — TDD-
+    verified, не reference-doc-verified. Risk если op-amp reference
+    accidentally agrees с wrong formula — нужны N≥2 independent
+    references (op-amp + tube NFB cross-check).
+  - **Risk mitigation:** Phase 0 ADR содержит references (Middlebrook
+    1975 IJE; Tian 2001 IEEE CDM; Rosenstark 1984 IJE) для future
+    paper retrieval если возникнут numerical discrepancies в Phase B
+    cross-validation.
+
+
+### 2026-05-31 — T153 ADR-T153b: NetlistGraphAnalyzer — rule-based heuristic feedback detection
+
+- **Контекст.** T153 Clarify Q3=b: реализуем heuristic auto-detect
+  feedback break node в дополнение к explicit `--loop-break-node`.
+  Это потенциальная новая subsystem efactory — никаких graph-
+  analysis модулей сейчас нет (`NgspiceNetlistEditor` только мутирует
+  по имени нод, не парсит circuit topology в граф). Нужно решить:
+  где живёт, как parsing strategy, какие heuristics, confidence
+  scoring.
+
+- **Решение.** **`NetlistGraphAnalyzer` в `src/domain/netlist_graph.py`**
+  (Analyze C3) — pure algorithmic, без ports. Архитектура:
+
+  **1. Parsing → CircuitGraph.**
+
+  ```python
+  class CircuitGraph(BaseModel):
+      """Undirected multigraph: nets = vertices, elements = edges."""
+      model_config = ConfigDict(frozen=True)
+
+      nets: frozenset[str]
+      edges: tuple[CircuitEdge, ...]
+
+
+  class CircuitEdge(BaseModel):
+      model_config = ConfigDict(frozen=True)
+
+      element_id: str  # "R1", "V1", "M1", "U1", ...
+      element_type: Literal[
+          "resistor", "capacitor", "inductor",
+          "diode", "bjt", "mosfet", "jfet",
+          "voltage_source", "current_source",
+          "voltage_controlled_source",  # E
+          "current_controlled_source",  # F/G/H
+          "subckt",  # call to .subckt (op-amp, tube, etc.)
+      ]
+      net_pair: tuple[str, str]  # (n1, n2) — для multi-terminal элементов
+                                   # decomposed на pairwise edges
+  ```
+
+  - Парсер: regex-based, line-by-line, реcoгнизирует ngspice / spice3
+    syntax. Multi-terminal elements (BJT/MOSFET/JFET, subckt) →
+    pairwise edges через ports (collector-emitter, base-collector,
+    base-emitter; для subckt — all ports pairwise если нет explicit
+    topology metadata).
+  - `.subckt` content **не рекурсивно парсится** — subckt treated
+    как black-box edge с ports. Это правильно для feedback
+    detection: feedback path обычно в top-level netlist'е.
+
+  **2. Cycle detection.**
+
+  Стандартный algorithm (DFS or Johnson's algorithm) → list of simple
+  cycles в graph. Возвращает `list[Cycle]` где `Cycle =
+  list[CircuitEdge]`.
+
+  **3. Forward / feedback path classification (heuristics, rule-
+  based).**
+
+  Для каждого cycle классифицируем edges на forward / feedback по
+  **element-type heuristics**:
+
+  - **Forward path edges** содержат **active elements**:
+    `bjt`, `mosfet`, `jfet`, `voltage_controlled_source` (E),
+    `subckt` (assumed active — op-amps, tube models).
+  - **Feedback path edges** **purely passive**: только `resistor`,
+    `capacitor`, `inductor`, и нет active elements в same path.
+  - **Partition cycle** на forward (contains active) + feedback
+    (purely passive) sub-paths. Если cycle не разделяется на эти две
+    parts — не feedback loop, пропускаем.
+
+  **4. Break node selection.**
+
+  Для valid feedback cycle: break node — узел **на границе** forward
+  и feedback path (i.e. конец active path / начало passive). Между
+  двумя кандидатами выбираем по:
+
+  - **Impedance score:** preferred high-impedance node (минимизирует
+    loading effect при injection). Estimation: count parallel paths
+    через node в other cycles, sum element impedance contributions
+    при f = 1 kHz (canonical audio reference). Higher Z → higher
+    score.
+
+  **5. Confidence scoring.**
+
+  Linear combination (calibrated на N≥3 reference fixtures в Phase A):
+
+  ```
+  confidence =
+       w1 · (forward_has_only_active   ∈ {0, 1})
+     + w2 · (feedback_purely_passive    ∈ {0, 1})
+     + w3 · (single_dominant_cycle      ∈ {0, 1})
+     + w4 · normalize(impedance_score)
+     - p1 · (number_of_alternative_cycles > 1 penalty)
+  ```
+
+  Initial weights `w1=0.4, w2=0.3, w3=0.2, w4=0.1, p1=0.1` —
+  callibrate Phase A на 3+ fixtures (NFB SE tube, op-amp inverting,
+  open-loop SE-amp negative test).
+
+  **6. Output → AutoDetectInfo.**
+
+  ```python
+  AutoDetectInfo(
+      chosen_node="grid_g1",
+      confidence=0.92,
+      alternatives=[("cath_k2", 0.45), ("plate_a1", 0.31)],
+      algorithm_notes="single dominant cycle, passive Rfb path, ...",
+  )
+  ```
+
+  **7. No-loop detection.**
+
+  Если **ни одного** valid cycle (forward+feedback partition) не
+  найдено → `NoFeedbackLoopDetectedError`. Caller получает actionable
+  error «no feedback loop detected; if loop exists, pass
+  --loop-break-node explicitly».
+
+- **Альтернативы рассмотрены:**
+  - **No auto-detect, explicit only (Clarify Q3=a recommendation).**
+    Отвергнуто Vladimir-ом: полнофункциональность.
+  - **ML-trained classification** (train model на feedback patterns
+    из real designs). Отвергнуто: out of scope T153 (Out of Scope
+    section); требует dataset, не оправдано на нашем масштабе.
+  - **Path-finder + graph-grammar.** Heavy infrastructure
+    (NetworkX dependency, formal graph grammar). YAGNI на нашем scope —
+    netlist'ы tube audio имеют единицы-десятки элементов; rule-based
+    heuristics достаточно.
+  - **Symbolic analysis (recognize standard topologies — common-
+    emitter NFB, source-follower bootstrap, etc.).** Отвергнуто:
+    domain knowledge encoding больше работы чем generic heuristic.
+    Может быть future enhancement (T(новый)).
+  - **Pluggable analyzer strategies** (как injection methods).
+    Отвергнуто: один analyzer достаточен на текущий scope; complexity
+    introduction not justified.
+
+- **Последствия.**
+  - **Plus:** new `domain/netlist_graph.py` module — re-usable для
+    future задач (T029 ERC/DRC integration, T032 vision LLM validation,
+    T106 beautifier layout — все используют circuit graph знание).
+  - **Plus:** UX win — agent не должен предугадывать break node;
+    auto-detect handles common cases.
+  - **Minus:** parser maintenance — каждый новый SPICE syntax
+    extension в ngspice требует regex update. Mitigation: strict
+    subset (`*` comments, `R/C/L/V/I/D/Q/M/J/E/F/G/H/X`); modern
+    ngspice .OPTIONS и .SUBCKT recognition.
+  - **Minus:** confidence heuristics — empirical, могут давать false
+    positives на necanonical топологиях. Mitigation: confidence
+    threshold default 0.8, prompt в TTY с alternatives list.
+  - **Risk:** subckt black-box — мы не знаем какой port какой («op-
+    amp output — pin 6» vs «pin 3»). Heuristic: для known
+    subckt patterns (LM741, OPA*, ECC*, EL*, KT*) — hardcoded port
+    metadata в `domain/subckt_ports.py`. Для unknown — assumes all-
+    ports active connections, может give lower confidence.
+
 
 ### 2026-05-30 — Persistent state: filesystem as single source of truth (T157)
 
