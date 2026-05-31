@@ -32,6 +32,7 @@ class _FakePatcherCall:
     op: str
     netlist: str
     break_node: str
+    break_element_ref: str
     extra: dict[str, object]
 
 
@@ -70,6 +71,7 @@ class FakePatcher:
         netlist: str,
         *,
         break_node: str,
+        break_element_ref: str,
         source_ref: str,
         ac_magnitude: float = 1.0,
     ) -> NetlistPatchResult:
@@ -78,6 +80,7 @@ class FakePatcher:
                 op='insert_voltage_source',
                 netlist=netlist,
                 break_node=break_node,
+                break_element_ref=break_element_ref,
                 extra={'source_ref': source_ref, 'ac_magnitude': ac_magnitude},
             )
         )
@@ -88,6 +91,7 @@ class FakePatcher:
         netlist: str,
         *,
         break_node: str,
+        break_element_ref: str,
         source_ref: str,
         ac_magnitude: float = 1.0,
     ) -> NetlistPatchResult:
@@ -96,19 +100,25 @@ class FakePatcher:
                 op='insert_current_source',
                 netlist=netlist,
                 break_node=break_node,
+                break_element_ref=break_element_ref,
                 extra={'source_ref': source_ref, 'ac_magnitude': ac_magnitude},
             )
         )
         return self.current_result
 
     def open_break(
-        self, netlist: str, *, break_node: str
+        self,
+        netlist: str,
+        *,
+        break_node: str,
+        break_element_ref: str,
     ) -> NetlistPatchResult:
         self.calls.append(
             _FakePatcherCall(
                 op='open_break',
                 netlist=netlist,
                 break_node=break_node,
+                break_element_ref=break_element_ref,
                 extra={},
             )
         )
@@ -119,6 +129,7 @@ class FakePatcher:
         netlist: str,
         *,
         break_node: str,
+        break_element_ref: str,
         gnd_node: str = '0',
     ) -> NetlistPatchResult:
         self.calls.append(
@@ -126,6 +137,7 @@ class FakePatcher:
                 op='short_break',
                 netlist=netlist,
                 break_node=break_node,
+                break_element_ref=break_element_ref,
                 extra={'gnd_node': gnd_node},
             )
         )
@@ -339,12 +351,13 @@ def test_middlebrook_voltage_method_name() -> None:
 def test_middlebrook_voltage_prepare_delegates_to_patcher() -> None:
     patcher = FakePatcher()
     strategy = MiddlebrookVoltageStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     assert len(patcher.calls) == 1
     call = patcher.calls[0]
     assert call.op == 'insert_voltage_source'
     assert call.netlist == '* netlist'
     assert call.break_node == '/fb'
+    assert call.break_element_ref == 'R_fb'
     assert call.extra == {'source_ref': 'Vinj', 'ac_magnitude': 1.0}
     assert setup.patches == (patcher.voltage_result,)
 
@@ -352,7 +365,7 @@ def test_middlebrook_voltage_prepare_delegates_to_patcher() -> None:
 def test_middlebrook_voltage_combine_math_single_freq() -> None:
     patcher = FakePatcher()
     strategy = MiddlebrookVoltageStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     # T = -V(rev)/V(fwd) = -((-0.5+0j))/(1+0j) = 0.5+0j
     sweep = _ac(
         frequency=(1_000.0,),
@@ -370,7 +383,7 @@ def test_middlebrook_voltage_combine_math_single_freq() -> None:
 def test_middlebrook_voltage_combine_math_complex_division() -> None:
     patcher = FakePatcher()
     strategy = MiddlebrookVoltageStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     # T = -(0+1j)/(1+1j) = -(0+1j)*(1-1j)/2 = -(1+1j)/2 = -0.5 - 0.5j
     sweep = _ac(
         frequency=(1_000.0,),
@@ -387,7 +400,7 @@ def test_middlebrook_voltage_combine_math_complex_division() -> None:
 def test_middlebrook_voltage_combine_multi_freq() -> None:
     patcher = FakePatcher()
     strategy = MiddlebrookVoltageStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     sweep = _ac(
         frequency=(10.0, 100.0, 1_000.0),
         traces={
@@ -402,7 +415,7 @@ def test_middlebrook_voltage_combine_multi_freq() -> None:
 def test_middlebrook_voltage_combine_wrong_sweep_count_rejected() -> None:
     patcher = FakePatcher()
     strategy = MiddlebrookVoltageStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     sweep = _ac(
         frequency=(1_000.0,),
         traces={'v(/fb_left)': (1.0 + 0j,), 'v(/fb_right)': (0.0 + 0j,)},
@@ -414,7 +427,7 @@ def test_middlebrook_voltage_combine_wrong_sweep_count_rejected() -> None:
 def test_middlebrook_voltage_combine_missing_probe_trace() -> None:
     patcher = FakePatcher()
     strategy = MiddlebrookVoltageStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     sweep = _ac(
         frequency=(1_000.0,),
         traces={'v(/other)': (1.0 + 0j,)},
@@ -433,10 +446,12 @@ def test_middlebrook_current_method_name() -> None:
 def test_middlebrook_current_prepare_delegates_to_patcher() -> None:
     patcher = FakePatcher()
     strategy = MiddlebrookCurrentStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     assert len(patcher.calls) == 1
     call = patcher.calls[0]
     assert call.op == 'insert_current_source'
+    assert call.break_node == '/fb'
+    assert call.break_element_ref == 'R_fb'
     assert call.extra == {'source_ref': 'Iinj', 'ac_magnitude': 1.0}
     assert setup.patches == (patcher.current_result,)
 
@@ -444,7 +459,7 @@ def test_middlebrook_current_prepare_delegates_to_patcher() -> None:
 def test_middlebrook_current_combine_math() -> None:
     patcher = FakePatcher()
     strategy = MiddlebrookCurrentStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     sweep = _ac(
         frequency=(1_000.0,),
         traces={
@@ -467,11 +482,13 @@ def test_tian_method_name() -> None:
 def test_tian_prepare_calls_both_v_and_i_patches() -> None:
     patcher = FakePatcher()
     strategy = TianStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     assert [c.op for c in patcher.calls] == [
         'insert_voltage_source',
         'insert_current_source',
     ]
+    assert all(c.break_node == '/fb' for c in patcher.calls)
+    assert all(c.break_element_ref == 'R_fb' for c in patcher.calls)
     assert setup.patches == (patcher.voltage_result, patcher.current_result)
 
 
@@ -479,7 +496,7 @@ def test_tian_combine_math_real_values() -> None:
     """T_v = 2, T_i = 3 → T = (6-1)/(2+3+2) = 5/7."""
     patcher = FakePatcher()
     strategy = TianStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     # T_v = -rev/fwd = -(-2)/1 = 2
     v_sweep = _ac(
         frequency=(1_000.0,),
@@ -506,7 +523,7 @@ def test_tian_combine_math_complex_values() -> None:
     """T_v = 2j, T_i = -1j → T = (2j·-1j - 1)/(2j - 1j + 2) = 1/(2+j) = (2-j)/5."""
     patcher = FakePatcher()
     strategy = TianStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     # T_v = -rev/fwd = -(0-2j)/1 = 2j
     v_sweep = _ac(
         frequency=(1_000.0,),
@@ -532,7 +549,7 @@ def test_tian_combine_math_complex_values() -> None:
 def test_tian_combine_wrong_sweep_count_rejected() -> None:
     patcher = FakePatcher()
     strategy = TianStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     v_sweep = _ac(
         frequency=(1_000.0,),
         traces={
@@ -547,7 +564,7 @@ def test_tian_combine_wrong_sweep_count_rejected() -> None:
 def test_tian_combine_frequency_mismatch_rejected() -> None:
     patcher = FakePatcher()
     strategy = TianStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     v_sweep = _ac(
         frequency=(1_000.0,),
         traces={
@@ -578,8 +595,10 @@ def test_rosenstark_method_name() -> None:
 def test_rosenstark_prepare_calls_open_and_short() -> None:
     patcher = FakePatcher()
     strategy = RosenstarkReturnRatioStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     assert [c.op for c in patcher.calls] == ['open_break', 'short_break']
+    assert all(c.break_node == '/fb' for c in patcher.calls)
+    assert all(c.break_element_ref == 'R_fb' for c in patcher.calls)
     assert setup.patches == (patcher.open_result, patcher.short_result)
 
 
@@ -587,7 +606,7 @@ def test_rosenstark_combine_math_real_values() -> None:
     """T_oc = 2, T_sc = 3 → T = (6+2+3)/(6-1) = 11/5."""
     patcher = FakePatcher()
     strategy = RosenstarkReturnRatioStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     # T_oc = rev/fwd = 2/1 = 2 (no minus sign — no inserted source)
     oc_sweep = _ac(
         frequency=(1_000.0,),
@@ -613,7 +632,7 @@ def test_rosenstark_combine_math_real_values() -> None:
 def test_rosenstark_combine_wrong_sweep_count_rejected() -> None:
     patcher = FakePatcher()
     strategy = RosenstarkReturnRatioStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     oc_sweep = _ac(
         frequency=(1_000.0,),
         traces={'v(/in)': (1.0 + 0j,), 'v(/fb_oc)': (2.0 + 0j,)},
@@ -625,7 +644,7 @@ def test_rosenstark_combine_wrong_sweep_count_rejected() -> None:
 def test_rosenstark_combine_frequency_mismatch_rejected() -> None:
     patcher = FakePatcher()
     strategy = RosenstarkReturnRatioStrategy(patcher)
-    setup = strategy.prepare('* netlist', break_node='/fb')
+    setup = strategy.prepare('* netlist', break_node='/fb', break_element_ref='R_fb')
     oc_sweep = _ac(
         frequency=(1_000.0,),
         traces={'v(/in)': (1.0 + 0j,), 'v(/fb_oc)': (2.0 + 0j,)},

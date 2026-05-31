@@ -176,12 +176,23 @@ def _expect_n_sweeps(
 
 
 class InjectionStrategy(ABC):
-    """Abstract base для loop-gain injection methodologies."""
+    """
+    Abstract base для loop-gain injection methodologies.
+
+    `prepare(netlist, *, break_node, break_element_ref)` — edge задаётся
+    парой `(node, element_ref)` (ADR-T153d, 2026-06-01).
+    """
 
     method_name: ClassVar[InjectionMethod]
 
     @abstractmethod
-    def prepare(self, netlist: str, *, break_node: str) -> InjectionSetup:
+    def prepare(
+        self,
+        netlist: str,
+        *,
+        break_node: str,
+        break_element_ref: str,
+    ) -> InjectionSetup:
         """Patch netlist по методологии strategy. Возвращает 1-2 patches."""
 
     @abstractmethod
@@ -204,10 +215,17 @@ class MiddlebrookVoltageStrategy(InjectionStrategy):
     def __init__(self, patcher: InjectionNetlistPatcher) -> None:
         self._patcher = patcher
 
-    def prepare(self, netlist: str, *, break_node: str) -> InjectionSetup:
+    def prepare(
+        self,
+        netlist: str,
+        *,
+        break_node: str,
+        break_element_ref: str,
+    ) -> InjectionSetup:
         result = self._patcher.insert_voltage_source(
             netlist,
             break_node=break_node,
+            break_element_ref=break_element_ref,
             source_ref='Vinj',
             ac_magnitude=1.0,
         )
@@ -235,10 +253,17 @@ class MiddlebrookCurrentStrategy(InjectionStrategy):
     def __init__(self, patcher: InjectionNetlistPatcher) -> None:
         self._patcher = patcher
 
-    def prepare(self, netlist: str, *, break_node: str) -> InjectionSetup:
+    def prepare(
+        self,
+        netlist: str,
+        *,
+        break_node: str,
+        break_element_ref: str,
+    ) -> InjectionSetup:
         result = self._patcher.insert_current_source(
             netlist,
             break_node=break_node,
+            break_element_ref=break_element_ref,
             source_ref='Iinj',
             ac_magnitude=1.0,
         )
@@ -272,9 +297,23 @@ class TianStrategy(InjectionStrategy):
         self._v = MiddlebrookVoltageStrategy(patcher)
         self._i = MiddlebrookCurrentStrategy(patcher)
 
-    def prepare(self, netlist: str, *, break_node: str) -> InjectionSetup:
-        v_setup = self._v.prepare(netlist, break_node=break_node)
-        i_setup = self._i.prepare(netlist, break_node=break_node)
+    def prepare(
+        self,
+        netlist: str,
+        *,
+        break_node: str,
+        break_element_ref: str,
+    ) -> InjectionSetup:
+        v_setup = self._v.prepare(
+            netlist,
+            break_node=break_node,
+            break_element_ref=break_element_ref,
+        )
+        i_setup = self._i.prepare(
+            netlist,
+            break_node=break_node,
+            break_element_ref=break_element_ref,
+        )
         return InjectionSetup(patches=v_setup.patches + i_setup.patches)
 
     def combine(
@@ -314,9 +353,23 @@ class RosenstarkReturnRatioStrategy(InjectionStrategy):
     def __init__(self, patcher: InjectionNetlistPatcher) -> None:
         self._patcher = patcher
 
-    def prepare(self, netlist: str, *, break_node: str) -> InjectionSetup:
-        oc = self._patcher.open_break(netlist, break_node=break_node)
-        sc = self._patcher.short_break(netlist, break_node=break_node)
+    def prepare(
+        self,
+        netlist: str,
+        *,
+        break_node: str,
+        break_element_ref: str,
+    ) -> InjectionSetup:
+        oc = self._patcher.open_break(
+            netlist,
+            break_node=break_node,
+            break_element_ref=break_element_ref,
+        )
+        sc = self._patcher.short_break(
+            netlist,
+            break_node=break_node,
+            break_element_ref=break_element_ref,
+        )
         return InjectionSetup(patches=(oc, sc))
 
     def combine(

@@ -1,6 +1,7 @@
 """
 InjectionNetlistPatcher — outbound port для SPICE netlist topology
-surgery в контексте loop-gain measurement (T153, ADR-T153c).
+surgery в контексте loop-gain measurement (T153, ADR-T153c +
+ADR-T153d edge-vs-node refinement 2026-06-01).
 
 Семантически отделён от `NetlistEditor` (T131), который занимается
 sourcing / library inclusion. Здесь — четыре операции, нужные
@@ -9,6 +10,12 @@ strategy-impl для loop-gain injection:
 * `insert_voltage_source` — Middlebrook voltage method.
 * `insert_current_source` — Middlebrook current method.
 * `open_break` / `short_break` — Rosenstark return-ratio method.
+
+Break контракт определяется парой `(break_node, break_element_ref)`
+— ровно один wire в circuit graph (ADR-T153d). Adapter режет именно
+в строке элемента `break_element_ref` — переименовывает в ней ссылку
+на `break_node` в `<break_node>__fwd`, остальные ссылки на
+`break_node` не трогает.
 
 Adapter: `NgspiceInjectionNetlistPatcher` (T153 Phase B.3, в
 `adapters/outbound/ngspice/`).
@@ -55,18 +62,24 @@ class InjectionNetlistPatcher(Protocol):
         netlist: str,
         *,
         break_node: str,
+        break_element_ref: str,
         source_ref: str,
         ac_magnitude: float = 1.0,
     ) -> NetlistPatchResult:
         """
         Middlebrook voltage injection.
 
-        Разрезать петлю в `break_node`: split нод на N_left / N_right,
-        вставить `<source_ref> N_left N_right AC <ac_magnitude> 0`.
-        Probe pair — voltage traces fwd (N_left) и rev (N_right).
+        Разрезать loop в edge `(break_node, break_element_ref)`:
+        переименовать в строке элемента `break_element_ref` ссылку
+        на `break_node` в `<break_node>__fwd`; вставить
+        `<source_ref> <break_node>__fwd <break_node> AC <ac_magnitude> 0`.
+        Probe pair — voltage traces fwd (`v(<break_node>__fwd)`) и
+        rev (`v(<break_node>)`).
 
         Raises:
-            ValueError: break_node не найден / некорректный netlist.
+            ValueError: break_node не найден / break_element_ref не
+                найден / `break_node` не присутствует в строке этого
+                элемента / некорректный netlist.
 
         """
         ...
@@ -76,17 +89,20 @@ class InjectionNetlistPatcher(Protocol):
         netlist: str,
         *,
         break_node: str,
+        break_element_ref: str,
         source_ref: str,
         ac_magnitude: float = 1.0,
     ) -> NetlistPatchResult:
         """
         Middlebrook current injection.
 
-        Вставить current source параллельно в `break_node` + probe-
-        резисторы 0 Ω для current measurement (`i(R_fwd)`, `i(R_rev)`).
+        Edge `(break_node, break_element_ref)` режется аналогично
+        voltage-injection; вместо voltage source — current source +
+        probe-резисторы 0 Ω для current measurement
+        (`i(R_fwd)`, `i(R_rev)`).
 
         Raises:
-            ValueError: break_node не найден.
+            ValueError: break_node / break_element_ref не найден.
 
         """
         ...
@@ -96,15 +112,18 @@ class InjectionNetlistPatcher(Protocol):
         netlist: str,
         *,
         break_node: str,
+        break_element_ref: str,
     ) -> NetlistPatchResult:
         """
-        Rosenstark: разрезать петлю в `break_node` (open-circuit).
+        Rosenstark: разрезать loop в edge `(break_node,
+        break_element_ref)` (open-circuit).
 
-        Probe pair — fwd = драйв-сигнал, rev = open-circuit response
-        в зависающем конце петли.
+        Probe pair — fwd = драйв-сигнал (`v(<break_node>__fwd)`),
+        rev = open-circuit response в зависающем конце петли
+        (`v(<break_node>)`).
 
         Raises:
-            ValueError: break_node не найден.
+            ValueError: break_node / break_element_ref не найден.
 
         """
         ...
@@ -114,15 +133,18 @@ class InjectionNetlistPatcher(Protocol):
         netlist: str,
         *,
         break_node: str,
+        break_element_ref: str,
         gnd_node: str = '0',
     ) -> NetlistPatchResult:
         """
-        Rosenstark: закоротить `break_node` на `gnd_node` (short-circuit).
+        Rosenstark: edge `(break_node, break_element_ref)` режется,
+        response-сторона короче на `gnd_node` (short-circuit).
 
-        Probe pair — fwd = драйв-сигнал, rev = short-circuit response.
+        Probe pair — fwd = ток драйв-источника, rev = ток короткой
+        перемычки на gnd.
 
         Raises:
-            ValueError: break_node не найден.
+            ValueError: break_node / break_element_ref не найден.
 
         """
         ...
