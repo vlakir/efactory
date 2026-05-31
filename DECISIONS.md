@@ -25,6 +25,138 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-01 — T153 ADR-T153c: InjectionNetlistPatcher как отдельный outbound port
+
+- **Контекст.** T153 Phase B.2 — реализация четырёх `InjectionStrategy`
+  impl. Каждая strategy в методе `prepare(netlist, break_node)` должна
+  модифицировать SPICE netlist text по схеме своей методологии:
+
+  | Strategy | Patch операция |
+  | --- | --- |
+  | `MiddlebrookVoltageStrategy` | insert AC voltage source последовательно в break node (split нод на N_left / N_right) |
+  | `MiddlebrookCurrentStrategy` | insert AC current source параллельно в break node + probe-резисторы 0 Ω |
+  | `TianStrategy` | требует обе patch'и от Middlebrook V и Middlebrook I (две prepared netlist'ы) |
+  | `RosenstarkReturnRatioStrategy` | open break (разрезать петлю) + short break (закоротить на GND) — две topology-модификации |
+
+  Существующий port `NetlistEditor` (T131) фокусирован на семантически
+  другой области: `substitute_subckt_library`, `set_sin_source_amplitude`,
+  `ensure_ac_modifier`, `find_top_level_v_sources` — text manipulation
+  поверх sourcing / library inclusion. Topology surgery (split нода,
+  open/short break) — другой класс операций.
+
+  ADR-T153a abstraction задал signature `prepare(netlist, break_node) ->
+  InjectionSetup`, но не зафиксировал **где** живёт actual patching.
+  Три кандидата:
+
+  1. Новый outbound port `InjectionNetlistPatcher` — strategy
+     инжектирует patcher в конструкторе, делегирует.
+  2. Расширить `NetlistEditor` четырьмя новыми методами.
+  3. Strategy сама regex-парсит netlist в `domain/`.
+
+- **Решение.** **Опция 1: новый outbound port `InjectionNetlistPatcher`**
+  в `src/ports/outbound/injection_netlist_patcher.py`:
+
+  ```python
+  class InjectionNetlistPatcher(Protocol):
+      def insert_voltage_source(
+          self,
+          netlist: str,
+          *,
+          break_node: str,
+          source_ref: str,
+          ac_magnitude: float = 1.0,
+      ) -> NetlistPatchResult: ...
+
+      def insert_current_source(
+          self,
+          netlist: str,
+          *,
+          break_node: str,
+          source_ref: str,
+          ac_magnitude: float = 1.0,
+      ) -> NetlistPatchResult: ...
+
+      def open_break(
+          self,
+          netlist: str,
+          *,
+          break_node: str,
+      ) -> NetlistPatchResult: ...
+
+      def short_break(
+          self,
+          netlist: str,
+          *,
+          break_node: str,
+          gnd_node: str = '0',
+      ) -> NetlistPatchResult: ...
+  ```
+
+  Где `NetlistPatchResult = (patched_netlist: str, probe_pair: ProbePair)`
+  — frozen Pydantic VO, `ProbePair` несёт имена fwd/rev нод для
+  последующего AC measurement.
+
+  Concrete `InjectionStrategy` impl инжектируют patcher через
+  конструктор:
+
+  ```python
+  class MiddlebrookVoltageStrategy(InjectionStrategy):
+      def __init__(self, patcher: InjectionNetlistPatcher) -> None:
+          self._patcher = patcher
+
+      def prepare(self, netlist: str, break_node: str) -> InjectionSetup:
+          result = self._patcher.insert_voltage_source(
+              netlist, break_node=break_node,
+              source_ref='Vinj', ac_magnitude=1.0,
+          )
+          return InjectionSetup(patches=(result,))
+  ```
+
+  Adapter — `NgspiceInjectionNetlistPatcher` в
+  `adapters/outbound/ngspice/injection_patcher.py` — будет реализован
+  отдельной фазой (B.3). Phase B.2 ограничивается port'ом + domain
+  strategies + unit tests с fake patcher.
+
+- **Альтернативы рассмотрены.**
+
+  - **Опция 2: расширить `NetlistEditor` 4 новыми методами.** Отвергнуто:
+    SRP violation. T131 NetlistEditor — sourcing/include text utility
+    для measure use case'ов; topology surgery (split node, open/short
+    break) — другая семантическая область. Port раздувался бы вдвое и
+    смешивал бы два use case domain'а в одном interface.
+  - **Опция 3: regex-parsing внутри `domain/`-strategies.** Отвергнуто:
+    нарушение hexagonal arch (domain не должен знать SPICE text format).
+    Дублирование parsing с существующим `NgspiceNetlistEditor`. Хуже
+    тестируется (нельзя fake'нуть на unit level).
+  - **Опция 4 (поздняя): patcher как arg в `prepare()` вместо
+    constructor injection.** Отвергнуто: state-less injection менее
+    объектный, ломает паттерн с adapter-инжекцией в use case (как в
+    T021 EditAndResimWithDelta). Composition root собирает strategies
+    с уже-связанным patcher и передаёт в use case.
+
+- **Последствия.**
+
+  - **+** Чистая hexagonal arch: strategies в `domain/` без знания о
+    SPICE syntax; patcher port на boundary; adapter в
+    `adapters/outbound/ngspice/`.
+  - **+** Каждая strategy тестируется в isolation на доменном уровне
+    через fake patcher (синтетические `NetlistPatchResult`).
+  - **+** Adapter (B.3) тестируется отдельно на realistic netlist
+    fixtures — concerns separation.
+  - **+** Future-proof: альтернативные SPICE flavours (LTspice,
+    PSpice) — новый adapter тех же 4 методов.
+  - **−** Новый port + adapter = +2 файла + ADR. Boilerplate выше
+    чем у Опции 2/3.
+  - **−** Small overlap parsing helpers с `NgspiceNetlistEditor`
+    (find element by ref, list nodes). Можно вынести в shared
+    `adapters/outbound/ngspice/_parsing.py` если возникнет дубль —
+    BACKLOG-метка под Phase F refactor.
+  - **−** Composition root (`composition/main.py`) усложняется: для
+    `measure_phase_margin` use case нужно построить 4 strategies × 1
+    patcher и упаковать в strategy registry. Не блокер; T021 pattern
+    тот же.
+
+
 ### 2026-05-31 — T153 ADR-T153a: четыре loop-gain methodologies, strategy pattern
 
 - **Контекст.** T153 (`bridge measure phase-margin`) реализуется
