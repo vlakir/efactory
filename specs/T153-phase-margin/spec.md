@@ -1,10 +1,13 @@
 # Spec: `bridge measure phase-margin` — запас по фазе для feedback-схем
 
-**Статус:** Clarified
+**Статус:** Analyzed
 **Дата создания:** 2026-05-31
 **Clarify прошёл:** 2026-05-31 (13 вопросов; 9 «по рекомендации» +
 4 расширения scope — Q2/Q3/Q11/Q12 — осознанные, ради
 полнофункциональной реализации, не MVP).
+**Analyze прошёл:** 2026-05-31 (20 issues: 6 Critical, 8 Warning,
+6 Note; C3/C4 закрыты inline в FR, W2 resolved sanity-check'ом
+`AcSweep` уже pydantic frozen).
 **Spin-off от:** T023 Clarify (2026-05-26) — phase margin вынесен
 отдельной задачей.
 **Размер задачи:** **большая** — multi-week milestone. Включает два
@@ -134,8 +137,10 @@ gain / bandwidth / THD: эти меряются как-есть на netlist'е 
     --loop-break-node explicitly».
 - **ДОЛЖНА** иметь флаг `--no-confirm` для skip confirmation в
   interactive TTY (полезно для batch scripts).
-- **ДОЛЖНА** иметь флаг `--confidence-threshold <0..1>` для override
-  default (Q3 → b implementation note).
+- **ДОЛЖНА** иметь флаг `--confidence-threshold <0..1>` (default
+  `0.8`) для override default. **Convention** (C4): confidence
+  auto-detect ≥ threshold → accept; < threshold → reject в non-TTY
+  (exit 2 + actionable message) или confirmation prompt в TTY.
 - **ДОЛЖНА** обнаруживать missing node при explicit override: если
   `--loop-break-node` не найден среди нодов netlist'а → exit 2 +
   actionable error «node `xyz` not found; available nodes: <list>».
@@ -428,8 +433,8 @@ gain / bandwidth / THD: эти меряются как-есть на netlist'е 
 
 ### Graph analyzer
 
-- **`NetlistGraphAnalyzer`** (`domain/netlist_graph.py` или
-  `application/`):
+- **`NetlistGraphAnalyzer`** (`src/domain/netlist_graph.py`, C3
+  resolved — pure algorithmic, без ports):
   - `parse(netlist: str) -> CircuitGraph` (узлы = nets, edges =
     elements с element-type metadata: R/C/L/V/I/diode/transistor/
     voltage-controlled-source/subckt).
@@ -851,4 +856,253 @@ Clarify прошёл 2026-05-31. Из 13 вопросов 9 — «по реко�
 
 ## Analyze (заполняется Claude)
 
-<!-- После Clarify. -->
+Прошёл 2026-05-31 после Clarify. Перечитал spec, нашёл 20 issues:
+6 Critical (требуют resolve перед Phase 0), 8 Warning (обсуждаем),
+6 Note (к сведению, реализационные guidance).
+
+### 🔴 Critical (фиксим до Phase 0)
+
+**C1. Tian's method combine formula требует verified derivation.**
+
+В FR (§3 Injection methodology) я записал «`T(jω) = (T_v·T_i + T_v +
+T_i) / (T_v·T_i - 1) · 0.5`» — это **по памяти, не сверенная**. В
+IEEE TCAS 1998 Tian paper точная формула:
+
+```
+T(jω) = 2·(T_v·T_i - 1) / (T_v + T_i + 2)
+```
+
+или эквивалентная нормализованная форма. Если formula
+неправильная — **все Tian results будут неправильные** (silently
+wrong numerical output, не crash). Action: в Phase 0 ADR-T153a
+обязательно verified derivation с references (Tian 1998 IEEE TCAS,
+Roberts–Sedra exam textbook). До тех пор не commit'ить формулу в
+код. Дополнительно cross-check на op-amp inverting reference (Phase
+A fixture) — Tian должен дать тот же PM ±2° что и Middlebrook
+voltage.
+
+**C2. Op-amp SPICE model — отсутствует в `data/models/`.**
+
+Phase A planning: «op-amp inverting fixture для cross-validation» —
+но в `data/models/` сейчас только tube models (Duncan triodes). Нет
+ни одной op-amp модели. Без неё:
+- Phase A фикстура неполная (только NFB tube amp, без cross-
+  validation).
+- Phase B unit testing strategies без referenсе circuit'а становится
+  сложнее.
+- Tian/Rosenstark validation без op-amp reference — нечем верифицировать.
+
+**Action:** в Phase A добавить минимальный generic ideal op-amp как
+SPICE `.subckt` (Voltage-Controlled Voltage Source E + RC dominant
+pole + output resistor). ~10-15 строк. Не production-grade,
+достаточно для unit tests. Положить в
+`data/models/opamps/generic_opamp.subckt`. Не конкретная модель типа
+LM741/OPA134 — это T030 (model_import_url) future task.
+
+**C3. NetlistGraphAnalyzer placement — `domain/` vs `application/`.**
+
+В Key Entities я неоднозначно записал. По hexagonal architecture
+(efactory adheres):
+- **Domain** — pure business logic без зависимостей от ports
+  (Simulator, NgspiceNetlistEditor).
+- **Application** — use case orchestration с ports inputs.
+
+Graph analyzer чисто алгоритмический (netlist parsing + cycle
+detection + heuristic scoring) — без simulator dependencies. **Это
+domain.** Action: spec фиксирует `src/domain/netlist_graph.py`.
+Один-к-одному с `domain/simulation.py` (где AcSweep / TranAnalysis).
+
+**C4. Confidence threshold convention undocumented.**
+
+`--confidence-threshold 0.8` означает «accept выше этого значения»
+или «warn ниже»? Стандартно lower-bound (accept ≥). Spec не
+фиксирует. Action: явно записать в FR (§Loop break):
+
+> «`confidence_threshold`: float ∈ [0, 1], confidence
+> auto-detect ≥ threshold → accept; < threshold → reject в
+> non-TTY (exit 2) или confirmation prompt в TTY. Default = 0.8.»
+
+**C5. NFB SE tube amp self-stability не гарантирована.**
+
+NFB feedback в tube amp с OPT — system может оказаться unstable при
+certain Rfb values (over-feedback). Phase A фикстура должна
+**заведомо стабильна** для PM measurement (PM ∈ [20°, 80°] range —
+worth measuring). Если получится PM negative — фикстура
+бесполезна для acceptance tests.
+
+Action: в Phase A проектировать Rfb / Cfb с целевой PM ~ 45-60° (по
+analytical estimate). Validate в KiCad GUI Vladimir-ом перед merge
+(memory: feedback_kicad_fixtures.md двухстадийная валидация).
+
+**C6. Multi-loop в NFB SE tube amp.**
+
+«NFB SE tube amp» обычно содержит и (1) global voltage NFB через
+Rfb, и (2) local cathode degeneration (если cathode resistor без
+bypass cap). Это **multi-loop**, что мы explicit ставим Out of
+Scope. Tool должен корректно brать **global loop** при auto-detect.
+
+Action: в Phase A фикстуре либо (a) использовать cathode bypass cap
+на 1-м каскаде (де-факто закорачивает local cathode loop в AC,
+оставляя global), либо (b) — в Phase C graph analyzer heuristic
+«lowest-frequency-significant cycle» предпочитает global (более
+длинный) loop. Решение в Phase 0 ADR-T153b. Phase A фикстура — bypass
+cap путь (проще для acceptance tests).
+
+### 🟡 Warning (обсуждаем)
+
+**W1. Coverage threshold ≥80% на graph analyzer — рискованно.**
+
+Graph code часто содержит hard-to-reach error branches (degenerate
+graphs, disconnected components). Тестировать каждый branch требует
+synthetic fixture per branch. Может реально получиться 70-75%
+coverage на `domain/netlist_graph.py`. Project-wide threshold
+сохраняется (≥80% на `src/`), но локально на module — может
+протестить.
+
+Action: писать tests aggressively, не ослаблять threshold. Если на
+финале не вытягиваем — обсудить локальный `# pragma: no cover` на
+defensive branches (с явным комментарием почему).
+
+**W2. `AcSweep` serializability для VO sweep_dataset persistence.
+RESOLVED.**
+
+Проверено в `src/domain/simulation.py:134`: `AcSweep(BaseModel)` с
+`model_config = ConfigDict(frozen=True)`. Already pydantic frozen +
+JSON-serializable из коробки. Никакого refactor'а не нужно.
+
+**W3. T021 extension может сломать existing tests.**
+
+`edit_and_resim_with_delta` принимает list of metrics. Добавление
+`phase-margin` потенциально меняет signatures (новый optional
+parameter `loop_break_node`). Existing T021 tests должны pass без
+изменений (extend-only, no behavior break).
+
+Action: в Phase F регрессить T021 test suite (52 теста по
+CHANGELOG). Если что-то breaks — rollback approach, обсудить с
+Vladimir-ом.
+
+**W4. `extra_crossovers_hz` semantics в auto-detect.**
+
+Если multiple crossovers detected И мы делаем auto-detect break
+node — что в `extra_crossovers_hz`? Все crossovers для выбранного
+auto-detect loop'а, или across alternative loops? Лучше — для
+chosen loop only.
+
+Action: явно в spec FR (§Crossover detection): «extra_crossovers_hz
+relates to the chosen loop (single-loop semantics maintained)».
+
+**W5. Tian's method два sweep'а — performance impact.**
+
+Tian требует 2 AC sweeps per measurement → 2× simulator time.
+Rosenstark — тоже 2×. На больших циркуитах (NFB tube amp с OPT и
+nonlinear elements) AC sweep может занять секунды. Default
+injection-method = middlebrook_voltage (один sweep) — OK. Но если
+T021 вызывает phase-margin × 2 (before/after) с Tian — 4 sweeps. На
+большой схеме это 10+ секунд.
+
+Action: документировать в slash help / KB topic: «Tian / Rosenstark
+— accuracy at 2× simulation cost; default Middlebrook voltage
+sufficient для most cases».
+
+**W6. Op-amp generic_opamp.subckt vs real op-amp models.**
+
+Generic op-amp (E + RC pole) хорош для unit tests, но не
+representative для real-world phase margin (real op-amps имеют
+multi-pole / zero / current limiting). Acceptance criteria PM ±2° на
+generic op-amp — easy. На real op-amp может выйти ±5°.
+
+Action: для T153 MVP — generic. В Phase A документировать что
+acceptance tests на generic; real-op-amp validation — future task
+(после T030 import_url).
+
+**W7. Confirmation callback port — composition root complexity.**
+
+`measure_phase_margin` accepting `confirmation_callback` для TTY
+prompt. Composition root (`build_app`) должен decide:
+- non-interactive (typer CLI script): callback = lambda → True
+  если confidence ≥ threshold else False.
+- interactive TTY: callback = `typer.confirm()`-based.
+- testing: callback = injected mock.
+
+Action: в Phase B спроектировать `ConfirmationPort` ABC или просто
+callable type alias. Lean approach — callable type, port overkill
+для one-method interface.
+
+**W8. KiCad GUI manual smoke на Phase A — runtime cost.**
+
+Phase A acceptance включает Vladimir manually opening NFB SE tube
+amp в KiCad Simulator и сверки PM (T123 memory: Sim.Library warning
+безвреден, но Simulator работает). Это **manual step**, занимает
+~10-15 мин. Если acceptance fail — Phase A пере-итерация.
+
+Action: Phase A design Rfb по analytical pole-zero estimate (не «на
+глаз»), чтобы first KiCad run prob succeeded.
+
+### 🟢 Note (реализационные guidance)
+
+**N1. Pre-scan injection source name — helper в strategy base.**
+
+`InjectionStrategy.patch()` сам отвечает за unique naming. Хелпер
+`_unique_source_name(netlist: str, prefix: str = "Vinj") -> str` —
+тривиальная функция (regex `^[VI]<prefix>...` lookup + counter).
+Может жить в `domain/netlist_graph.py` (re-use parser).
+
+**N2. AutoDetectInfo с tuple — pydantic frozen coercion.**
+
+`alternatives: list[tuple[str, float]]` — pydantic v2 frozen with
+tuple внутри: pydantic coerces tuples → lists в `.model_dump()`.
+T021/T023 решали через `Annotated[tuple, ...]` или `model_config =
+ConfigDict(arbitrary_types_allowed=False)`. Подсмотреть как в
+GainMeasurement.
+
+**N3. Implementation Plan в spec.md.**
+
+Можно добавить короткую секцию «Implementation Plan» после §7 с
+8-phase summary. Не критично (TaskList уже содержит), но дополняет
+spec self-contained nature.
+
+**N4. SPICE deck stripped comments — на injection patch.**
+
+При patching netlist'а лучше strip `*` SPICE-комментарии в
+output (минимизация diff'а для каждого injection method). Уже T021
+делает так в `NgspiceNetlistEditor` — sanity check совместимости.
+
+**N5. Confidence calibration на N≥3 fixtures.**
+
+Confidence formula в graph analyzer — heuristic. Калибровка на
+N≥3 фикстурах: NFB SE tube amp, op-amp inverting, multi-loop
+edge case (synthetic). Если confidence-score линейная функция от
+heuristic features, fit ~3 points.
+
+**N6. KB topic про injection method selection guidelines.**
+
+Phase E KB sync: добавить topic
+`spice.phase-margin-injection-methods` с decision matrix:
+- voltage-mode loop / high-impedance break → Middlebrook voltage.
+- current-mode loop / low-impedance break → Middlebrook current.
+- arbitrary impedance / high accuracy required → Tian.
+- loading concerns → Rosenstark double-injection.
+
+Agent читает это при выборе method для конкретной схемы.
+
+---
+
+### Action items перед Phase 0
+
+1. **C1** — verified Tian formula с references (Tian 1998 IEEE TCAS,
+   Roberts–Sedra textbook) в ADR-T153a. Требует WebFetch / library
+   reference в начале Phase 0.
+2. **C2** — generic op-amp `.subckt` спроектировать в Phase A. ~10-15
+   строк (E + RC dominant pole). Не блокер до Phase A start.
+3. **C3** — ✅ resolved inline в FR (Key Entities §Graph analyzer
+   placement `src/domain/netlist_graph.py`).
+4. **C4** — ✅ resolved inline в FR (Loop break §confidence threshold
+   convention).
+5. **C5+C6** — Phase A фикстура strategy (Rfb design pole-zero
+   estimate ≈ 45-60° PM, cathode bypass cap eliminates local-loop).
+6. **W2** — ✅ resolved sanity-check'ом (`AcSweep` уже pydantic
+   frozen).
+
+### Phase 0 entry checklist
+
+После закрытия Critical issues → Phase 0 ADR drafts → Phase A.
