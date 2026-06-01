@@ -47,6 +47,7 @@ non-TTY policy и инжектит сюда).
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -77,6 +78,10 @@ _DEFAULT_N_POINTS_PER_DECADE = 100
 _DEFAULT_TIMEOUT_SECONDS = 60.0
 _MIN_MARGIN_DEG = -180.0
 _MAX_MARGIN_DEG = 360.0
+
+_SUBCKT_START_RE = re.compile(r'^\s*\.SUBCKT\b', re.IGNORECASE)
+_SUBCKT_END_RE = re.compile(r'^\s*\.ENDS\b', re.IGNORECASE)
+_AC_MAG_RE = re.compile(r'(\bAC\s+)(\S+)', re.IGNORECASE)
 
 
 async def measure_phase_margin(
@@ -149,6 +154,11 @@ async def measure_phase_margin(
         raise ValueError(msg)
 
     base_text = await asyncio.to_thread(netlist.read_text)
+    # Spec Q7=a (T153 Phase D, 2026-06-01): Vinj — единственный AC source.
+    # KiCad-exported netlists часто несут AC drive на user input source
+    # (для своих AC sweeps), что contaminates Middlebrook V/I single-injection
+    # через linear superposition. Sanitize before patcher injection.
+    base_text = _zero_existing_ac_sources(base_text)
 
     resolved_node, resolved_element_ref, auto_detect_info = _resolve_break_edge(
         netlist_text=base_text,
@@ -224,6 +234,74 @@ async def measure_phase_margin(
         )
 
     return measurement
+
+
+def _zero_existing_ac_sources(netlist_text: str) -> str:
+    """
+    Zero AC magnitude of top-level V/I sources before patcher injection.
+
+    Spec Q7=a (T153 Phase B.4 design, enforced Phase D 2026-06-01): phase-
+    margin pipeline assumes `Vinj` is the **only** AC source. Other sources
+    keep their DC bias (need для valid operating point) but their AC drive
+    must be zero — иначе linear superposition mixes user-source response в
+    Middlebrook V/I single-injection measurement и даёт wrong T_loop.
+
+    Default behavior на KiCad-exported netlists: source line часто выглядит
+    как `V_in /vin GND DC 0 AC 1` (AC=1 для user's own AC sweeps). Без
+    sanitization Middlebrook V даёт PM degraded на десятки градусов (см.
+    Phase D smoke S1: PM=4.4° вместо 45° на op-amp inverting).
+
+    Behavior:
+    - Scan top-level (outside `.SUBCKT` bodies) lines starting with V/I.
+    - For each, regex-replace `AC <mag>` with `AC 0` (preserve optional
+      phase token, preserve DC bias, preserve transient functions like
+      SIN/PULSE/EXP, preserve inline comments, preserve formatting).
+    - Lines without AC clause unchanged. Empty / comment / directive lines
+      unchanged.
+
+    Idempotent: повторный вызов на already-zeroed netlist — no-op.
+    """
+    lines = netlist_text.splitlines(keepends=True)
+    subckt_depth = 0
+    out: list[str] = []
+    for line in lines:
+        if _SUBCKT_START_RE.match(line):
+            subckt_depth += 1
+            out.append(line)
+            continue
+        if _SUBCKT_END_RE.match(line):
+            subckt_depth = max(0, subckt_depth - 1)
+            out.append(line)
+            continue
+        stripped = line.lstrip()
+        if subckt_depth > 0 or not stripped or stripped.startswith(('*', '.')):
+            out.append(line)
+            continue
+        first_char = stripped[0].upper()
+        if first_char in ('V', 'I'):
+            out.append(_zero_ac_in_one_source_line(line))
+        else:
+            out.append(line)
+    return ''.join(out)
+
+
+def _zero_ac_in_one_source_line(line: str) -> str:
+    """
+    Replace `AC <mag>` with `AC 0` in a single V/I source line.
+
+    Inline comment (`;` or `$`) detected and excluded from regex pass —
+    хранит произвольный текст с потенциально `AC` substring'ами, не
+    трогаем.
+    """
+    code_end = len(line)
+    for i, ch in enumerate(line):
+        if ch in ';$':
+            code_end = i
+            break
+    code_part = line[:code_end]
+    comment_part = line[code_end:]
+    new_code = _AC_MAG_RE.sub(lambda m: m.group(1) + '0', code_part)
+    return new_code + comment_part
 
 
 def _resolve_break_edge(

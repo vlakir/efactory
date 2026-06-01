@@ -25,9 +25,12 @@ junction. **Auto-detect не справляется на NFB SE** из-за mult
 detected, all confidence < 0.5); user должен передать break explicitly
 через `--loop-break-node sec_a --loop-break-element C_fb`.
 
-Acceptance ranges (Spec §4 Functional accuracy, tube-relaxed):
-* PM: 115° ± 5° (110°-120°)
-* Crossover: 47.5 kHz ± 10% (42.75-52.25 kHz)
+Acceptance ranges (Spec §4 Functional accuracy, tube-relaxed; updated
+T153 Phase D 2026-06-01 после AC-sanitizer fix — прежние значения
+PM=115° / fc=47.5 kHz были measurement artifact от V_in `AC 1` drive,
+contaminating Middlebrook V single-injection через linear superposition):
+* PM: 97° ± 5° (92°-102°)
+* Crossover: 148 kHz ± 10% (133.2-162.8 kHz)
 """
 
 from __future__ import annotations
@@ -150,10 +153,11 @@ def _write_netlist(tmp_path: Path) -> Path:
     return netlist
 
 
-# Strict acceptance — Middlebrook V at sec_a/C_fb (Spec §4):
-_PM_TARGET_DEG = 115.0
+# Strict acceptance — Middlebrook V at sec_a/C_fb (Spec §4; updated
+# Phase D 2026-06-01 after AC-sanitizer fix in measure_phase_margin):
+_PM_TARGET_DEG = 97.0
 _PM_TOLERANCE_DEG = 5.0  # ±5° (tube + OPT model variance vs op-amp ±2°)
-_F_CROSSOVER_TARGET_HZ = 47_500.0
+_F_CROSSOVER_TARGET_HZ = 148_000.0
 _F_CROSSOVER_TOLERANCE_REL = 0.10  # ±10% (OPT bandwidth dependent)
 
 _CANONICAL_BREAK_NODE = 'sec_a'
@@ -164,14 +168,21 @@ _CANONICAL_BREAK_ELEMENT = 'C_fb'
 async def test_middlebrook_voltage_strict_on_nfb_se_tube(
     tmp_path: Path,
 ) -> None:
-    """Middlebrook V даёт PM=115° ± 5° на NFB SE tube amp at canonical break.
+    """Middlebrook V даёт PM≈97° ± 5° на NFB SE tube amp at canonical break.
 
     Canonical break point — `(sec_a, C_fb)` — OPT secondary → feedback
     chain junction. Z_back at sec_a__fwd = ∞ (только C_fb attached),
     Z_fwd at sec_a = 8 Ω (R_load + OPT secondary output Z) →
     Middlebrook V approximation **essentially exact** → measures global
-    NFB outer loop gain напрямую. PM=115° (very stable outer loop),
-    fc=47.5 kHz (limited by OPT HF roll-off + Cps stray).
+    NFB outer loop gain напрямую. PM≈97° (very stable outer loop),
+    fc≈148 kHz (limited by OPT HF roll-off + Cps stray).
+
+    **Phase D fix note (2026-06-01):** прежние values PM=115° / fc=47.5
+    kHz были artifact от `V_in ... AC 1` line в inline netlist (mirror
+    KiCad export default), contaminating measurement через linear
+    superposition. AC sanitizer в `measure_phase_margin` use case
+    (`_zero_existing_ac_sources()`) теперь strip'ает AC drive у user
+    sources до patcher injection; current values — clean loop gain.
     """
     netlist = _write_netlist(tmp_path)
     strategy = _strategy('middlebrook_voltage')
