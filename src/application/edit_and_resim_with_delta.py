@@ -34,6 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from application.edit_component_value import edit_component_value
 from application.measure_bandwidth import measure_bandwidth
 from application.measure_gain import measure_gain
+from application.measure_phase_margin import measure_phase_margin
 from application.measure_thd import measure_thd
 from application.schematic_snapshot import SchematicSnapshot
 from domain.measurement import (
@@ -46,16 +47,22 @@ from domain.measurement_delta import (
     GainDelta,
     ThdDelta,
 )
+from domain.phase_margin import (
+    PhaseMarginDelta,
+    PhaseMarginMeasurement,
+)
 from ports.outbound.schematic_exporter import SchematicExportError
 from ports.outbound.simulator import SimulationFailedError
 
 if TYPE_CHECKING:
+    from domain.phase_margin import ConfirmationCallback
+    from domain.phase_margin_injection import InjectionStrategy
     from ports.outbound.netlist_editor import NetlistEditor
     from ports.outbound.schematic_exporter import SchematicExporter
     from ports.outbound.simulator import Simulator
 
 
-Metric = Literal['gain', 'bandwidth', 'thd']
+Metric = Literal['gain', 'bandwidth', 'thd', 'phase_margin']
 GainMode = Literal['small', 'large']
 
 # Soft warn-порог: типичный one-shot edit'ит 1–5 компонентов; при
@@ -98,13 +105,21 @@ class EditAndResimConfig(BaseModel):
     input_source: str | None = None
     n_harmonics: int = Field(default=10, ge=3, le=20)
     load_ohm: float = Field(default=8.0, gt=0.0)
+    # Phase-margin specific (T153 Phase B.7): edge-pair либо оба заданы,
+    # либо ни одного (последнее → auto-detect через callback).
+    loop_break_node: str | None = None
+    break_element_ref: str | None = None
+    pm_n_points_per_decade: int = Field(default=100, ge=10, le=10_000)
 
     @model_validator(mode='after')
     def _dedupe_and_validate(self) -> Self:
         deduped: list[Metric] = list(dict.fromkeys(self.metrics))
         object.__setattr__(self, 'metrics', deduped)
         if not deduped:
-            msg = 'metrics: at least one metric required (gain/bandwidth/thd)'
+            msg = (
+                'metrics: at least one metric required '
+                '(gain/bandwidth/thd/phase_margin)'
+            )
             raise ValueError(msg)
         if 'gain' in deduped and self.frequency_hz is None:
             msg = 'frequency_hz required when metric=gain is selected'
@@ -125,6 +140,16 @@ class EditAndResimConfig(BaseModel):
                 f'f_low_hz ({self.f_low_hz})'
             )
             raise ValueError(msg)
+        # Edge-pair fail-fast (ADR-T153d): half-explicit запрещён.
+        half_explicit = (self.loop_break_node is None) != (
+            self.break_element_ref is None
+        )
+        if half_explicit:
+            msg = (
+                'loop_break_node и break_element_ref должны быть переданы '
+                'парой (оба или ни одного — последнее активирует auto-detect).'
+            )
+            raise ValueError(msg)
         return self
 
 
@@ -143,7 +168,7 @@ class EditAndResimReport(BaseModel):
     edits: list[tuple[str, str]]
     deltas: list[
         Annotated[
-            GainDelta | BandwidthDelta | ThdDelta,
+            GainDelta | BandwidthDelta | ThdDelta | PhaseMarginDelta,
             Field(discriminator='metric_field'),
         ]
     ]
@@ -164,6 +189,8 @@ async def edit_and_resim_with_delta(
     netlist_dir: Path | None = None,
     timeout_seconds: float = 60.0,
     project: str | None = None,
+    injection_strategy: InjectionStrategy | None = None,
+    auto_detect_confirmation: ConfirmationCallback | None = None,
 ) -> EditAndResimReport:
     """
     Применить `edits` к `schematic`, снять `config.metrics` до/после, вернуть отчёт.
@@ -186,6 +213,13 @@ async def edit_and_resim_with_delta(
             tempdir и удаляются по выходу.
         timeout_seconds: единый лимит на каждый ngspice run.
         project: имя проекта (заполняется CLI слоем) — для report metadata.
+        injection_strategy: domain strategy для phase-margin injection
+            (composition root собирает через `_INJECTION_STRATEGY_BUILDERS`).
+            Обязателен, если `'phase_margin' in config.metrics`.
+        auto_detect_confirmation: callback `(AutoDetectInfo) -> bool` для
+            phase-margin auto-detect ветки (`config.loop_break_node` /
+            `config.break_element_ref` оба None). Обязателен в auto-detect
+            ветке; CLI собирает из `typer.confirm` / threshold-policy.
 
     Returns:
         `EditAndResimReport` с deltas, edits, schematic-ref, project.
@@ -205,6 +239,14 @@ async def edit_and_resim_with_delta(
     # use case экспортит `SOFT_WARN_EDITS` константу для CLI-сравнения.
 
     metrics: list[Metric] = list(config.metrics)
+
+    if 'phase_margin' in metrics and injection_strategy is None:
+        msg = (
+            'edit_and_resim_with_delta: injection_strategy обязателен '
+            'когда metric=phase_margin (composition root должен собрать '
+            'InjectionStrategy через _INJECTION_STRATEGY_BUILDERS).'
+        )
+        raise ValueError(msg)
 
     if netlist_dir is not None:
         await asyncio.to_thread(
@@ -232,6 +274,8 @@ async def edit_and_resim_with_delta(
                     simulator=simulator,
                     netlist_editor=netlist_editor,
                     timeout_seconds=timeout_seconds,
+                    injection_strategy=injection_strategy,
+                    auto_detect_confirmation=auto_detect_confirmation,
                 )
             except (SimulationFailedError, ValueError) as exc:
                 raise BaselineFailedError(metric, exc) from exc
@@ -266,12 +310,14 @@ async def edit_and_resim_with_delta(
                     simulator=simulator,
                     netlist_editor=netlist_editor,
                     timeout_seconds=timeout_seconds,
+                    injection_strategy=injection_strategy,
+                    auto_detect_confirmation=auto_detect_confirmation,
                 )
             except (SimulationFailedError, ValueError) as exc:
                 after[metric] = f'{type(exc).__name__}: {exc}'
 
     # 6. Assemble deltas.
-    deltas: list[GainDelta | BandwidthDelta | ThdDelta] = []
+    deltas: list[GainDelta | BandwidthDelta | ThdDelta | PhaseMarginDelta] = []
     for metric in metrics:
         before_value = baseline[metric]
         after_value = after[metric]
@@ -288,7 +334,9 @@ async def edit_and_resim_with_delta(
 # --------------------------------------------------------------- Internal helpers ----
 
 
-_BaselineValue = GainMeasurement | BandwidthMeasurement | ThdMeasurement
+_BaselineValue = (
+    GainMeasurement | BandwidthMeasurement | ThdMeasurement | PhaseMarginMeasurement
+)
 _AfterOutcome = _BaselineValue | str  # str = failed_reason
 
 
@@ -300,6 +348,8 @@ async def _measure_one(
     simulator: Simulator,
     netlist_editor: NetlistEditor,
     timeout_seconds: float,
+    injection_strategy: InjectionStrategy | None,
+    auto_detect_confirmation: ConfirmationCallback | None,
 ) -> _BaselineValue:
     if metric == 'gain':
         # Validator EditAndResimConfig гарантирует frequency_hz при metric=gain.
@@ -340,57 +390,91 @@ async def _measure_one(
             n_harmonics=config.n_harmonics,
             timeout_seconds=timeout_seconds,
         )
+    if metric == 'phase_margin':
+        # Entry-validator гарантирует injection_strategy is not None
+        # при наличии phase_margin в metrics.
+        return await measure_phase_margin(
+            netlist=netlist,
+            injection_strategy=cast('InjectionStrategy', injection_strategy),
+            break_node=config.loop_break_node,
+            break_element_ref=config.break_element_ref,
+            auto_detect_confirmation=auto_detect_confirmation,
+            simulator=simulator,
+            f_low=config.f_low_hz,
+            f_high=config.f_high_hz,
+            n_points_per_decade=config.pm_n_points_per_decade,
+            timeout_seconds=timeout_seconds,
+        )
     msg = f'unknown metric: {metric!r}'  # pragma: no cover (typed Literal)
     raise ValueError(msg)
+
+
+_BuiltDelta = GainDelta | BandwidthDelta | ThdDelta | PhaseMarginDelta
 
 
 def _make_delta(
     metric: Metric,
     before_value: _BaselineValue,
     after_value: _AfterOutcome,
-) -> GainDelta | BandwidthDelta | ThdDelta:
+) -> _BuiltDelta:
     # `before_value` всегда соответствует `metric` (use case собирает их
     # в одной dispatch-петле); isinstance-проверки нужны mypy для
     # type-narrow перед передачей в `from_measurements`.
+    result: _BuiltDelta | None = None
     if metric == 'gain' and isinstance(before_value, GainMeasurement):
         if isinstance(after_value, str):
-            return GainDelta.from_failed_after(
+            result = GainDelta.from_failed_after(
                 before=before_value,
                 reason=after_value,
             )
-        if isinstance(after_value, GainMeasurement):
-            return GainDelta.from_measurements(
+        elif isinstance(after_value, GainMeasurement):
+            result = GainDelta.from_measurements(
                 before=before_value,
                 after=after_value,
             )
-    if metric == 'bandwidth' and isinstance(before_value, BandwidthMeasurement):
+    elif metric == 'bandwidth' and isinstance(before_value, BandwidthMeasurement):
         if isinstance(after_value, str):
-            return BandwidthDelta.from_failed_after(
+            result = BandwidthDelta.from_failed_after(
                 before=before_value,
                 reason=after_value,
             )
-        if isinstance(after_value, BandwidthMeasurement):
-            return BandwidthDelta.from_measurements(
+        elif isinstance(after_value, BandwidthMeasurement):
+            result = BandwidthDelta.from_measurements(
                 before=before_value,
                 after=after_value,
             )
-    if metric == 'thd' and isinstance(before_value, ThdMeasurement):
+    elif metric == 'thd' and isinstance(before_value, ThdMeasurement):
         if isinstance(after_value, str):
-            return ThdDelta.from_failed_after(
+            result = ThdDelta.from_failed_after(
                 before=before_value,
                 reason=after_value,
             )
-        if isinstance(after_value, ThdMeasurement):
-            return ThdDelta.from_measurements(
+        elif isinstance(after_value, ThdMeasurement):
+            result = ThdDelta.from_measurements(
                 before=before_value,
                 after=after_value,
             )
-    msg = (  # pragma: no cover (defensive — type-narrow gate уже отработал)
-        f'_make_delta: metric/before/after type mismatch: '
-        f'metric={metric!r}, before={type(before_value).__name__}, '
-        f'after={type(after_value).__name__}'
-    )
-    raise TypeError(msg)
+    elif metric == 'phase_margin' and isinstance(before_value, PhaseMarginMeasurement):
+        if isinstance(after_value, str):
+            result = PhaseMarginDelta.from_failed_after(
+                before=before_value,
+                reason=after_value,
+            )
+        elif isinstance(after_value, PhaseMarginMeasurement):
+            result = PhaseMarginDelta.from_measurements(
+                before=before_value,
+                after=after_value,
+            )
+    if result is None:
+        # Defensive — type-narrow gate уже отработал; типы Literal +
+        # один before/after type per metric не дают сюда добраться.
+        msg = (  # pragma: no cover
+            f'_make_delta: metric/before/after type mismatch: '
+            f'metric={metric!r}, before={type(before_value).__name__}, '
+            f'after={type(after_value).__name__}'
+        )
+        raise TypeError(msg)
+    return result
 
 
 async def _copy_netlist(src: Path, dst: Path) -> None:

@@ -21,6 +21,10 @@ from domain.measurement_delta import (
     GainDelta,
     ThdDelta,
 )
+from domain.phase_margin import (
+    PhaseMarginDelta,
+    PhaseMarginMeasurement,
+)
 
 
 def _gain(value_db: float = 20.0) -> GainMeasurement:
@@ -58,6 +62,28 @@ def _thd(thd_percent: float = 2.5) -> ThdMeasurement:
         dominant_harmonic_percent=thd_percent * 0.9,
         signal='v(load)',
         n_harmonics=10,
+    )
+
+
+def _phase_margin(
+    margin_deg: float = 65.0,
+    crossover_hz: float = 12_000.0,
+) -> PhaseMarginMeasurement:
+    # stability class derived из margin_deg (high > 60°, adequate > 45°, …).
+    if margin_deg > 60.0:
+        cls = 'high'
+    elif margin_deg > 45.0:
+        cls = 'adequate'
+    elif margin_deg > 30.0:
+        cls = 'marginal'
+    else:
+        cls = 'risky'
+    return PhaseMarginMeasurement(
+        margin_deg=margin_deg,
+        crossover_hz=crossover_hz,
+        measured_at_node='in_neg',
+        injection_method='middlebrook_voltage',
+        stability_class=cls,  # type: ignore[arg-type]
     )
 
 
@@ -213,3 +239,106 @@ def test_json_renderer_pretty_printed() -> None:
     blob = render_edit_and_resim_json(report)
     # indent=2 → каждая нетривиальная пара ключ/значение на своей строке
     assert blob.count('\n') > 5
+
+
+# ---------------------------------------------- PhaseMarginDelta (T153 B.7) ----
+
+
+def test_text_renderer_phase_margin_includes_margin_and_crossover() -> None:
+    """Основная строка — margin_deg; sub-row — crossover before → after."""
+    report = EditAndResimReport(
+        schematic='/p/demo.kicad_sch',
+        edits=[('R_fb', '47k')],
+        deltas=[
+            PhaseMarginDelta.from_measurements(
+                before=_phase_margin(margin_deg=65.0, crossover_hz=12_000.0),
+                after=_phase_margin(margin_deg=48.0, crossover_hz=10_500.0),
+            ),
+        ],
+    )
+    out = render_edit_and_resim_text(report)
+    assert 'phase-margin' in out
+    assert 'margin_deg' in out
+    assert '65' in out
+    assert '48' in out
+    assert 'crossover' in out
+    assert '12' in out  # crossover before
+    assert '10' in out  # crossover after
+    # Δ = -17 (degradation), Δ% ≈ -26.15%
+    assert '-17' in out
+    assert '-26' in out
+
+
+def test_text_renderer_phase_margin_failed_after_shows_reason() -> None:
+    report = EditAndResimReport(
+        schematic='/p/demo.kicad_sch',
+        edits=[('R_fb', '47k')],
+        deltas=[
+            PhaseMarginDelta.from_failed_after(
+                before=_phase_margin(),
+                reason='AutoDetectRejectedError: confidence too low',
+            ),
+        ],
+    )
+    out = render_edit_and_resim_text(report)
+    assert 'phase-margin' in out
+    assert 'FAILED' in out
+    assert 'AutoDetectRejectedError' in out
+
+
+def test_json_renderer_phase_margin_full_round_trip() -> None:
+    report = EditAndResimReport(
+        schematic='/p/demo.kicad_sch',
+        edits=[('R_fb', '47k')],
+        deltas=[
+            PhaseMarginDelta.from_measurements(
+                before=_phase_margin(margin_deg=65.0, crossover_hz=12_000.0),
+                after=_phase_margin(margin_deg=48.0, crossover_hz=10_500.0),
+            ),
+        ],
+        project='demo',
+    )
+    blob = render_edit_and_resim_json(report)
+    restored = EditAndResimReport.model_validate_json(blob)
+    assert restored == report
+
+
+def test_json_renderer_phase_margin_includes_full_measurement() -> None:
+    report = EditAndResimReport(
+        schematic='/p/demo.kicad_sch',
+        edits=[('R_fb', '47k')],
+        deltas=[
+            PhaseMarginDelta.from_measurements(
+                before=_phase_margin(margin_deg=65.0, crossover_hz=12_000.0),
+                after=_phase_margin(margin_deg=48.0, crossover_hz=10_500.0),
+            ),
+        ],
+    )
+    blob = render_edit_and_resim_json(report)
+    data = json.loads(blob)
+    delta_json = data['deltas'][0]
+    assert delta_json['metric_field'] == 'margin_deg'
+    assert delta_json['before']['margin_deg'] == pytest.approx(65.0)
+    assert delta_json['before']['crossover_hz'] == pytest.approx(12_000.0)
+    assert delta_json['before']['injection_method'] == 'middlebrook_voltage'
+    assert delta_json['after']['margin_deg'] == pytest.approx(48.0)
+    assert delta_json['delta_absolute'] == pytest.approx(-17.0)
+
+
+def test_text_renderer_phase_margin_combined_with_gain() -> None:
+    report = EditAndResimReport(
+        schematic='/p/demo.kicad_sch',
+        edits=[('R_fb', '47k')],
+        deltas=[
+            GainDelta.from_measurements(before=_gain(20.0), after=_gain(22.0)),
+            PhaseMarginDelta.from_measurements(
+                before=_phase_margin(margin_deg=65.0),
+                after=_phase_margin(margin_deg=55.0),
+            ),
+        ],
+    )
+    out = render_edit_and_resim_text(report)
+    assert 'gain' in out
+    assert 'phase-margin' in out
+    assert 'value_db' in out
+    assert 'margin_deg' in out

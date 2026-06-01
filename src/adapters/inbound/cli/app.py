@@ -1953,7 +1953,7 @@ def build_app(
             list[str],
             typer.Option(
                 '--measure',
-                help='gain | bandwidth | thd (повторяемый). '
+                help='gain | bandwidth | thd | phase-margin (повторяемый). '
                 'Можно несколько метрик одной командой.',
             ),
         ],
@@ -2011,6 +2011,57 @@ def build_app(
                 'ах вроде se-amp). Без него — auto-detect single V-source.',
             ),
         ] = None,
+        loop_break_node: Annotated[
+            str | None,
+            typer.Option(
+                '--loop-break-node',
+                help=(
+                    'Phase-margin: net разрыва петли. Пара с '
+                    '--loop-break-element. Оба не заданы → auto-detect.'
+                ),
+            ),
+        ] = None,
+        loop_break_element: Annotated[
+            str | None,
+            typer.Option(
+                '--loop-break-element',
+                help=(
+                    'Phase-margin: ref элемента edge-pair (ADR-T153d). '
+                    'Пара с --loop-break-node.'
+                ),
+            ),
+        ] = None,
+        injection_method: Annotated[
+            str,
+            typer.Option(
+                '--injection-method',
+                help=(
+                    'Phase-margin injection: middlebrook-voltage | '
+                    'middlebrook-current | tian | rosenstark-return-ratio'
+                ),
+            ),
+        ] = 'middlebrook-voltage',
+        confidence_threshold: Annotated[
+            float,
+            typer.Option(
+                '--confidence-threshold',
+                help='Phase-margin auto-detect threshold (0..1, default 0.8)',
+            ),
+        ] = 0.8,
+        no_confirm: Annotated[
+            bool,
+            typer.Option(
+                '--no-confirm',
+                help='Phase-margin: не спрашивать confirmation auto-detect в TTY',
+            ),
+        ] = False,
+        pm_n_points_per_decade: Annotated[
+            int,
+            typer.Option(
+                '--pm-n-points-per-decade',
+                help='Phase-margin AC sweep разрешение (default 100)',
+            ),
+        ] = 100,
         output_format: Annotated[
             str,
             typer.Option(
@@ -2067,7 +2118,7 @@ def build_app(
 
         # Validate --measure values up-front (Pydantic Literal даёт
         # cryptic ValidationError; явное сообщение полезнее).
-        allowed_metrics = ('gain', 'bandwidth', 'thd')
+        allowed_metrics = ('gain', 'bandwidth', 'thd', 'phase-margin')
         for m in measure:
             if m not in allowed_metrics:
                 typer.echo(
@@ -2095,16 +2146,39 @@ def build_app(
             )
             raise typer.Exit(code=2)
 
+        # Phase-margin specific guards (только если запрошен).
+        wants_pm = 'phase-margin' in measure
+        if wants_pm:
+            if injection_method not in _INJECTION_STRATEGY_BUILDERS:
+                typer.echo(
+                    f'--injection-method: {injection_method!r}; expected '
+                    f'one of {sorted(_INJECTION_STRATEGY_BUILDERS)}',
+                    err=True,
+                )
+                raise typer.Exit(code=2)
+            if not (0.0 <= confidence_threshold <= 1.0):
+                typer.echo(
+                    f'--confidence-threshold: {confidence_threshold!r}; '
+                    f'expected float in [0, 1]',
+                    err=True,
+                )
+                raise typer.Exit(code=2)
+
         # Build EditAndResimConfig (Pydantic валидирует required-fields
         # per metric; cryptic ValidationError превращается в человеко-
-        # читаемое сообщение).
+        # читаемое сообщение). CLI принимает hyphenated 'phase-margin',
+        # domain Literal — underscore'd 'phase_margin'.
         try:
+            normalised_metrics = [
+                'phase_margin' if m == 'phase-margin' else m for m in measure
+            ]
             cfg_kwargs: dict[str, object] = {
-                'metrics': list(measure),
+                'metrics': normalised_metrics,
                 'mode': mode,
                 'output_signal': output_signal,
                 'f_low_hz': parse_spice_number(f_low),
                 'f_high_hz': parse_spice_number(f_high),
+                'pm_n_points_per_decade': pm_n_points_per_decade,
             }
             if freq is not None:
                 cfg_kwargs['frequency_hz'] = parse_spice_number(freq)
@@ -2114,10 +2188,26 @@ def build_app(
                 cfg_kwargs['input_signal'] = input_signal
             if input_source is not None:
                 cfg_kwargs['input_source'] = input_source
+            if loop_break_node is not None:
+                cfg_kwargs['loop_break_node'] = loop_break_node
+            if loop_break_element is not None:
+                cfg_kwargs['break_element_ref'] = loop_break_element
             config = EditAndResimConfig(**cfg_kwargs)  # type: ignore[arg-type]
         except (ValueError, ValidationError, SpiceNumberFormatError) as exc:
             typer.echo(f'EditAndResimConfig: {exc}', err=True)
             raise typer.Exit(code=2) from exc
+
+        # Phase-margin DI: собираем strategy + callback только если нужно.
+        strategy: InjectionStrategy | None = None
+        confirmation: ConfirmationCallback | None = None
+        if wants_pm:
+            strategy = _INJECTION_STRATEGY_BUILDERS[injection_method](
+                injection_patcher,
+            )
+            confirmation = _make_confirmation_callback(
+                no_confirm=no_confirm,
+                confidence_threshold=confidence_threshold,
+            )
 
         # Soft warn для больших batch'ей (T022 паттерн).
         if len(edits) > SOFT_WARN_EDITS:
@@ -2155,6 +2245,8 @@ def build_app(
                 netlist_dir=nd,
                 timeout_seconds=timeout,
                 project=project,
+                injection_strategy=strategy,
+                auto_detect_confirmation=confirmation,
             )
 
         try:
@@ -2181,6 +2273,18 @@ def build_app(
                 "Rollback: edit'ы откачены SchematicSnapshot'ом.",
                 err=True,
             )
+            raise typer.Exit(code=1) from exc
+        except (
+            AutoDetectConfidenceTooLowError,
+            AutoDetectRejectedError,
+            LoopBreakNodeNotFoundError,
+            LoopGainAlwaysAboveUnityError,
+            NoFeedbackLoopDetectedError,
+            NoUnityGainCrossoverError,
+        ) as exc:
+            # Phase-margin baseline errors уже завернуты BaselineFailedError;
+            # сюда попадают only direct re-raises (например edge issue в config).
+            typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
 
         # Render output.

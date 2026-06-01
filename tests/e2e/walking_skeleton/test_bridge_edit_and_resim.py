@@ -314,3 +314,96 @@ def test_bridge_edit_and_resim_rc_filter_bandwidth_changes(
     # Corner понизился ~10× → bandwidth ~ 16 Hz vs 159 Hz, дельта < 0.
     assert bw['delta_absolute'] < 0
     assert bw['after']['bandwidth_hz'] < bw['before']['bandwidth_hz']
+
+
+# ====================================================================
+# T153 Phase B.7: bridge edit-and-resim --measure phase-margin (CLI gates).
+# ====================================================================
+
+
+def test_bridge_edit_and_resim_phase_margin_unknown_injection_method_exits_2(
+    rc_filter_schematic_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--measure phase-margin --injection-method bogus` → exit 2."""
+    _prepare_project_with_rc(rc_filter_schematic_path, tmp_path, monkeypatch)
+    runner = CliRunner()
+    result = runner.invoke(
+        build_cli_app(),
+        [
+            'bridge',
+            'edit-and-resim',
+            'editor_test',
+            '--schematic',
+            'schematic/rc_filter.kicad_sch',
+            '--set',
+            'R1=10k',
+            '--measure',
+            'phase-margin',
+            '--injection-method',
+            'bogus-method',
+            '--no-confirm',
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert 'injection-method' in result.output
+    assert 'bogus-method' in result.output
+
+
+def test_bridge_edit_and_resim_phase_margin_invalid_confidence_threshold_exits_2(
+    rc_filter_schematic_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--confidence-threshold 1.5` → exit 2 (диапазон [0, 1])."""
+    _prepare_project_with_rc(rc_filter_schematic_path, tmp_path, monkeypatch)
+    runner = CliRunner()
+    result = runner.invoke(
+        build_cli_app(),
+        [
+            'bridge',
+            'edit-and-resim',
+            'editor_test',
+            '--schematic',
+            'schematic/rc_filter.kicad_sch',
+            '--set',
+            'R1=10k',
+            '--measure',
+            'phase-margin',
+            '--confidence-threshold',
+            '1.5',
+            '--no-confirm',
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert 'confidence-threshold' in result.output
+
+
+def test_bridge_edit_and_resim_phase_margin_half_explicit_edge_pair_exits_2(
+    rc_filter_schematic_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--loop-break-node` без `--loop-break-element` → config validator fail."""
+    _prepare_project_with_rc(rc_filter_schematic_path, tmp_path, monkeypatch)
+    runner = CliRunner()
+    result = runner.invoke(
+        build_cli_app(),
+        [
+            'bridge',
+            'edit-and-resim',
+            'editor_test',
+            '--schematic',
+            'schematic/rc_filter.kicad_sch',
+            '--set',
+            'R1=10k',
+            '--measure',
+            'phase-margin',
+            '--loop-break-node',
+            'in_neg',
+            '--no-confirm',
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert 'break_element_ref' in result.output

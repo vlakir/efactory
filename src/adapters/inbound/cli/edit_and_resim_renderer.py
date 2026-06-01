@@ -18,6 +18,7 @@ from domain.measurement_delta import (
     GainDelta,
     ThdDelta,
 )
+from domain.phase_margin import PhaseMarginDelta
 
 if TYPE_CHECKING:
     from application.edit_and_resim_with_delta import EditAndResimReport
@@ -29,6 +30,7 @@ _METRIC_NAME: dict[type, str] = {
     GainDelta: 'gain',
     BandwidthDelta: 'bandwidth',
     ThdDelta: 'thd',
+    PhaseMarginDelta: 'phase-margin',
 }
 # Границы fixed-point форматирования: вне диапазона переключаемся
 # на scientific notation (читать колонку с 0.0001234 в %.3f нельзя).
@@ -77,6 +79,14 @@ def render_edit_and_resim_text(report: EditAndResimReport) -> str:
             after_str = _format_number(after_value)
             delta_abs_str = _format_signed(delta.delta_absolute)
             delta_pct_str = _format_signed_percent(delta.delta_relative_percent)
+            # PhaseMarginDelta: добавляем context-строку с crossover.
+            if isinstance(delta, PhaseMarginDelta) and delta.after is not None:
+                before_xo = delta.before.crossover_hz
+                after_xo = delta.after.crossover_hz
+                sub_rows[len(rows)] = (
+                    f'crossover: {_format_number(before_xo)} Hz → '
+                    f'{_format_number(after_xo)} Hz'
+                )
         rows.append(
             (
                 metric_name,
@@ -108,7 +118,7 @@ def render_edit_and_resim_text(report: EditAndResimReport) -> str:
 
 
 def _value_of(
-    delta: GainDelta | BandwidthDelta | ThdDelta,
+    delta: GainDelta | BandwidthDelta | ThdDelta | PhaseMarginDelta,
     *,
     side: str,
 ) -> float:
@@ -122,6 +132,8 @@ def _value_of(
         return float(measurement.bandwidth_hz)  # type: ignore[union-attr]
     if isinstance(delta, ThdDelta):
         return float(measurement.thd_percent)  # type: ignore[union-attr]
+    if isinstance(delta, PhaseMarginDelta):
+        return float(measurement.margin_deg)  # type: ignore[union-attr]
     msg = f'unknown delta type: {type(delta).__name__}'  # pragma: no cover
     raise TypeError(msg)
 
