@@ -309,6 +309,18 @@ _W_IMPEDANCE = 0.1  # currently unused — Phase C calibration
 # feedback loop; penalty wipe'ил confidence до 0. Single-dominant flag
 # выступает достаточным сигналом «uniqueness».
 
+# Ground-containing cycles — penalty.
+# Op-amp с output stage обычно имеет несколько cycles одинаковой
+# topology (R_fb-feedback vs R_load/C_amp-via-ground), все три с
+# одинаковыми forward/feedback ratios → confidence равна. Без penalty
+# primary cycle определяется первым DFS hit — детерминирован, но
+# физически бессмысленный (ground — reference, не loop break edge;
+# Vinj N 0 даёт probe `v(0)` которого нет в ngspice output).
+# Penalty depresses ground-routed cycles на тех же фикстурах, в которых
+# есть настоящий feedback path не через ground.
+_GROUND_NETS: frozenset[str] = frozenset({'0', 'gnd', 'GND', 'ground'})
+_P_GROUND_CYCLE = 0.3
+
 
 def find_cycles(graph: CircuitGraph) -> tuple[FeedbackCycle, ...]:
     """
@@ -403,6 +415,8 @@ def score_break_candidates(
             + _W_SINGLE_DOMINANT * single_dominant
             + _W_IMPEDANCE * 0.5  # placeholder — Phase C calibration
         )
+        if any(n in _GROUND_NETS for n in c.nodes):
+            confidence -= _P_GROUND_CYCLE
         confidence = max(0.0, min(1.0, confidence))
         scored.append((c, confidence))
 
@@ -441,20 +455,33 @@ def _enumerate_simple_cycles(
 
     Returns list of (net_path, element_id_list).
     """
-    # adj: net → set of (other_net, element_id). Дедуплицируем
-    # pairwise дубли одного элемента (E_amp может иметь 2 pairwise
-    # edge'а к одному net'у; нас интересует только сам факт связи).
-    # Исключаем V/I sources — они закрывают топологические cycles
-    # через ground/bias, не настоящий feedback.
-    adj: dict[str, set[tuple[str, str]]] = {n: set() for n in graph.nets}
+    # adj: net → ordered list of (other_net, element_id) с дедупликацией.
+    # Дедуплицируем pairwise дубли одного элемента (E_amp может иметь
+    # 2 pairwise edge'а к одному net'у; нас интересует только сам факт
+    # связи). Исключаем V/I sources — они закрывают топологические
+    # cycles через ground/bias, не настоящий feedback.
+    #
+    # ВАЖНО: список, а не set. Set iteration order зависит от
+    # `PYTHONHASHSEED` (для строк — randomized по умолчанию), что делает
+    # DFS-порядок добавления cycles non-deterministic между runs.
+    # При равном confidence у нескольких cycles primary получался разным
+    # (stable sort сохранял случайный ordering из cycles list).
+    adj: dict[str, list[tuple[str, str]]] = {n: [] for n in graph.nets}
+    adj_seen: dict[str, set[tuple[str, str]]] = {n: set() for n in graph.nets}
     for e in graph.edges:
         if e.element_type in _NON_FEEDBACK_TYPES:
             continue
         a, b = e.net_pair
         if a == b:
             continue
-        adj[a].add((b, e.element_id))
-        adj[b].add((a, e.element_id))
+        ab = (b, e.element_id)
+        if ab not in adj_seen[a]:
+            adj[a].append(ab)
+            adj_seen[a].add(ab)
+        ba = (a, e.element_id)
+        if ba not in adj_seen[b]:
+            adj[b].append(ba)
+            adj_seen[b].add(ba)
 
     cycles: list[tuple[list[str], list[str]]] = []
     seen_cycle_keys: set[frozenset[str]] = set()

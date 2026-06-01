@@ -433,6 +433,46 @@ def test_score_break_candidates_alternatives_sorted_by_confidence_desc() -> None
         assert confs == sorted(confs, reverse=True)
 
 
+def test_score_break_candidates_does_not_choose_ground_node() -> None:
+    """
+    Ground node ('0', 'gnd', ...) — reference, не loop break edge.
+
+    Op-amp output stage порождает несколько cycles одинаковой topology
+    (R_fb feedback vs R_load/C_amp leak через ground), все с равными
+    forward/feedback ratios → confidence без penalty одинаковый.
+    Без ground penalty primary cycle определялся первым DFS hit →
+    может выпасть на ground-routed cycle (Vinj N 0 → probe v(0)
+    отсутствует в ngspice output → ValueError downstream).
+    """
+    g = parse(_OPAMP_INV_NETLIST)
+    cycles = find_cycles(g)
+    info = score_break_candidates(cycles)
+    assert info.chosen_node != '0'
+    assert info.chosen_node.lower() not in {'gnd', 'ground'}
+
+
+def test_find_cycles_iteration_order_is_deterministic() -> None:
+    """
+    `_enumerate_simple_cycles` adj использует list, не set.
+
+    Set iteration order зависит от `PYTHONHASHSEED` (для строк —
+    randomized по умолчанию), что делает DFS non-deterministic и
+    primary cycle (при равных confidence) — случайным между runs.
+
+    Проверка: повторные `find_cycles` дают одинаковые suggested edges
+    в том же порядке.
+    """
+    g = parse(_OPAMP_INV_NETLIST)
+    first = find_cycles(g)
+    second = find_cycles(g)
+    assert len(first) == len(second)
+    first_edges = [(c.suggested_break_node, c.suggested_break_element_ref) for c in first]
+    second_edges = [
+        (c.suggested_break_node, c.suggested_break_element_ref) for c in second
+    ]
+    assert first_edges == second_edges
+
+
 def test_find_cycles_skips_parallel_two_edge_short_cycles() -> None:
     """Multi-pairwise edges of one element НЕ дают valid cycle (single element)."""
     netlist = (
