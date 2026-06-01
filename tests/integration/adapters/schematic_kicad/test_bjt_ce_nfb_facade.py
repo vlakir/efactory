@@ -93,9 +93,13 @@ _C_IN_AT = (73.66, 88.9)  # rot=90; pin_a@(69.85,88.9), pin_b@(77.47,88.9)
 _R_B1_AT = (78.74, 63.5)  # pin_a@(78.74,67.31)→base trunk, pin_b@(78.74,59.69)→rail
 _R_B2_AT = (88.9, 96.52)  # pin_a@(88.9,100.33)→GND, pin_b@(88.9,92.71)→base trunk
 
-# Feedback chain (Y=74.93): C_F (DC-block) + R_F (shunt-shunt res).
-_C_F_AT = (82.55, 74.93)  # rot=90; pin_a@(78.74,74.93), pin_b@(86.36,74.93)
-_R_F_AT = (91.44, 74.93)  # rot=90; pin_a@(87.63,74.93), pin_b@(95.25,74.93)
+# Feedback chain (Y=74.93): R_F (shunt-shunt res, base-side) + C_F
+# (DC-block, vout-side). Order ОТ base К collector: base → R_F → fb_mid
+# → C_F → vout. Это matches inline calibration netlist AND KB convention
+# `(vout, C_F)` (DC-block прямо за active output, analog к tube `(sec_a,
+# C_fb)`).
+_R_F_AT = (82.55, 74.93)  # rot=90; pin_a@(78.74,74.93)→base, pin_b@(86.36,74.93)→fb_mid
+_C_F_AT = (91.44, 74.93)  # rot=90; pin_a@(87.63,74.93)→fb_mid, pin_b@(95.25,74.93)→collector
 
 # Q1 (NPN 2N3904) center (95.25, 88.9). Pin positions (from _BJT_PINS):
 #   B (left):  (95.25-5.08, 88.9)     = (90.17, 88.9)
@@ -235,7 +239,7 @@ def _build_bjt_ce_nfb(path: Path) -> Path:  # noqa: PLR0915
     # C_F.pin_a sits (тоже base node) — natural merge.
     sch.connect(r_b1.pin_a, Position(x_mm=78.74, y_mm=88.9))
     sch.junction(at=(78.74, 88.9))  # base trunk + R_B1 drop
-    sch.junction(at=(78.74, 74.93))  # C_F.pin_a on R_B1 vertical wire
+    sch.junction(at=(78.74, 74.93))  # R_F.pin_a on R_B1 vertical wire (base node)
 
     # R_B2.pin_b (88.9, 92.71) → base trunk @ (88.9, 88.9): short vertical.
     sch.connect(r_b2.pin_b, Position(x_mm=88.9, y_mm=88.9))
@@ -243,14 +247,17 @@ def _build_bjt_ce_nfb(path: Path) -> Path:  # noqa: PLR0915
     # R_B2.pin_a → GND.
     sch.connect(r_b2.pin_a, gnd_rb2.pin)
 
-    # === Feedback chain (Y=74.93): R_F.pin_b → collector wire @
-    # (97.79, 74.93); C_F.pin_b → R_F.pin_a (gap 1.27 mm). ===
-    sch.connect(c_f.pin_b, r_f.pin_a)  # (86.36, 74.93) → (87.63, 74.93)
+    # === Feedback chain (Y=74.93): base — R_F — fb_mid — C_F — collector.
+    # R_F.pin_a sits on base trunk (X=78.74, junction добавлен выше);
+    # R_F.pin_b → C_F.pin_a (gap 1.27 mm); C_F.pin_b → collector wire @
+    # (97.79, 74.93). Order matches inline calibration + KB convention
+    # `(vout, C_F)` — DC-block прямо за active output. ===
+    sch.connect(r_f.pin_b, c_f.pin_a)  # (86.36, 74.93) → (87.63, 74.93)
     sch.connect(
-        r_f.pin_b,
+        c_f.pin_b,
         Position(x_mm=_BPLUS_RAIL_END_X, y_mm=74.93),
     )
-    sch.junction(at=(_BPLUS_RAIL_END_X, 74.93))  # R_F.pin_b on collector wire
+    sch.junction(at=(_BPLUS_RAIL_END_X, 74.93))  # C_F.pin_b on collector wire
 
     # === Collector chain (X=97.79): Q1.C → R_C.pin_a vertical ===
     # Wire passes through (97.79, 74.93) where R_F.pin_b joins.

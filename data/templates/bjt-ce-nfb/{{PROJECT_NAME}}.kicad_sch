@@ -2313,7 +2313,7 @@
 	)
 	(symbol
 		(lib_id "Device:C")
-		(at 82.55 74.93 90)
+		(at 91.44 74.93 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -2324,88 +2324,6 @@
 		(fields_autoplaced yes)
 		(uuid "d6534c5c-5fbe-403f-b9dc-97b3fcdc4e1e")
 		(property "Reference" "C_F"
-			(at 83.57 70.36 90)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Value" "1u"
-			(at 83.57 72.39 90)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Footprint" ""
-			(at 82.55 74.93 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 82.55 74.93 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" ""
-			(at 82.55 74.93 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "1"
-			(uuid "41e1459c-9443-48ea-9288-5aa1ce0f6cb5")
-		)
-		(pin "2"
-			(uuid "4e8e8728-dafa-4d7f-b1b3-ab76a3c913a9")
-		)
-		(instances
-			(project "bjt_ce_nfb"
-				(path "/eb433a43-fb04-477d-8088-5e6d4d1cfe14"
-					(reference "C_F")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:R")
-		(at 91.44 74.93 90)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "189b3625-c67b-4c2e-a325-29306272c77d")
-		(property "Reference" "R_F"
 			(at 92.46 70.36 90)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2416,7 +2334,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "47k"
+		(property "Value" "1u"
 			(at 92.46 72.39 90)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2451,6 +2369,88 @@
 		)
 		(property "Description" ""
 			(at 91.44 74.93 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "41e1459c-9443-48ea-9288-5aa1ce0f6cb5")
+		)
+		(pin "2"
+			(uuid "4e8e8728-dafa-4d7f-b1b3-ab76a3c913a9")
+		)
+		(instances
+			(project "bjt_ce_nfb"
+				(path "/eb433a43-fb04-477d-8088-5e6d4d1cfe14"
+					(reference "C_F")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 82.55 74.93 90)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "189b3625-c67b-4c2e-a325-29306272c77d")
+		(property "Reference" "R_F"
+			(at 83.57 70.36 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "47k"
+			(at 83.57 72.39 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 82.55 74.93 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 82.55 74.93 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 82.55 74.93 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
