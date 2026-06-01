@@ -120,6 +120,14 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'spice.feedback-break-point',
         'low-Z driver',
     ),
+    # T153 Phase C.3 Level 2 — KB sync regression для tube NFB
+    # canonical break (OPT secondary → feedback chain) + per-topology
+    # applicability matrix (tube only-V).
+    (
+        'tube NFB SE amp phase margin break OPT secondary feedback',
+        'spice.feedback-break-point',
+        'sec_a',
+    ),
 ]
 
 

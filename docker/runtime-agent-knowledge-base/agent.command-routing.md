@@ -56,12 +56,17 @@ tags: [agent, slash-commands, routing, scope]
 
 - **«как изменится phase margin после правки feedback резистора»** —
   `/edit-and-resim --set R_fb=47k --measure phase-margin
-  --loop-break-node in_neg --loop-break-element R_fb` (T153 B.7).
+  --loop-break-node <node> --loop-break-element <ref>` (T153 B.7).
   Edge-pair либо explicit (обе опции), либо auto-detect (ни одной).
   Можно комбинировать с другими метриками одной командой:
-  `--measure gain --measure phase-margin --freq 1k`. Default
-  injection-method `middlebrook-voltage` даёт T_v, не T_loop — для
-  op-amp воркфлоу попробуй `--injection-method tian`.
+  `--measure gain --measure phase-margin --freq 1k`. **Per-topology
+  canonical breaks** (ADR-T153f + ADR-T153g, KB `spice.feedback-break-
+  point`): op-amp inverting → `(vout, R_fb)` (low-Z driver); tube NFB
+  SE → `(sec_a, C_fb)` (OPT secondary, auto-detect fails — explicit
+  required); BJT CE → `(collector, R_C)` (preview, fixture TBD).
+  Default `--injection-method middlebrook-voltage` корректно даёт
+  T_loop на правильном break point; `tian` — universal на op-amp но
+  degenerate на tube NFB.
 
 - **«phase margin auto-detect отклонил edge / NoUnityGainCrossover»** —
   default `--injection-method middlebrook-voltage` даёт `T_v`, не
