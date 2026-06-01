@@ -25,6 +25,135 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-01 — T153 ADR-T153g: per-topology break point convention (Phase C.3 tube NFB calibration)
+
+- **Контекст.** Phase C.3 calibration на `data/templates/nfb-se-amp/`
+  fixture (6Н1П driver + 6П14П output pentode + OPT 5kΩ:8Ω, global
+  voltage NFB через R_fb=4.7 kΩ из sec_a в катод V1) выявила
+  фундаментальные различия физики 4-method validation на vacuum
+  tube vs op-amp circuits. ADR-T153f закрепил matrix per-method для
+  op-amp; ADR-T153g расширяет до **per-topology × per-method matrix**
+  с empirical confirmation на 2-х фикстурах.
+
+- **Эмпирическое решение (probe v2, 13 candidate breaks × 4 methods
+  + Bode-relation ground truth via A/G_cl − 1).**
+
+  1. **Tube NFB ≠ op-amp.** Два независимых feedback loops в tube
+     SE amp (local cathode degeneration через unbypassed R_k1 +
+     global NFB через R_fb) → 72 cycles в auto-detect, все
+     confidence < 0.5 (best candidate sec_b/R_load load junction,
+     не feedback). Ground-truth Bode T = A/G_cl − 1 даёт 3
+     artificial crossings (LF C_in artifact, mid-band cancellation,
+     HF Cps parasitic) — not meaningful loop gain measurement.
+
+  2. **Canonical "global outer NFB loop" break point на tube SE
+     fixture: `(sec_a, C_fb)`** — OPT secondary → feedback chain
+     junction. Z_back at sec_a__fwd = ∞ (только C_fb attached),
+     Z_fwd at sec_a = 8 Ω (R_load + OPT secondary output Z) →
+     Middlebrook V approximation **essentially exact** → PM=115° ±
+     5° / fc=47.5 kHz ± 10% empirically reproducible. Это canonical
+     **global NFB outer loop stability margin** (very stable;
+     local cathode loop отдельно).
+
+  3. **Tube unilateral physics ограничивает 3/4 methods на NFB SE
+     fixture at canonical break:**
+     - **Middlebrook I:** Z_back >> Z_fwd required, но на
+       sec_a/C_fb impedance ratio reversed (∞ ↔ 8 Ω) → degenerate.
+       Plus tube grids draw zero current → current injection at any
+       grid coupling также не возбуждает forward loop.
+     - **Tian:** combines T_v + T_i, fails когда I-injection
+       degenerate. Universal claim Tian'а holds для op-amp output
+       (где V и I impedance ratios sufficiently симметричны), не
+       для tube NFB at OPT secondary.
+     - **Rosenstark:** требует bidirectional two-port OC/SC
+       compatible break. Tube unilateral (plate ≠ generator of
+       feedback signal) → нет такого break point на NFB SE
+       topology.
+
+- **Решение.**
+
+  1. **Per-topology break point matrix** (extends ADR-T153f):
+
+     | Topology              | V    | I    | Tian | Rosenstark | Canonical break             |
+     |-----------------------|------|------|------|------------|------------------------------|
+     | Op-amp inverting NFB  | ✓    | ✗    | ✓    | ✗          | `vout/R_fb` (low-Z output)  |
+     | Tube SE NFB           | ✓    | ✗    | ✗    | ✗          | `sec_a/C_fb` (OPT sec)      |
+     | BJT CE NFB            | ?    | ?    | ?    | ?          | (BACKLOG, future fixture)   |
+
+     Tube row показывает **physics-based methodology limit**: на
+     unilateral devices с reactive feedback path только
+     Middlebrook V single-injection даёт trustworthy measurement.
+
+  2. **Calibration test acceptance (T153 Phase C.3,
+     `test_measure_phase_margin_calibration_nfb_se.py`):**
+
+     - **Strict:** Middlebrook V @ `(sec_a, C_fb)` → PM=115° ± 5° /
+       fc=47.5 kHz ± 10%.
+     - **Degenerate-pipeline:** Middlebrook I + Tian + Rosenstark
+       @ same break — orchestration completes (no parse/setup
+       errors), result manifests как domain error (NoUnityGain /
+       LoopGainAlwaysAbove / ValueError из margin_deg validator) или
+       PhaseMarginMeasurement без strict PM assertion.
+     - **Auto-detect:** `AutoDetectConfidenceTooLowError` ожидаем
+       на default threshold 0.8 — multi-loop tube topology не
+       поддаётся текущей эвристике, user passes break explicitly.
+
+  3. **Auto-detect refinement under multi-loop tube NFB** — отложено
+     в BACKLOG (future T-XXX). C.3 принимает текущую behavior (raise
+     low-confidence error) as honest — user explicit break override
+     остаётся primary CLI path для tube fixtures.
+
+  4. **`/measure-phase-margin` на tube NFB фикстурах ОБЯЗАТЕЛЬНО
+     требует explicit `--loop-break-node <sec_a> --loop-break-element
+     <C_fb>`** (или эквивалент). KB topic `spice.feedback-break-
+     point.md` обновлён с tube-specific guidance.
+
+- **Альтернативы.**
+
+  - *Build BJT CE NFB fixture в C.3 для полной 4-method validation
+    matrix.* Рассмотрено в session start; estimate ~2-3ч
+    дополнительной работы поверх C.3 plus tuning convergence (BJT
+    SPICE models нелинейны, требуют .nodeset / .ic). Отложено в
+    BACKLOG как separate T-ID (наиболее informative — common-emitter
+    с emitter resistor + R_fb collector→base).
+  - *Add LF crossing detection в `find_unity_crossover` (currently
+    finds первого DOWNWARD только).* Bode-relation probe показал что
+    LF crossings на tube NFB — обычно C_in / OPT artifacts, не
+    meaningful loop gain. Add complexity без physical benefit.
+    Отвергнуто.
+  - *Strict V only на tube + completely skip degenerate-pipeline
+    tests for I/Tian/Rosenstark.* Pipeline tests дают orchestration-
+    integrity guarantee при future code changes в use case /
+    strategies / patcher → strong protection от silent regression.
+    Минимальный overhead (4 tests × 0.04s each). Keep.
+
+- **Последствия.**
+
+  - Tube NFB topology officially "Middlebrook V territory" в efactory
+    documentation; user expectation calibrated.
+  - 4-method universality claim ADR-T153f не противоречит — claim
+    был для op-amp output break где Tian works; tube fixture
+    показывает что ни одной "universal break" topology не существует
+    independent of method.
+  - `nfb-se-amp` template README обновится в follow-up commit'ах
+    Phase D-E (`--loop-break-node sec_a --loop-break-element C_fb`
+    как documented usage, заменяет hand-wave «target ~45-60°» в
+    sec.4 README).
+  - BACKLOG triggered: BJT CE NFB fixture для полной cross-method
+    validation (T-XXX), auto-detect heuristic refinement для multi-
+    loop tube circuits (T-YYY).
+
+- **Источники.**
+  - Middlebrook R. D., 1975 (см. ADR-T153f).
+  - Tian M. et al., 2001 (см. ADR-T153f).
+  - Rosenstark S., 1984 (см. ADR-T153f).
+  - Self D., *«Audio Power Amplifier Design Handbook»*, 6th ed.,
+    Ch. «Negative Feedback and Stability» — vacuum tube NFB
+    stability в основном dominated by HF crossover из-за OPT phase
+    shift; общеизвестное правило «high-PM tube NFB ≈ underdamped but
+    stable» подтверждается на нашей fixture (PM=115°).
+
+
 ### 2026-06-01 — T153 ADR-T153f: break point convention + applicability matrix (Phase C.1 calibration)
 
 - **Контекст.** Phase C.1 calibration на op-amp inverting reference
