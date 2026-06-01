@@ -36,6 +36,45 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T027 Phase C — `tube-phono-riaa` template fixture (12AX7 + passive
+  RIAA inter-stage Lipshitz EQ).** Двухкаскадный all-triode phono
+  preamp на 12AX7 Koren (обе половины `Valve:ECC83`) с **passive
+  RIAA EQ inter-stage network** (R_riaa_1=68k, C_riaa_1=11n,
+  R_riaa_2=9.1k, C_riaa_2=33n — Lipshitz-derived для τ1=3180µs / τ2=318µs /
+  τ3=75µs canonical RIAA time constants). Mid-band gain @ 1 kHz ≈
+  **180 V/V (45 dB)** — для MM cartridge 5 mV → 900 mV line level.
+  **RIAA compliance ±1 dB в 20 Hz – 20 kHz audio band** (worst error
+  0.65 dB @ 50 Hz). Включает: builder `_build_tube_phono_riaa` (3
+  acceptance tests: model includes, RIAA components present с правильными
+  Lipshitz values, OP-point active region обеих 12AX7 halves),
+  bake-hook `_bake_tube_phono_riaa`, materialized template
+  `data/templates/tube-phono-riaa/`, snapshot test, calibration test
+  `test_measure_gain_calibration_tube_phono_riaa.py` (10-point AC
+  sweep vs inverse RIAA target curve, ±1 dB tolerance), KB topic
+  `spice.tube-phono-riaa` с Lipshitz design math + design pitfalls
+  (LF rolloff sources, MM-vs-MC scope, component tolerance impact),
+  agent command-routing mapping для «phono / винил / RIAA / MM cartridge»,
+  KB L2 regression case.
+
+### Fixed
+
+- **T027 Phase C — Koren tube models PWRS → ngspice syntax patch (15
+  files, ADR-T027c).** Все 15 Koren tube models в
+  `data/models/tubes/koren/` (`12AX7`, `12AU7`, `12AT7`, `12BH7`,
+  `5881`, `6CG7`, `6L6`, `6SN7`, `6V6`, `7027`, `7591`, `EF86`, `EL34`,
+  `KT88`, `GENERIC_TRIODE`) содержали HSPICE-convention `PWRS()`
+  (signed power), не поддерживается ngspice 44. Все Koren models
+  были dormant-broken — никто их не симулировал до T027 Phase C
+  (только tests/e2e listing/show), bug surfaced при first ngspice run
+  на 12AX7 phono preamp. Patched в syntax-equivalent через regex
+  replacement: `PWRS(x, y) → sgn(x)*pwr(abs(x), y)` (same pattern как
+  existing working `custom/6N2P.lib`). Functionally identical для
+  V(7) > 0 (tube conducting region). Spec Q6 rationale revised
+  empirically: 12AX7 Koren и custom 6N2P используют identical
+  parameters (`MU=100 EX=1.4 KG1=1060 KP=600 KVB=300`) — functionally
+  same model, только syntax. Choice 12AX7 retained per textbook
+  convention.
+
 - **T027 Phase B — `tube-line-preamp` template fixture (CC + CF cascade
   на 6Н2П).** Двухкаскадный all-triode line preamp на обеих половинах
   6Н2П (`Valve:ECC83` unit 1 + unit 2 = ECC83B): Stage 1 — common-

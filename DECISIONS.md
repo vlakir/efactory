@@ -25,6 +25,65 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-02 — T027 Phase C ADR-T027c: Koren tube models PWRS → ngspice syntax (все 15 моделей)
+
+- **Контекст.** T027 Phase C — `tube-phono-riaa` template — первое
+  место в efactory, где Koren tube model (`12AX7.lib`) реально
+  симулируется в ngspice (раньше использовались только
+  `custom/6N2P.lib`, `custom/6P14P.lib`). При first ngspice run
+  surface'нул error: `Error: no such function 'pwrs'`. **Все 15 Koren
+  tube models** (`12AX7`, `12AU7`, `12AT7`, `12BH7`, `5881`, `6CG7`,
+  `6L6`, `6SN7`, `6V6`, `7027`, `7591`, `EF86`, `EL34`, `KT88`,
+  `GENERIC_TRIODE`) использовали HSPICE-convention `PWRS()` (signed
+  power), который не поддерживается ngspice 44.
+
+- **Empirical-найденная проблема.** Все Koren models в efactory были
+  **dormant-broken** — никто их не проверял в SPICE simulation
+  (только тесты listing/show через `tube show --id 12AX7`, не run).
+  Spec Q6 rationale «Koren модель точнее на AC sweep» был основан на
+  incorrect assumption: 12AX7.lib и custom 6N2P.lib используют
+  **identical Koren parameters** (`MU=100 EX=1.4 KG1=1060 KP=600
+  KVB=300`) — functionally same model, только syntax (один работал,
+  другой broken).
+
+- **Решение.** Patched all 15 Koren models — syntax-equivalent
+  замена:
+  ```
+  PWRS(x, y)  →  sgn(x)*pwr(abs(x), y)
+  ```
+  Functionally identical для V(7) > 0 (tube conducting region).
+  Same syntax pattern как existing working `custom/6N2P.lib`.
+
+- **Альтернативы (rejected).**
+  - (a) **Patch только 12AX7.lib** (minimum scope for Phase C). Pro:
+    strict scope discipline. Con: leaves 14 dormant-broken models в
+    repo, future T029+ KT88/EL34/etc. PP fixtures сразу же hit
+    same blocker.
+  - (b) **Use custom 6N2P instead of 12AX7** в Phase C. Sidesteps
+    bug. Con: contradicts spec Q6 explicit choice (Vladimir wanted
+    12AX7 «для textbook convention»). Also doesn't fix root cause
+    для остальных Koren models.
+
+- **Последствия.**
+  - **15 файлов patched** в одной volume — mechanical regex
+    replacement через Python script (`re.sub(r'PWRS\(V\(7\),([\d.]+)\)',
+    r'sgn(V(7))*pwr(abs(V(7)),\1)', text)`).
+  - **No new regression coverage для других 14 моделей** — они всё
+    ещё «untested in SPICE simulation», просто not BROKEN anymore.
+    Future T029+ KT88/EL34/etc. fixtures verify behavior individually.
+  - **Spec Q6 rationale revised** — added empirical correction note
+    в `specs/T027-project-templates/spec.md` § Resolved Q6:
+    «12AX7.lib и custom 6N2P.lib functionally identical (same
+    parameters), choice 12AX7 retained per textbook convention».
+  - **Vladimir's instruction в Phase C session:** «Phase C ADR-T027c
+    Allow scope expansion: patch all 15 models, не только 12AX7
+    blocker». Explicit go-ahead.
+
+- **Связано:** `data/models/tubes/koren/*.lib` (15 patched files),
+  `tests/integration/adapters/schematic_kicad/test_tube_phono_riaa_facade.py`
+  (Phase C builder), KB topic
+  `docker/runtime-agent-knowledge-base/spice.tube-phono-riaa.md`.
+
 ### 2026-06-02 — T027 Phase A ADR-T027a: tube-pp-amp phase splitter — LTP, не concertina
 
 - **Контекст.** T027 Phase A: расширение каталога project templates,

@@ -1,0 +1,9 @@
+{
+  "board": {
+    "design_settings": {}
+  },
+  "meta": {
+    "filename": "{{PROJECT_NAME}}.kicad_pro",
+    "version": 3
+  }
+}

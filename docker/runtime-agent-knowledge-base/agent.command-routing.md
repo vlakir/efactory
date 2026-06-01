@@ -29,6 +29,7 @@ tags: [agent, slash-commands, routing, scope]
 | «создай проект», «новый проект <NAME>» | `/project-create <NAME>` |
 | «ламповый PP», «tube push-pull», «двухтактный усилитель», «PP на 6П14П / EL84» | `/project-create <NAME>` + материализуй template `tube-pp-amp` (см. KB `spice.tube-push-pull`); Phase E добавит `[TEMPLATE]` аргумент |
 | «ламповый preamp», «line preamp», «6Н2П preamp», «ECC83 buffer», «tube buffer stage» | `/project-create <NAME>` + материализуй template `tube-line-preamp` (см. KB `spice.tube-line-preamp`); Phase E добавит `[TEMPLATE]` аргумент |
+| «phono preamp», «RIAA preamp», «винил preamp», «MM cartridge amp», «12AX7 phono» | `/project-create <NAME>` + материализуй template `tube-phono-riaa` (см. KB `spice.tube-phono-riaa`); Phase E добавит `[TEMPLATE]` аргумент |
 | «запусти симуляцию», «.op / .tran / .ac», «прогони netlist» | `/sim-run` |
 | «переключись на проект <NAME>» | `/project-use <NAME>` (display-only) |
 | «как обойти X», «уже было / похоже на pitfall» | `/kb-search <query>` ПЕРЕД исследованием |

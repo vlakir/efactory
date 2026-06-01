@@ -1,0 +1,9 @@
+name: tube-phono-riaa
+description: |
+  Tube phono RIAA preamp на 12AX7 (Koren parametrization, обе
+  половины ECC83). Двухкаскадный CC + passive RIAA inter-stage
+  EQ network (Lipshitz-derived values для τ1=3180µs / τ2=318µs /
+  τ3=75µs стандартных RIAA time constants). MM cartridge input
+  ~5 mV @ 1 kHz → ~900 mV output (45 dB mid-band reference).
+  RIAA compliance ±1 dB в 20 Hz – 20 kHz audio band.
+summary: Phono preamp 12AX7 + passive RIAA — MM cartridge → line level.
