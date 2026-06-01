@@ -27,6 +27,7 @@ tags: [agent, slash-commands, routing, scope]
 | «как зависит X от R/C», «параметрический sweep», «варьировать Rk», «таблица gain vs ...», «sweep по 1-2 компонентам» | `/sweep --metric <op|gain|bandwidth|thd> --param REF=v1,v2,...` |
 | «если поменять X на Y, как изменится gain/bandwidth/thd/PM», «what-if», «как повлияет замена R5», «сравнение до/после», «delta после правки», «как изменится запас по фазе если» | `/edit-and-resim --set REF=VALUE [...] --measure <gain\|bandwidth\|thd\|phase-margin> [...] [--loop-break-node <n> --loop-break-element <ref>]` |
 | «создай проект», «новый проект <NAME>» | `/project-create <NAME>` |
+| «ламповый PP», «tube push-pull», «двухтактный усилитель», «PP на 6П14П / EL84» | `/project-create <NAME>` + материализуй template `tube-pp-amp` (см. KB `spice.tube-push-pull`); Phase E добавит `[TEMPLATE]` аргумент |
 | «запусти симуляцию», «.op / .tran / .ac», «прогони netlist» | `/sim-run` |
 | «переключись на проект <NAME>» | `/project-use <NAME>` (display-only) |
 | «как обойти X», «уже было / похоже на pitfall» | `/kb-search <query>` ПЕРЕД исследованием |

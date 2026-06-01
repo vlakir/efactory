@@ -144,6 +144,19 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'spice.feedback-break-point',
         'C_F',
     ),
+    # T027 Phase A Level 2 — KB sync regression для tube push-pull amp
+    # template (LTP splitter vs concertina ADR-T027a) + agent routing
+    # mapping для «ламповый PP / двухтактный».
+    (
+        'tube push pull amp LTP splitter',
+        'spice.tube-push-pull',
+        'LTP',
+    ),
+    (
+        'создай ламповый push-pull проект',
+        'agent.command-routing',
+        'tube-pp-amp',
+    ),
 ]
 
 

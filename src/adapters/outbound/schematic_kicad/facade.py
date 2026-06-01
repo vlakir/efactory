@@ -291,6 +291,32 @@ _TRANSFORMER_1P_1S = _SymbolDef(
     label_offsets=_LabelOffsets(ref=(0.0, -8.89), value=(0.0, 8.89)),
 )
 
+# Transformer_2P_1S (T027 Phase A, 2026-06-02) — custom 5-pin transformer
+# для push-pull output: split primary с center-tap (P1/PC/P2) + single
+# secondary (S1/S2). Symbol body — копия `Transformer_1P_SS` graphics из
+# KiCad standard Device.kicad_sym; pin numbering/labels переопределены
+# под PP-OPT семантику (P-side с center-tap слева, S-side справа). См.
+# `lib_symbols/Device.Transformer_2P_1S.sexp`. Маппинг для
+# OPT_PP_6K6_8 (`.SUBCKT P1 PC P2 S1 S2`):
+#   1 (P1): library (-10.16, +5.08) → schematic (-10.16, -5.08), primary top
+#   2 (PC): library (-10.16, 0)     → schematic (-10.16, 0),     center tap
+#   3 (P2): library (-10.16, -5.08) → schematic (-10.16, +5.08), primary bottom
+#   4 (S1): library (+10.16, +5.08) → schematic (+10.16, -5.08), secondary top
+#   5 (S2): library (+10.16, -5.08) → schematic (+10.16, +5.08), secondary bottom
+_TRANSFORMER_2P_1S = _SymbolDef(
+    lib_id='Device:Transformer_2P_1S',
+    pins=(
+        _PinLayout('1', (-10.16, -5.08)),  # P1 primary top
+        _PinLayout('2', (-10.16, 0.0)),  # PC center tap
+        _PinLayout('3', (-10.16, 5.08)),  # P2 primary bottom
+        _PinLayout('4', (10.16, -5.08)),  # S1 secondary top
+        _PinLayout('5', (10.16, 5.08)),  # S2 secondary bottom
+    ),
+    spice_pin_names=('P1', 'PC', 'P2', 'S1', 'S2'),
+    unit=1,
+    label_offsets=_LabelOffsets(ref=(0.0, -8.89), value=(0.0, 8.89)),
+)
+
 # Custom Soviet tube snippets (T107) — нет в стандартной Valve.kicad_sym,
 # generated as copy-rename из EL84/ECC81 базовых форм. Visually одинаковы
 # (pentode/triode shape), отличаются только lib_id name и default Value.
@@ -349,6 +375,7 @@ _SYMBOL_REGISTRY: dict[str, _SymbolDef] = {
     'Tubes_Soviet:6P45S': _TUBES_SOVIET_6P45S,
     'Tubes_Soviet:6N6P': _TUBES_SOVIET_6N6P,
     'Device:Transformer_1P_1S': _TRANSFORMER_1P_1S,
+    'Device:Transformer_2P_1S': _TRANSFORMER_2P_1S,
 }
 
 # R/C/L Reference/Value — справа от horizontal-rendered body, разнесены по Y.

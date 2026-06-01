@@ -36,6 +36,29 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T027 Phase A — `tube-pp-amp` template fixture (LTP splitter +
+  PP 6П14П + center-tap OPT).** Двухкаскадный push-pull power amp на
+  long-tail-pair splitter (обе половины 6Н2П, Valve:ECC83 unit 1 +
+  unit 2 = ECC83B, shared cathode через R_tail=4.7kΩ) + пара 6П14П
+  (Valve:EL84) в push-pull с per-tube auto-bias (R_k=270 Ω ‖ C_k=220 µF)
+  + OPT_PP_6K6_8 (6.6kΩ:8Ω, center-tapped primary) + 8 Ω load.
+  Open-loop (без global NFB) — NFB-вариант остаётся в BACKLOG отдельной
+  задачей по аналогии с `se-amp` → `nfb-se-amp`. Ngspice empirical
+  mid-band Av @ 1 kHz ≈ **16.5 V/V (24.4 dB)**, calibration regression
+  ±15%. Включает: builder `_build_tube_pp_amp` (3 acceptance tests:
+  model includes, topology asserts, OP-point balanced PP), custom
+  5-pin KiCad symbol `Device:Transformer_2P_1S` для PP-OPT
+  (`.sexp` + facade `_SYMBOL_REGISTRY` entry), bake-hook
+  `_bake_tube_pp_amp` в `regenerate-templates.py`, materialized
+  template `data/templates/tube-pp-amp/`, snapshot test, calibration
+  test `measure_gain` mid-band, KB topic `spice.tube-push-pull` с
+  ADR-T027a (concertina → LTP rationale + design pitfalls), agent
+  command-routing mapping entry для «ламповый PP / push-pull», KB
+  L2 regression case. **ADR-T027a:** Round 2 Q3 concertina splitter
+  empirically даёт затухание 0.77 V/V на Koren 6N2P model (I_a
+  quiescent 0.15 mA, plate-output gain 0.05) — заменён на textbook-
+  standard LTP, robust к model parameter drift.
+
 - **T163 — BJT CE shunt-shunt NFB fixture для full 4-method matrix
   (ADR-T163, closes ADR-T153g BJT CE row).** Single-stage common-emitter
   Q2N3904 amp с voltage-divider bias (R_B1=100k + R_B2=10k), emitter

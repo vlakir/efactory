@@ -1,0 +1,8 @@
+name: tube-pp-amp
+description: |
+  Tube push-pull power amp на 6Н2П (long-tail-pair splitter,
+  обе половины ECC83) + пара 6П14П (Valve:EL84) в push-pull с
+  per-tube auto-bias (R_k=270Ω ‖ C_k=220µF) + OPT_PP_6K6_8
+  (6.6kΩ:8Ω, center-tapped primary) + 8 Ω load. Open-loop
+  (без global NFB). Mid-band Av ≈ 16.5 V/V (≈24 dB).
+summary: Push-pull 6П14П PP + LTP 6Н2П splitter — open-loop tube power amp.
