@@ -1,0 +1,7 @@
+name: active-lpf-sallen-key
+description: |
+  2nd-order Butterworth Sallen-Key low-pass filter с unity-gain
+  VCVS на TL072 op-amp. Equal-R, unequal-C topology (C1/C2=2 strict
+  per Analyze W1) для proper Butterworth Q=0.707. f_c = 1024 Hz
+  (1 kHz default), HF rolloff -40 dB/decade.
+summary: Sallen-Key Butterworth LPF f_c=1kHz — TL072 VCVS reference.

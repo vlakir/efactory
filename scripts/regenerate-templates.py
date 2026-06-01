@@ -116,6 +116,14 @@ _TUBE_PHONO_RIAA_BUILDER_PATH = (
     / 'schematic_kicad'
     / 'test_tube_phono_riaa_facade.py'
 )
+_ACTIVE_LPF_SALLEN_KEY_BUILDER_PATH = (
+    _REPO_ROOT
+    / 'tests'
+    / 'integration'
+    / 'adapters'
+    / 'schematic_kicad'
+    / 'test_active_lpf_sallen_key_facade.py'
+)
 
 
 def _import_builder(builder_path: Path, attr: str) -> object:
@@ -169,6 +177,13 @@ def _import_tube_phono_riaa_builder() -> object:
     return _import_builder(
         _TUBE_PHONO_RIAA_BUILDER_PATH,
         '_build_tube_phono_riaa',
+    )
+
+
+def _import_active_lpf_sallen_key_builder() -> object:
+    return _import_builder(
+        _ACTIVE_LPF_SALLEN_KEY_BUILDER_PATH,
+        '_build_active_lpf_sallen_key',
     )
 
 
@@ -909,6 +924,121 @@ def _bake_tube_phono_riaa(target_dir: Path) -> None:
     )
 
 
+def _bake_active_lpf_sallen_key(target_dir: Path) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    sch_path = target_dir / f'{PROJECT_NAME_PLACEHOLDER}.kicad_sch'
+    build = _import_active_lpf_sallen_key_builder()
+    build(sch_path)  # type: ignore[operator]
+
+    # Replace absolute model path → relative `models/...`.
+    sch_text = sch_path.read_text(encoding='utf-8')
+    sch_text = sch_text.replace(
+        str(_MODELS_DIR / 'opamps' / 'generic' / 'TL072.lib'),
+        'models/TL072.lib',
+    )
+    sch_path.write_text(sch_text, encoding='utf-8')
+
+    pro_name = f'{PROJECT_NAME_PLACEHOLDER}.kicad_pro'
+    pro_path = target_dir / pro_name
+    pro_path.write_text(
+        json.dumps(
+            {
+                'board': {'design_settings': {}},
+                'meta': {'filename': pro_name, 'version': 3},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+
+    models_target = target_dir / 'models'
+    models_target.mkdir(exist_ok=True)
+    shutil.copy(
+        _MODELS_DIR / 'opamps' / 'generic' / 'TL072.lib',
+        models_target / 'TL072.lib',
+    )
+
+    (target_dir / 'template.yaml').write_text(
+        'name: active-lpf-sallen-key\n'
+        'description: |\n'
+        '  2nd-order Butterworth Sallen-Key low-pass filter с unity-gain\n'
+        '  VCVS на TL072 op-amp. Equal-R, unequal-C topology (C1/C2=2 strict\n'
+        '  per Analyze W1) для proper Butterworth Q=0.707. f_c = 1024 Hz\n'
+        '  (1 kHz default), HF rolloff -40 dB/decade.\n'
+        'summary: Sallen-Key Butterworth LPF f_c=1kHz — TL072 VCVS reference.\n',
+        encoding='utf-8',
+    )
+
+    (target_dir / 'README.md').write_text(
+        f'# active-lpf-sallen-key template\n\n'
+        f'**2nd-order Butterworth low-pass filter** в classic Sallen-Key\n'
+        f'voltage-controlled voltage-source (VCVS) topology с unity-gain\n'
+        f'op-amp follower (TL072).\n\n'
+        f'## Component values\n\n'
+        f'**Equal-R, unequal-C** (per spec Analyze W1 — exact Butterworth\n'
+        f'Q=0.707 требует C1/C2=2 strict, не achievable с equal-C/equal-R):\n\n'
+        f'- R1 = R2 = 10 kΩ (filter resistors)\n'
+        f'- C1 = 22 nF (mid → vout feedback path)\n'
+        f'- C2 = 11 nF (in_p → GND shunt) — *NOT standard E12, BOM = 10n + 1n parallel*\n'
+        f'- R_load = 100 kΩ (assumed next-stage input impedance)\n'
+        f'- TL072 op-amp (unity-gain follower: IN- tied to OUT)\n\n'
+        f'## Filter parameters\n\n'
+        f'- **Cutoff f₀** = 1/(2π·R·√(C1·C2)) = 1/(2π·10k·15.56n)\n'
+        f'  = **1024 Hz** ≈ 1 kHz\n'
+        f'- **Q** = 0.5·√(C1/C2) = 0.5·√2 = **0.707** (Butterworth ideal)\n'
+        f'- Rolloff: **-40 dB/decade** above f_c (2nd-order)\n'
+        f'- Passband: **unity gain** (0 dB), monotonic (no peaking)\n\n'
+        f'## Топология\n\n'
+        f'```\n'
+        f'  Vin ──[R1 10k]──┬──[R2 10k]──┬── IN+ (TL072)\n'
+        f'                  │             │\n'
+        f'                  C1 22n        C2 11n\n'
+        f'                  │             │\n'
+        f'                 Vout          GND\n'
+        f'                  ↑\n'
+        f'                  │\n'
+        f'   IN-(TL072) ────┤\n'
+        f'                  │\n'
+        f'   OUT(TL072) ────┴── Vout ──[R_load 100k]── GND\n'
+        f'```\n\n'
+        f'IN- tied to OUT — **unity-gain VCVS** (voltage follower).\n\n'
+        f'## Empirical calibration (ngspice baseline)\n\n'
+        f'| Freq    | Measured rel | Butterworth ideal | Error  |\n'
+        f'|---------|--------------|-------------------|--------|\n'
+        f'| 10 Hz   | 0.000 dB     | 0.000 dB          | 0.000  |\n'
+        f'| 100 Hz  | 0.000 dB     | -0.004 dB         | +0.004 |\n'
+        f'| 500 Hz  | -0.240 dB    | -0.281 dB         | +0.041 |\n'
+        f'| 1024 Hz | -3.018 dB    | -3.010 dB         | -0.008 |\n'
+        f'| 2 kHz   | -11.94 dB    | -12.31 dB         | +0.37  |\n'
+        f'| 10 kHz  | -39.62 dB    | -39.74 dB         | +0.12  |\n\n'
+        f'**Perfect Butterworth response — within 0.4 dB across все sweep.**\n\n'
+        f'## TL072 macromodel\n\n'
+        f'`models/TL072.lib` — minimal two-pole macromodel matching TL072\n'
+        f'datasheet specs (A0=2e5, GBW=3 MHz, fp1=15 Hz, fp2≈5 MHz,\n'
+        f'Rout=200 Ω). T027 Phase D bootstrap. Для high-fidelity\n'
+        f'production simulation — заменить на full TI macromodel.\n\n'
+        f'## Файлы\n\n'
+        f'- `{PROJECT_NAME_PLACEHOLDER}.kicad_sch` — KiCad-схема.\n'
+        f'- `{PROJECT_NAME_PLACEHOLDER}.kicad_pro` — KiCad project.\n'
+        f'- `models/TL072.lib` — op-amp macromodel.\n\n'
+        f'## Запуск симуляции\n\n'
+        f'    /sim-run\n'
+        f'    # или напрямую:\n'
+        f'    efactory bridge sim-run --schematic <имя_проекта>.kicad_sch\n\n'
+        f'## Рекомендованные measurements\n\n'
+        f'    # Single-point gain @ passband (should be ≈ 0 dB):\n'
+        f'    efactory bridge measure gain <PROJECT> \\\n'
+        f'        --schematic <PROJECT>.kicad_sch --frequency 100 --mode small\n\n'
+        f'    # Bandwidth (-3 dB cutoff verification):\n'
+        f'    efactory bridge measure bandwidth <PROJECT> \\\n'
+        f'        --schematic <PROJECT>.kicad_sch --f-low 10 --f-high 100000\n',
+        encoding='utf-8',
+    )
+
+
 _BAKERS: dict[str, object] = {
     'se-amp': _bake_se_amp,
     'nfb-se-amp': _bake_nfb_se_amp,
@@ -917,6 +1047,7 @@ _BAKERS: dict[str, object] = {
     'tube-pp-amp': _bake_tube_pp_amp,
     'tube-line-preamp': _bake_tube_line_preamp,
     'tube-phono-riaa': _bake_tube_phono_riaa,
+    'active-lpf-sallen-key': _bake_active_lpf_sallen_key,
 }
 
 
