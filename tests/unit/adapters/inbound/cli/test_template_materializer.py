@@ -12,6 +12,7 @@ from adapters.inbound.cli.template_materializer import (
     TemplateConflictError,
     TemplateNotFoundError,
     _sanitize_filename,
+    describe_templates,
     list_templates,
     materialize_template,
 )
@@ -61,6 +62,73 @@ class TestListTemplates:
         (fake_templates_root / 'README.md').write_text('top-level readme')
         (fake_templates_root / 'se-amp').mkdir()
         assert list_templates() == ['se-amp']
+
+
+class TestDescribeTemplates:
+    """T027 Phase E — data-driven описание шаблонов из template.yaml."""
+
+    def test_empty_root_returns_empty(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            template_materializer, 'TEMPLATES_ROOT', tmp_path / 'missing',
+        )
+        assert describe_templates() == []
+
+    def test_returns_name_and_summary_from_yaml(
+        self, fake_templates_root: Path,
+    ) -> None:
+        _make_template(
+            fake_templates_root,
+            'foo-amp',
+            {
+                'template.yaml': (
+                    'name: foo-amp\n'
+                    'description: |\n'
+                    '  Multi-line description.\n'
+                    'summary: Foo amp — short summary line.\n'
+                ),
+            },
+        )
+        result = describe_templates()
+        assert result == [
+            {'name': 'foo-amp', 'summary': 'Foo amp — short summary line.'},
+        ]
+
+    def test_missing_template_yaml_yields_empty_summary(
+        self, fake_templates_root: Path,
+    ) -> None:
+        _make_template(fake_templates_root, 'no-yaml', {'other.txt': 'x'})
+        result = describe_templates()
+        assert result == [{'name': 'no-yaml', 'summary': ''}]
+
+    def test_sorted_by_name(self, fake_templates_root: Path) -> None:
+        _make_template(
+            fake_templates_root, 'zzz',
+            {'template.yaml': 'summary: Z summary.\n'},
+        )
+        _make_template(
+            fake_templates_root, 'aaa',
+            {'template.yaml': 'summary: A summary.\n'},
+        )
+        result = describe_templates()
+        assert [t['name'] for t in result] == ['aaa', 'zzz']
+
+    def test_yaml_without_summary_field_yields_empty(
+        self, fake_templates_root: Path,
+    ) -> None:
+        _make_template(
+            fake_templates_root,
+            'no-summary',
+            {
+                'template.yaml': (
+                    'name: no-summary\n'
+                    'description: only description, no summary line.\n'
+                ),
+            },
+        )
+        result = describe_templates()
+        assert result == [{'name': 'no-summary', 'summary': ''}]
 
 
 class TestSanitizeFilename:

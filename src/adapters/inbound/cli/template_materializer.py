@@ -58,6 +58,35 @@ def list_templates() -> list[str]:
     )
 
 
+def describe_templates() -> list[dict[str, str]]:
+    """
+    Метаданные всех шаблонов: name + summary из ``template.yaml``.
+
+    Source-of-truth — `data/templates/<name>/template.yaml` (T027 Phase E
+    Q12 resolution: data-driven, не hard-coded registry).
+
+    Returns list of dicts sorted by name. Если template.yaml отсутствует
+    или не парсится — summary = пустая строка (graceful degradation).
+    """
+    result: list[dict[str, str]] = []
+    if not TEMPLATES_ROOT.is_dir():
+        return result
+    for name in list_templates():
+        tpl_yaml = TEMPLATES_ROOT / name / 'template.yaml'
+        summary = ''
+        if tpl_yaml.is_file():
+            text = tpl_yaml.read_text(encoding='utf-8')
+            # Minimal `summary:` line parse — avoids yaml dependency
+            # (no other CLI code uses yaml; keep import light).
+            for line in text.splitlines():
+                stripped = line.strip()
+                if stripped.startswith('summary:'):
+                    summary = stripped[len('summary:') :].strip()
+                    break
+        result.append({'name': name, 'summary': summary})
+    return result
+
+
 def materialize_template(
     template_name: str,
     target_dir: Path,
