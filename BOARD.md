@@ -61,6 +61,26 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T165** — [взято 2026-06-01, ветка `T165-ngspice-tmp-cleanup`]
+  **Cleanup ngspice temp `.raw`/`.cir`/`.wrapper.cir` files после
+  measurement use cases.** 4 measure_* use cases (`phase_margin`,
+  `gain`, `bandwidth`, `thd`) + CLI `_prepare_for_plot` (`app.py:283`)
+  пишут `.tmp_*.cir` рядом с исходным netlist'ом; ngspice кладёт
+  `.wrapper.cir` + `.raw` туда же; ничего не убирается. На multi-
+  measurement workflows накапливается мусор, провоцирует Tracker
+  segfault edge case (см. smoke 2026-06-01).
+
+  Acceptance: после любого из 5 vectorized cleanup-сценариев в
+  директории исходного netlist'а не остаётся `.tmp_*.cir`, `.tmp_*.
+  raw`, `.tmp_*.wrapper.cir` файлов. Параметризованный integration
+  test покрывает все пять путей. `.gitignore` safety-net pattern
+  на `**/sim/*.tmp_*` для защиты от регрессии.
+
+  Scope decisions: strict cleanup без debug hatch (pdb для retention);
+  pattern — `tempfile.TemporaryDirectory(prefix='efactory-<usecase>-')`
+  как уже в `bridge_sweep` / `edit_and_resim_with_delta`; CLI helper
+  включён.
+
 ## Done
 
 - **T163** — [closed 2026-06-01, PR #100] **BJT CE shunt-shunt NFB

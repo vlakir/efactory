@@ -9,7 +9,7 @@ netlist'е без знаний о magnetic component'ах.
 Pipeline:
 1. Auto-detect input V-source (Clarify Q-G → c) или явный `input_source`.
 2. `set_sin_source_amplitude(source_ref, v_in_peak, frequency_hz)`.
-3. Write modified netlist в tmp file.
+3. Write modified netlist в `TemporaryDirectory` (T165 cleanup).
 4. Run `FourierAnalysis` (TRAN + ngspice `fourier`) через `Simulator`.
 5. Extract из `FourierResult`: `thd_percent`, fundamental, dominant
    harmonic (max normalized среди n ≥ 2).
@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import asyncio
 import math
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from domain.measurement import ThdMeasurement
@@ -29,8 +31,6 @@ from domain.sim_results import AnalysisType, SimResult
 from domain.simulation import FourierAnalysis, TranAnalysis
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from domain.simulation import HarmonicSample
     from ports.outbound.netlist_editor import NetlistEditor
     from ports.outbound.sim_results import SimResultsRepository
@@ -115,8 +115,6 @@ async def measure_thd(
         amplitude_peak=v_in_peak,
         frequency_hz=frequency_hz,
     )
-    tmp_netlist = netlist.with_suffix('.tmp_thd.cir')
-    await asyncio.to_thread(tmp_netlist.write_text, prepared)
 
     period_s = 1.0 / frequency_hz
     tran = TranAnalysis(
@@ -129,11 +127,14 @@ async def measure_thd(
         n_harmonics=n_harmonics,
         signal=signal,
     )
-    sim_result = await simulator.run(
-        tmp_netlist,
-        analysis,
-        timeout_seconds=timeout_seconds,
-    )
+    with tempfile.TemporaryDirectory(prefix='efactory-thd-') as tmp_dir:
+        tmp_netlist = Path(tmp_dir) / f'{netlist.stem}.tmp_thd.cir'
+        await asyncio.to_thread(tmp_netlist.write_text, prepared)
+        sim_result = await simulator.run(
+            tmp_netlist,
+            analysis,
+            timeout_seconds=timeout_seconds,
+        )
     fourier = sim_result.fourier_result
     if fourier is None:
         msg = (

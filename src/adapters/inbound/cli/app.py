@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sys
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
@@ -145,7 +147,7 @@ from ports.outbound.simulator import (
 from ports.outbound.spice_model_library import SpiceModelNotFoundError
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Generator
 
     from application.create_project import CreateProjectResult
     from application.reindex_projects import ReindexSummary
@@ -244,18 +246,21 @@ def _emit_bandwidth(result: BandwidthMeasurement, *, output_fmt: str) -> None:
     )
 
 
+@contextlib.contextmanager
 def _prepare_ac_netlist(
     *,
     netlist_path: Path,
     netlist_editor: NetlistEditor,
     explicit_source: str | None,
-) -> Path:
+) -> Generator[Path]:
     """
-    Inject `AC 1` modifier на V-source перед AC analysis.
+    Inject `AC 1` modifier на V-source перед AC analysis (context manager).
+
+    Yields путь к prepared netlist: либо original (если V-source нет —
+    injection не требуется), либо tmp file в `TemporaryDirectory`,
+    который cleanup-ится на выходе из `with` (T165).
 
     Если netlist уже содержит `AC <mag>` — ensure_ac_modifier no-op'нет.
-    Возвращает путь к prepared netlist (либо tmp, либо original если
-    в netlist'е нет V-source — без injection).
     """
     base_text = netlist_path.read_text()
     if explicit_source is not None:
@@ -274,15 +279,17 @@ def _prepare_ac_netlist(
             )
             raise ValueError(msg)
     if source_ref is None:
-        return netlist_path
+        yield netlist_path
+        return
     prepared = netlist_editor.ensure_ac_modifier(
         base_text,
         source_ref=source_ref,
         ac_magnitude=1.0,
     )
-    tmp_netlist = netlist_path.with_suffix('.tmp_plot.cir')
-    tmp_netlist.write_text(prepared)
-    return tmp_netlist
+    with tempfile.TemporaryDirectory(prefix='efactory-plot-') as tmp_dir:
+        tmp_netlist = Path(tmp_dir) / f'{netlist_path.stem}.tmp_plot.cir'
+        tmp_netlist.write_text(prepared)
+        yield tmp_netlist
 
 
 def _emit_thd(result: ThdMeasurement, *, output_fmt: str) -> None:
@@ -3242,41 +3249,44 @@ def build_app(
         # AC analysis требует AC modifier на V-source'е, иначе ngspice
         # видит AC=0 и магнитуда везде 0 → -inf dB (T024 follow-up fix).
         netlist_path = _resolve_netlist_path(netlist)
-        try:
-            prepared_netlist_path = _prepare_ac_netlist(
-                netlist_path=netlist_path,
-                netlist_editor=netlist_editor,
-                explicit_source=input_source,
-            )
-        except ValueError as exc:
-            typer.echo(str(exc), err=True)
-            raise typer.Exit(code=2) from exc
+        with contextlib.ExitStack() as stack:
+            try:
+                prepared_netlist_path = stack.enter_context(
+                    _prepare_ac_netlist(
+                        netlist_path=netlist_path,
+                        netlist_editor=netlist_editor,
+                        explicit_source=input_source,
+                    ),
+                )
+            except ValueError as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(code=2) from exc
 
-        async def _run() -> SimulationResult:
-            return await sim_run_use_case(
-                netlist=prepared_netlist_path,
-                analysis=analysis,
-                simulator=simulator,
-                timeout_seconds=timeout,
-            )
+            async def _run() -> SimulationResult:
+                return await sim_run_use_case(
+                    netlist=prepared_netlist_path,
+                    analysis=analysis,
+                    simulator=simulator,
+                    timeout_seconds=timeout,
+                )
 
-        try:
-            result = asyncio.run(
-                _log_command(
-                    session_logger,
-                    'bridge.plot.ac',
-                    project=None,
-                    payload={'netlist': netlist, 'signal': signal},
-                    fn=_run,
-                ),
-            )
-        except (
-            SimulationFailedError,
-            SimulatorUnavailableError,
-            SpiceNumberFormatError,
-            ValidationError,
-        ) as exc:
-            raise _exit_on_bridge_error(exc) from exc
+            try:
+                result = asyncio.run(
+                    _log_command(
+                        session_logger,
+                        'bridge.plot.ac',
+                        project=None,
+                        payload={'netlist': netlist, 'signal': signal},
+                        fn=_run,
+                    ),
+                )
+            except (
+                SimulationFailedError,
+                SimulatorUnavailableError,
+                SpiceNumberFormatError,
+                ValidationError,
+            ) as exc:
+                raise _exit_on_bridge_error(exc) from exc
 
         if result.ac_sweep is None:
             typer.echo('Simulator returned no ac_sweep result.', err=True)

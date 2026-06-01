@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import asyncio
 import math
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from domain.measurement import GainMeasurement
@@ -24,8 +26,6 @@ from domain.sim_results import AnalysisType, SimResult
 from domain.simulation import AcAnalysis, TranAnalysis
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from ports.outbound.netlist_editor import NetlistEditor
     from ports.outbound.sim_results import SimResultsRepository
     from ports.outbound.simulator import Simulator
@@ -62,8 +62,9 @@ async def measure_gain(
     Args:
         netlist: путь к SPICE-netlist'у. Use case читает его, мутирует
             (`ensure_ac_modifier` для small / `set_sin_source_amplitude`
-            для large), записывает результат во временный файл рядом
-            (`<stem>.tmp_gain.cir`) и передаёт в simulator.
+            для large), записывает результат в `TemporaryDirectory`
+            (T165 — cleanup гарантирован context manager'ом) и
+            передаёт в simulator.
         frequency_hz: частота измерения.
         mode: ``'small'`` (AC) или ``'large'`` (TRAN).
         simulator: outbound port (ngspice).
@@ -202,8 +203,6 @@ async def _measure_small(
         source_ref=input_source_ref,
         ac_magnitude=1.0,
     )
-    tmp_netlist = netlist.with_suffix('.tmp_gain.cir')
-    await asyncio.to_thread(tmp_netlist.write_text, prepared)
 
     analysis = AcAnalysis(
         sweep='dec',
@@ -211,11 +210,14 @@ async def _measure_small(
         f_start=frequency_hz,
         f_stop=frequency_hz * _AC_F_STOP_FACTOR,
     )
-    sim_result = await simulator.run(
-        tmp_netlist,
-        analysis,
-        timeout_seconds=timeout_seconds,
-    )
+    with tempfile.TemporaryDirectory(prefix='efactory-gain-') as tmp_dir:
+        tmp_netlist = Path(tmp_dir) / f'{netlist.stem}.tmp_gain.cir'
+        await asyncio.to_thread(tmp_netlist.write_text, prepared)
+        sim_result = await simulator.run(
+            tmp_netlist,
+            analysis,
+            timeout_seconds=timeout_seconds,
+        )
     if sim_result.ac_sweep is None:
         msg = 'measure_gain: simulator вернул нет ac_sweep result в small mode'
         raise ValueError(msg)
@@ -255,8 +257,6 @@ async def _measure_large(
         amplitude_peak=v_in_peak,
         frequency_hz=frequency_hz,
     )
-    tmp_netlist = netlist.with_suffix('.tmp_gain.cir')
-    await asyncio.to_thread(tmp_netlist.write_text, prepared)
 
     period_s = 1.0 / frequency_hz
     effective_t_stop = t_stop if t_stop is not None else _TRAN_PERIODS * period_s
@@ -265,11 +265,14 @@ async def _measure_large(
     )
 
     analysis = TranAnalysis(t_step=effective_t_step, t_stop=effective_t_stop)
-    sim_result = await simulator.run(
-        tmp_netlist,
-        analysis,
-        timeout_seconds=timeout_seconds,
-    )
+    with tempfile.TemporaryDirectory(prefix='efactory-gain-') as tmp_dir:
+        tmp_netlist = Path(tmp_dir) / f'{netlist.stem}.tmp_gain.cir'
+        await asyncio.to_thread(tmp_netlist.write_text, prepared)
+        sim_result = await simulator.run(
+            tmp_netlist,
+            analysis,
+            timeout_seconds=timeout_seconds,
+        )
     if sim_result.time_series is None:
         msg = 'measure_gain: simulator вернул нет time_series в large mode'
         raise ValueError(msg)

@@ -4,7 +4,7 @@ measure_bandwidth — `-N dB` полоса пропускания через AC 
 Pipeline:
 1. Auto-detect input V-source (Clarify Q-G → c) или явный `input_source`.
 2. `ensure_ac_modifier(source_ref, 1.0)` (как small-gain — A6 fix).
-3. Write modified netlist в tmp file.
+3. Write modified netlist в `TemporaryDirectory` (T165 cleanup).
 4. Run `AcAnalysis(sweep='dec', ...)` через `Simulator`.
 5. Compute `|H(f)| = √(real² + imag²)` для `output_signal` (с case-
    insensitive trace lookup).
@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import asyncio
 import math
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from domain.measurement import BandwidthMeasurement
@@ -32,8 +34,6 @@ from domain.sim_results import AnalysisType, SimResult
 from domain.simulation import AcAnalysis
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from ports.outbound.netlist_editor import NetlistEditor
     from ports.outbound.sim_results import SimResultsRepository
     from ports.outbound.simulator import Simulator
@@ -120,8 +120,6 @@ async def measure_bandwidth(
         source_ref=source_ref,
         ac_magnitude=1.0,
     )
-    tmp_netlist = netlist.with_suffix('.tmp_bw.cir')
-    await asyncio.to_thread(tmp_netlist.write_text, prepared)
 
     analysis = AcAnalysis(
         sweep='dec',
@@ -129,11 +127,14 @@ async def measure_bandwidth(
         f_start=f_low,
         f_stop=f_high,
     )
-    sim_result = await simulator.run(
-        tmp_netlist,
-        analysis,
-        timeout_seconds=timeout_seconds,
-    )
+    with tempfile.TemporaryDirectory(prefix='efactory-bw-') as tmp_dir:
+        tmp_netlist = Path(tmp_dir) / f'{netlist.stem}.tmp_bw.cir'
+        await asyncio.to_thread(tmp_netlist.write_text, prepared)
+        sim_result = await simulator.run(
+            tmp_netlist,
+            analysis,
+            timeout_seconds=timeout_seconds,
+        )
     if sim_result.ac_sweep is None:
         msg = 'measure_bandwidth: simulator вернул нет ac_sweep result'
         raise ValueError(msg)
