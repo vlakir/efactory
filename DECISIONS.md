@@ -25,6 +25,127 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-01 — T163 ADR-T163: BJT CE shunt-shunt NFB row в per-topology matrix (ADR-T153g closure)
+
+- **Контекст.** ADR-T153g per-topology matrix оставил BJT CE row
+  `?` — calibration deferred to T163 BACKLOG (full 4-method matrix
+  на natural BJT NFB topology с current-mode + bidirectional + passive
+  interconnect coverage). T163 заводит fixture `data/templates/
+  bjt-ce-nfb/` (single-stage CE, Q2N3904, voltage-divider bias R_B1=100k
+  + R_B2=10k, R_E=470 + C_E=47µ, **shunt-shunt AC-only feedback** R_F=47k
+  + C_F=1µ DC-block analog к tube `C_fb_block`, V_CC=12V → Q-point
+  V_CE≈7.8V/I_C≈1mA in active region).
+
+- **Эмпирическое решение (probe 4 methods × 2 break candidates).**
+
+  Reproducible bit-for-bit на ngspice 44 (dev-machine, 2026-06-01;
+  `tests/integration/application/test_measure_phase_margin_calibration_bjt_ce.py`):
+
+  | Method × Break        | (vout, C_F)             | (base, R_F)            |
+  |-----------------------|-------------------------|------------------------|
+  | Middlebrook V single  | **PM=126.28° fc=299Hz** | NoCrossover (×)        |
+  | Tian double-injection | **PM=128.17° fc=345Hz** | NoCrossover (×)        |
+  | Middlebrook I single  | AlwaysAboveUnity (×)    | LF-artefact 316.61°/3.74Hz |
+  | Rosenstark return-rat | PhaseUnwrap >360° (×)   | NoCrossover (×)        |
+
+  **Convergence**: V + Tian within 1.89° на canonical break — strict
+  cross-validation. Pattern идентичен op-amp C.1 (V+Tian strict @
+  output low-Z break, I+Rosenstark degenerate); BJT CE shunt-shunt
+  закрывает ADR-T153g matrix consistent row.
+
+- **Решение.**
+
+  1. **BJT CE shunt-shunt row в ADR-T153g matrix**: `V=✓, I=✗, Tian=✓,
+     Rosenstark=✗` @ canonical break **`(vout, C_F)`** — analog к tube
+     NFB `(sec_a, C_fb)` convention (DC-block collapse поверх pure-R
+     feedback path).
+
+  2. **Calibration test acceptance** (`test_measure_phase_margin_
+     calibration_bjt_ce.py`):
+     - **Strict primary**: Middlebrook V @ (vout, C_F) →
+       PM=126.28° ± 2°, fc=299 Hz ± 10%.
+     - **Strict cross-validation**: Tian @ (vout, C_F) → PM ±3° vs
+       V's PM (empirical diff 1.89°).
+     - **Documented degenerate**: I + Rosenstark на обоих break
+       candidates + V/Tian @ (base, R_F) — pipeline integrity (no
+       parse/orchestration errors) проверена; physical PM не assert'ится.
+
+  3. **Reasoning для degenerate cases**:
+     - **Middlebrook I @ (vout, C_F)**: current injection at low-Z
+       collector output не opens loop (analog к op-amp output break);
+       `LoopGainAlwaysAboveUnityError`.
+     - **Middlebrook I @ (base, R_F)**: LF artefact 3.74 Hz — fictious
+       crossing от C_F highpass + base current injection interaction;
+       PM=316.61° — phase chain artefact, не meaningful loop gain.
+     - **Rosenstark @ (vout, C_F)**: T_oc + T_sc topology modifications
+       generate phase chain >360° — single-stage CE high-PM ≈126°
+       outside method's valid unwrap range (`measure_phase_margin`
+       raises ValueError на margin_deg validator [-180, 360]).
+     - **V/Tian @ (base, R_F)**: high-Z base break — voltage methods
+       degenerate (analog к op-amp input break T_v ≈ 1/A_loop).
+     - **Rosenstark @ (base, R_F)**: высокая Z base не satisfies
+       OC/SC two-port assumption.
+
+  4. **Canonical break convention для BJT CE shunt-shunt**: `(vout,
+     C_F)` зафиксировано в KB topic `spice.feedback-break-point.md`.
+     Это **collector → DC-block boundary**, точно analog к tube NFB
+     где (sec_a, C_fb) — secondary OPT → DC-block boundary.
+
+- **Альтернативы.**
+
+  - *Single R_B base bias (без divider) + bare R_F (без C_F DC-block) —
+    первоначальный draft из BACKLOG T163.* Phase A DC sanity analysis
+    показал Q-point в saturation (β·R_C/R_F ≈ 15 >> 1 → I_C → 5-10 mA →
+    V_CE_sat). Standard Sedra-Smith Ch. 8 fix: voltage divider + DC-block.
+    Принято.
+  - *Two-stage CE-CE series-shunt fixture для voltage-voltage feedback.*
+    Sedra-Smith Ch. 10 classical example, но требует 2× компонентов
+    + 2× operating points + longer debugging cycle. Single-stage
+    shunt-shunt покрывает критерии BACKLOG (current-mode break + passive
+    interconnect + bidirectional active) без дополнительной сложности.
+    Two-stage = отдельная задача, если потребуется validate series-shunt
+    independent topology.
+  - *Hand-rolled generic NPN Gummel-Poon model (без vendor attribution).*
+    ON Semi 2N3904 canonical PSpice library широко redistributed в OSS
+    (LTspice III, ngspice tutorials, KiCad-eeschema-Sim) — приемлемая
+    лицензия для встраивания в open-source efactory data/models/bjt/
+    onsemi/ subdir. Attribution в `.lib` header. Принято.
+  - *Strong claim ✓✓✓✓ (все 4 methods strict).* Не достижим — physics
+    BJT CE shunt-shunt матч pattern op-amp (V+Tian strict, I+Rosenstark
+    degenerate из-за low-Z output / two-port asymmetry). Per Spec §4
+    «honest empirical»: ✓✓×× закрывает acceptance без stretch claim.
+
+- **Последствия.**
+
+  - ADR-T153g matrix полностью populated (3 topology rows × 4 methods):
+    op-amp / tube SE / BJT CE shunt-shunt. Pattern emerging: только
+    V single универсально strict; Tian convergent кроме tube NFB (где
+    reactive OPT нарушает Tian assumption); I + Rosenstark зависят от
+    break point type (current-mode для I, OC/SC-compatible для Rosenstark).
+  - KB topic `spice.feedback-break-point.md` extended с BJT CE section
+    (canonical break + per-method matrix + workflow example).
+  - BJT CE NFB fixture shipping как `data/templates/bjt-ce-nfb/` —
+    accessible через template manager в efactory:linux container.
+  - +5 calibration tests (1 strict V + 1 strict Tian + 3 documented
+    degenerate); +3 fixture integration tests (model include + topology
+    + DC op-point); coverage net positive vs T164 baseline.
+  - BACKLOG triggers: FET (MOSFET) CE NFB fixture для расширения matrix
+    в FET row (если потребуется); two-stage CE-CE series-shunt (если
+    потребуется validate series-shunt topology); auto-detect refinement
+    для BJT (out of scope T163, может потребоваться если auto-detect
+    выбирает local R_E loop вместо global R_F NFB).
+
+- **Источники.**
+  - ADR-T153f (break point convention), ADR-T153g (per-topology matrix),
+    ADR-T153h (AC sanitizer).
+  - Sedra A. S., Smith K. C., *Microelectronic Circuits*, 7th ed.,
+    Ch. 8 (BJT biasing) + Ch. 10 (negative feedback amplifier
+    topologies) — voltage-divider bias + shunt-shunt transimpedance.
+  - ON Semiconductor (now onsemi) 2N3904 PSpice library — canonical
+    Gummel-Poon parameters (см. `data/models/bjt/onsemi/Q2N3904.lib`
+    header).
+
+
 ### 2026-06-01 — T164: auto-detect refinement (stimulus-distance + multi-active boost + chord-compound penalty)
 
 - **Контекст.** T153 Phase C.3 ADR-T153g + Phase D Smoke S3
@@ -282,7 +403,11 @@ ADR-Lite: компактный лог архитектурных решений 
      |-----------------------|------|------|------|------------|------------------------------|
      | Op-amp inverting NFB  | ✓    | ✗    | ✓    | ✗          | `vout/R_fb` (low-Z output)  |
      | Tube SE NFB           | ✓    | ✗    | ✗    | ✗          | `sec_a/C_fb` (OPT sec)      |
-     | BJT CE NFB            | ?    | ?    | ?    | ?          | (BACKLOG, future fixture)   |
+     | BJT CE shunt-shunt NFB| ✓    | ✗    | ✓    | ✗          | `vout/C_F` (collector→fb)   |
+
+     **Updated 2026-06-01 (T163)**: BJT CE row populated empirically —
+     V + Tian strict @ canonical break (vout, C_F), I + Rosenstark
+     degenerate. См. ADR-T163 ниже для full reasoning.
 
      Tube row показывает **physics-based methodology limit**: на
      unilateral devices с reactive feedback path только

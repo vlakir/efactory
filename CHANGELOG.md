@@ -36,6 +36,41 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T163 — BJT CE shunt-shunt NFB fixture для full 4-method matrix
+  (ADR-T163, closes ADR-T153g BJT CE row).** Single-stage common-emitter
+  Q2N3904 amp с voltage-divider bias (R_B1=100k + R_B2=10k), emitter
+  degeneration R_E=470Ω + C_E=47µF bypass, и **shunt-shunt AC-only
+  feedback** R_F=47kΩ + C_F=1µF DC-block (collector→base, analog к tube
+  NFB `C_fb_block` pattern). Q-point validated в op-point analysis:
+  V_CE≈7.8V / I_C≈1mA / V_BE≈0.66V (active region).
+  - **Empirical matrix** (probe 4 methods × 2 break candidates,
+    reproducible bit-for-bit ngspice 44): **canonical break = `(vout,
+    C_F)`** (collector → DC-block boundary, analog к tube `(sec_a,
+    C_fb)`). Middlebrook V → PM=126.28° ± 2° / fc=299 Hz ± 10% (strict
+    primary); Tian → PM=128.17° within 1.89° of V's PM (strict
+    cross-validation). Middlebrook I + Rosenstark + V/Tian @ (base, R_F)
+    documented degenerate с physical reasoning (low-Z output mismatch,
+    LF artefact, phase chain >360°, current-mode break incompatibility).
+  - **ADR-T153g matrix populated**: BJT CE shunt-shunt row → `V=✓, I=✗,
+    Tian=✓, Rosenstark=✗` @ `(vout, C_F)`. Pattern идентичен op-amp C.1
+    (V+Tian strict, I+Rosenstark degenerate) — 4-method universality
+    зависит от break point compatibility, не universally trustworthy.
+  - **SPICE model**: ON Semi (now onsemi) PSpice canonical Gummel-Poon
+    parameters (`data/models/bjt/onsemi/Q2N3904.lib`, new category
+    `bjt/` + vendor subdir `onsemi/`), source attribution в header.
+  - **Fixture shipped**: `data/templates/bjt-ce-nfb/` (kicad_sch + kicad_pro
+    + models/Q2N3904.lib + template.yaml + README) materializeable
+    через template manager в efactory:linux container; bake hook
+    `_bake_bjt_ce_nfb` в `scripts/regenerate-templates.py`.
+  - **KB sync Levels 1+2**: `spice.feedback-break-point.md` topic
+    extended с BJT CE shunt-shunt section (canonical break + per-method
+    matrix + workflow example) и updated matrix table; KB Level 2
+    regression case в `test_control_examples.py`.
+  - **+8 tests**: 3 fixture integration (writes_model_include + topology
+    + op_point_in_active_region) + 5 calibration (strict V + strict Tian
+    cross-validate + 3 documented degenerate). Spec —
+    `specs/T163-bjt-ce-nfb/spec.md`.
+
 - **T153 Phase A.1 — `GENERIC_OPAMP` macromodel + opamp component category.**
   Cross-validation reference для phase-margin injection methods (Phase B-C):
   single-pole macromodel (G + R + C + E + Rout) c A0=100 dB, fp=10 Hz,

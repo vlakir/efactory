@@ -1,7 +1,7 @@
 ---
 topic: spice.feedback-break-point
-description: Phase-margin break point convention — per-topology × per-method matrix (op-amp, tube NFB, BJT)
-tags: [spice, phase-margin, feedback, middlebrook, tian, rosenstark, op-amp, tube, calibration]
+description: Phase-margin break point convention — per-topology × per-method matrix (op-amp, tube NFB, BJT CE shunt-shunt)
+tags: [spice, phase-margin, feedback, middlebrook, tian, rosenstark, op-amp, tube, bjt, calibration]
 ---
 # Phase-margin break point convention (T153 Phase C.1 + C.3)
 
@@ -13,16 +13,22 @@ tags: [spice, phase-margin, feedback, middlebrook, tian, rosenstark, op-amp, tub
 
 ## Per-topology × per-method applicability matrix (empirical)
 
-| Topology              | V  | I  | Tian | Rosenstark | Canonical break point         |
-|-----------------------|----|----|------|------------|-------------------------------|
-| Op-amp inverting NFB  | ✓  | ✗  | ✓    | ✗          | `(vout, R_fb)` — low-Z output |
-| Tube SE NFB           | ✓  | ✗  | ✗    | ✗          | `(sec_a, C_fb)` — OPT sec     |
-| BJT CE NFB            | ?  | ?  | ?    | ?          | (future calibration fixture)  |
+| Topology              | V  | I  | Tian | Rosenstark | Canonical break point          |
+|-----------------------|----|----|------|------------|--------------------------------|
+| Op-amp inverting NFB  | ✓  | ✗  | ✓    | ✗          | `(vout, R_fb)` — low-Z output  |
+| Tube SE NFB           | ✓  | ✗  | ✗    | ✗          | `(sec_a, C_fb)` — OPT sec      |
+| BJT CE shunt-shunt NFB| ✓  | ✗  | ✓    | ✗          | `(vout, C_F)` — collector→fb   |
 
 - ✓ = strict validation (PM within ±5° expected); use confidently.
 - ✗ = empirically degenerate (NoUnityGainCrossover / always-above-unity /
   PM out-of-range); use Middlebrook V instead.
-- ? = not yet calibrated; use V as default, validate manually.
+
+**Pattern emerging**: V single универсально strict; Tian convergent
+кроме tube NFB (reactive OPT нарушает Tian assumption); I + Rosenstark
+зависят от break point type (current-mode для I, OC/SC-compatible для
+Rosenstark — нет таких на эти 3 topology). На любой будущей NFB
+fixture default — `Middlebrook V single + canonical break point из
+matrix или collector/output → DC-block boundary`.
 
 ## Per-method physics
 
@@ -96,6 +102,47 @@ User не должен manually выставлять `AC 0` на input source п
 phase-margin measurement. Без этого fix Middlebrook V/I давали
 contaminated PM (e.g., op-amp inverting → 4.4° вместо 45°).
 
+## BJT CE shunt-shunt NFB amplifier (T163)
+
+Single-stage common-emitter с voltage-divider bias + AC-only shunt-shunt
+feedback `R_F + C_F` (collector→base, C_F = DC-block). Fixture —
+`data/templates/bjt-ce-nfb/` (Q2N3904, V_CC=12V, Q-point V_CE≈7.8V /
+I_C≈1mA in active region).
+
+**Canonical break = `(vout, C_F)`** — collector → DC-block boundary,
+точно analog к tube NFB `(sec_a, C_fb)` convention. Driver = collector
+r_o ‖ R_C (low-ish Z ≈ 4.4 kΩ), load = feedback chain + base input
+(high Z ≈ 50 kΩ) → Middlebrook V approximation корректна.
+
+Empirical (2026-06-01, ADR-T163):
+* Middlebrook V @ canonical: **PM=126.28° ± 2°, fc=299 Hz ± 10%**
+  (strict ground truth).
+* Tian @ canonical: PM=128.17° — within 1.89° of V → strict
+  cross-validation.
+* Middlebrook I: degenerate на обоих break candidates (low-Z output
+  / LF artefact).
+* Rosenstark: degenerate (phase chain >360° на high-PM single-stage CE).
+* V/Tian @ `(base, R_F)`: degenerate (current-mode break не подходит
+  для voltage methods, analog к op-amp input break).
+
+```
+# BJT CE shunt-shunt NFB — Middlebrook V @ canonical break
+bridge measure phase-margin bjt-ce-nfb/<sch> \
+    --loop-break-node vout --loop-break-element C_F
+# → PM ≈ 126°, crossover ≈ 299 Hz
+```
+
+PM≈126° на BJT CE single-stage — sign overdamped стабильности из
+high R_F/R_C ratio (low feedback factor β_fb ≈ 1/47k, |T_loop| modest)
++ Miller-pole HF rolloff. Typical pattern для conservative single-stage
+NFB designs. На multi-stage BJT NFB (CE-CE series-shunt, не покрыто
+T163) ожидается PM ниже из-за дополнительной phase shift второго каскада.
+
+**Auto-detect на BJT CE** — out of scope T163; для BJT CE рекомендуется
+**canonical break explicit** (`vout`, `C_F`). Auto-detect может выбрать
+local loop через R_E (если C_E bypass не shorts полностью на LF) или
+load chord через R_L — не validated на T163.
+
 ## Op-amp inverting amplifier — auto-detect работает invariantly
 
 Auto-detect выбирает `(vout, R_fb)` automatically через
@@ -133,10 +180,12 @@ bridge measure phase-margin op-amp-inverting/<sch> \
   integration/application/test_measure_phase_margin_calibration_nfb_se.py.
 * T164 auto-detect refinement (2026-06-01) — tests/integration/
   application/test_auto_detect_refinement.py.
+* T163 BJT CE shunt-shunt NFB empirical probe (2026-06-01) — ADR-T163 +
+  tests/integration/application/test_measure_phase_margin_calibration_bjt_ce.py.
 
 ## See also
 
 ADR-T153a (4 method strategy pattern), ADR-T153b (NetlistGraphAnalyzer),
 ADR-T153f (op-amp break convention), ADR-T153g (per-topology matrix +
-tube NFB calibration), T164 (multi-active boost + chord-compound
-penalty + stimulus-distance ranking).
+tube NFB calibration), ADR-T163 (BJT CE shunt-shunt closure), T164
+(multi-active boost + chord-compound penalty + stimulus-distance ranking).

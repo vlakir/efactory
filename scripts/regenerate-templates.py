@@ -84,6 +84,14 @@ _OP_AMP_INVERTING_BUILDER_PATH = (
     / 'schematic_kicad'
     / 'test_op_amp_inverting_facade.py'
 )
+_BJT_CE_NFB_BUILDER_PATH = (
+    _REPO_ROOT
+    / 'tests'
+    / 'integration'
+    / 'adapters'
+    / 'schematic_kicad'
+    / 'test_bjt_ce_nfb_facade.py'
+)
 
 
 def _import_builder(builder_path: Path, attr: str) -> object:
@@ -109,6 +117,13 @@ def _import_op_amp_inverting_builder() -> object:
     return _import_builder(
         _OP_AMP_INVERTING_BUILDER_PATH,
         '_build_op_amp_inverting',
+    )
+
+
+def _import_bjt_ce_nfb_builder() -> object:
+    return _import_builder(
+        _BJT_CE_NFB_BUILDER_PATH,
+        '_build_bjt_ce_nfb',
     )
 
 
@@ -368,10 +383,104 @@ def _bake_op_amp_inverting(target_dir: Path) -> None:
     )
 
 
+def _bake_bjt_ce_nfb(target_dir: Path) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    sch_path = target_dir / f'{PROJECT_NAME_PLACEHOLDER}.kicad_sch'
+    build = _import_bjt_ce_nfb_builder()
+    build(sch_path)  # type: ignore[operator]
+
+    # Builder embeds absolute path в `.include` SPICE directive
+    # (`<repo>/data/models/bjt/onsemi/Q2N3904.lib`). Заменяем на relative
+    # `models/Q2N3904.lib` для shipping template (тот же pattern что
+    # `_bake_se_amp` / `_bake_op_amp_inverting`).
+    sch_text = sch_path.read_text(encoding='utf-8')
+    sch_text = sch_text.replace(
+        str(_MODELS_DIR / 'bjt' / 'onsemi' / 'Q2N3904.lib'),
+        'models/Q2N3904.lib',
+    )
+    sch_path.write_text(sch_text, encoding='utf-8')
+
+    pro_name = f'{PROJECT_NAME_PLACEHOLDER}.kicad_pro'
+    pro_path = target_dir / pro_name
+    pro_path.write_text(
+        json.dumps(
+            {
+                'board': {'design_settings': {}},
+                'meta': {'filename': pro_name, 'version': 3},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+
+    models_target = target_dir / 'models'
+    models_target.mkdir(exist_ok=True)
+    shutil.copy(
+        _MODELS_DIR / 'bjt' / 'onsemi' / 'Q2N3904.lib',
+        models_target / 'Q2N3904.lib',
+    )
+
+    (target_dir / 'template.yaml').write_text(
+        'name: bjt-ce-nfb\n'
+        'description: |\n'
+        '  Single-stage common-emitter NPN (2N3904) amp с voltage-divider\n'
+        '  bias + shunt-shunt AC feedback (R_F=47k + C_F=1µ DC-block,\n'
+        '  collector→base). Q-point V_CE≈7.8V / I_C≈1mA. Reference fixture\n'
+        '  для T153 phase-margin 4-method matrix (ADR-T153g BJT CE row).\n'
+        'summary: BJT CE shunt-shunt NFB (2N3904) — фикстура для phase-margin '
+        '4-method calibration.\n',
+        encoding='utf-8',
+    )
+
+    (target_dir / 'README.md').write_text(
+        f'# bjt-ce-nfb template\n\n'
+        f'Single-stage common-emitter NPN amp (2N3904) с voltage-divider\n'
+        f'bias (R_B1=100k / R_B2=10k), emitter degeneration (R_E=470Ω +\n'
+        f'C_E=47µF bypass), и shunt-shunt AC-only feedback (R_F=47kΩ +\n'
+        f'C_F=1µF DC-block, collector→base). Reference fixture для **T153\n'
+        f'phase-margin 4-method calibration matrix** (ADR-T153g BJT CE row).\n\n'
+        f'## Топология\n\n'
+        f'```\n'
+        f'Vin ──[R_S 50]── C_in ──┬── base\n'
+        f'                        │           Q1 (2N3904)\n'
+        f'         V_CC ──[R_B1 100k]┤    B          C ── vout\n'
+        f'                       R_B2 10k        E\n'
+        f'                          │            │\n'
+        f'                        GND        [R_E 470] ‖ [C_E 47µ] → GND\n'
+        f'         V_CC ──[R_C 4.7k]── vout ──[C_out 10µ]── vload\n'
+        f'                                        │              │\n'
+        f'              base ──[R_F 47k]──[C_F 1µ]┘          [R_L 10k] → GND\n'
+        f'```\n\n'
+        f'## Q-point (analytical / op-point validated)\n\n'
+        f'* V_B ≈ 1.03 V, V_E ≈ 0.38 V, V_BE ≈ 0.66 V\n'
+        f'* I_C ≈ 0.8-1.0 mA (active region)\n'
+        f'* V_C ≈ 8.2 V, V_CE ≈ 7.8 V\n\n'
+        f'## Файлы\n\n'
+        f'- `{PROJECT_NAME_PLACEHOLDER}.kicad_sch` — KiCad-схема\n'
+        f'  (после материализации: `<имя_проекта>.kicad_sch`).\n'
+        f'- `{PROJECT_NAME_PLACEHOLDER}.kicad_pro` — KiCad project (для GUI Simulator).\n'
+        f'- `models/Q2N3904.lib` — SPICE model card (ON Semi Gummel-Poon).\n\n'
+        f'## Запуск симуляции\n\n'
+        f'    /sim-run\n'
+        f'    # или напрямую:\n'
+        f'    efactory bridge sim-run --schematic <имя_проекта>.kicad_sch\n\n'
+        f'## Phase margin (T153 4-method matrix)\n\n'
+        f'    # Canonical break for V single — collector side (vout, C_F):\n'
+        f'    efactory bridge measure phase-margin <PROJECT> \\\n'
+        f'        --schematic <PROJECT>.kicad_sch \\\n'
+        f'        --loop-break-node vout --loop-break-element C_F\n',
+        encoding='utf-8',
+    )
+
+
 _BAKERS: dict[str, object] = {
     'se-amp': _bake_se_amp,
     'nfb-se-amp': _bake_nfb_se_amp,
     'op-amp-inverting': _bake_op_amp_inverting,
+    'bjt-ce-nfb': _bake_bjt_ce_nfb,
 }
 
 

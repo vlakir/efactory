@@ -136,6 +136,14 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'spice.feedback-break-point',
         'threshold 0.7',
     ),
+    # T163 Level 2 — KB sync regression для BJT CE shunt-shunt NFB
+    # canonical break (collector → DC-block, analog к tube) + per-method
+    # matrix row (V+Tian strict, I+Rosenstark degenerate).
+    (
+        'BJT common emitter shunt feedback phase margin break',
+        'spice.feedback-break-point',
+        'C_F',
+    ),
 ]
 
 
