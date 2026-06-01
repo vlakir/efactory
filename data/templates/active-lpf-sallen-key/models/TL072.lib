@@ -1,0 +1,39 @@
+* subcategory: tl072_macromodel
+* TL072 — Texas Instruments JFET-input low-noise dual op-amp.
+*
+* T027 Phase D bootstrap — minimal two-pole macromodel matching TL072
+* datasheet specs:
+*   A0 (DC open-loop gain) = 2e5 V/V (106 dB)
+*   GBW (gain-bandwidth product) = 3 MHz
+*   fp1 (dominant pole) ≈ 15 Hz (= GBW/A0)
+*   fp2 (second pole) ≈ 5 MHz (well above GBW для stability)
+*   Rout ≈ 200 Ω (JFET output stage)
+*   Slew rate ≈ 13 V/µs (not modeled — small-signal only)
+*   I_bias_in ≈ 50 pA (JFET input — modelled as zero, negligible
+*                       для most circuits).
+*
+* Pins: INP (V+), INN (V-), OUT. V+/V- supply pins не моделированы
+* (idealized — same convention as GENERIC_OPAMP_2POLE).
+*
+* Topology (same pattern as GENERIC_OPAMP_2POLE):
+*   G1:    VCCS, I = gm·(V(INP)-V(INN)), gm = 1 S.
+*   R1:    gain-stage load, A0 = gm·R1 = 1·200k = 2e5.
+*   C1:    dominant-pole cap, fp1 = 1/(2π·R1·C1) ≈ 15 Hz.
+*   E1:    unity-gain VCVS buffer (isolates stages).
+*   R2,C2: second pole stage, fp2 = 1/(2π·R2·C2) ≈ 5 MHz.
+*   E2:    unity-gain VCVS buffer (isolates Rout from C2).
+*   Rout:  output impedance (JFET).
+*
+* For Phase D Sallen-Key low-pass @ f_c=1 kHz: GBW (3 MHz) ≫ f_c
+* (3000×), op-amp behaves ideally enough — single-pole error
+* contribution < 0.03 dB на f_c.
+.SUBCKT TL072 INP INN OUT
+G1   0    nint INP INN 1
+R1   nint 0    200k
+C1   nint 0    53.05n
+E1   nbuf 0    nint 0   1
+R2   nbuf n2   1k
+C2   n2   0    31.83p
+E2   n3   0    n2   0   1
+Rout n3   OUT  200
+.ENDS TL072

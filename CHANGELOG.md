@@ -36,6 +36,29 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T027 Phase D — `active-lpf-sallen-key` template fixture (2nd-order
+  Butterworth low-pass filter + TL072 op-amp).** Classic Sallen-Key
+  voltage-controlled voltage-source (VCVS) unity-gain low-pass filter
+  с equal-R unequal-C topology (R1=R2=10kΩ, C1=22nF, C2=11nF — strict
+  C1/C2=2 для exact Butterworth Q=0.707) и TL072 op-amp follower.
+  f_c = 1024 Hz (= 1 kHz target ≈ 1024 ±10%). **Perfect Butterworth
+  response empirical** — passband 0 dB monotonic, -3 dB точно при
+  analytical f₀=1024 Hz, -40 dB/decade rolloff. Также bootstrap'нут
+  `data/models/opamps/generic/TL072.lib` — two-pole macromodel
+  matching TL072 datasheet specs (A0=2e5, GBW=3 MHz, fp1=15 Hz,
+  fp2≈5 MHz, Rout=200 Ω). Включает: builder `_build_active_lpf_
+  sallen_key` (2 acceptance tests: model includes, topology +
+  unity-gain VCVS), bake-hook + materialized template
+  `data/templates/active-lpf-sallen-key/`, snapshot test, 3
+  calibration tests (passband unity ±0.1 dB, -3 dB at f₀ ±10%,
+  monotonic Butterworth Q=0.707), KB topic `spice.active-filter-
+  sallen-key` с design pitfalls (Q formula sanity check, GBW
+  requirement, R_load loading effect, component tolerance impact,
+  higher-order cascaded notes), agent command-routing mapping для
+  «active filter / LPF / Butterworth», KB L2 regression case.
+  **ADR-T027d:** spec Q10 equal-R/equal-C gives Q=0.5 (overdamped,
+  not Butterworth); switched к equal-R unequal-C strict C1/C2=2.
+
 - **T166 — SPICE models для EH 6922 и 6Н30П-EB + sanity-check fixtures.**
   Two new tube models requested Vladimir post-Phase C: (1) `data/models/
   tubes/ayumi/6922.inc` — explicit brand alias для EH 6922 ≡ 6DJ8 ≡

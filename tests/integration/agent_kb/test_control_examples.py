@@ -191,6 +191,18 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'spice.ngspice-syntax-compat',
         'convert_pwrs_to_ngspice',
     ),
+    # T027 Phase D Level 2 — KB sync для Sallen-Key active filter
+    # template + agent routing mapping для «LPF / active filter».
+    (
+        'Sallen-Key Butterworth active filter LPF design',
+        'spice.active-filter-sallen-key',
+        'Butterworth',
+    ),
+    (
+        'создай active filter LPF проект',
+        'agent.command-routing',
+        'active-lpf-sallen-key',
+    ),
 ]
 
 

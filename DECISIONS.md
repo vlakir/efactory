@@ -25,6 +25,59 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-02 — T027 Phase D ADR-T027d: Sallen-Key equal-R unequal-C для exact Butterworth
+
+- **Контекст.** T027 Phase D — `active-lpf-sallen-key` template —
+  2nd-order Butterworth low-pass filter в classic Sallen-Key VCVS
+  topology. Spec Round 2 Q10 (одобрено Vladimir) suggested
+  **equal-R/equal-C** choice (R=10kΩ, C=15.9nF) для default
+  f_c=1 kHz. Однако Phase D Analyze 🟡 W1 (Гвидо self-review) noted
+  internal inconsistency: classic Sallen-Key unity-gain VCVS с
+  equal-R/equal-C gives **Q=0.5 (overdamped)**, не Butterworth Q=0.707.
+
+- **Empirical-доказательство несоответствия.**
+  Для Sallen-Key low-pass unity-gain VCVS:
+  ```
+  H(s) = 1/(1 + 2sRC2 + s²·R²·C1·C2)
+  ω₀ = 1/(R·√(C1·C2)),  Q = 0.5·√(C1/C2)
+  ```
+  При C1=C2: Q=0.5 (NOT 0.707). Spec Q10 → analytical Q=0.5 → -3 dB
+  ниже f₀ на 35% (для critically damped filter).
+
+- **Решение.** Использовать **equal-R, unequal-C** (C1=2·C2 strict):
+  - R1 = R2 = 10 kΩ.
+  - C1 = 22 nF, C2 = 11 nF.
+  - Result: f₀ = 1024 Hz ≈ 1 kHz ✓, Q = 0.707 (exact Butterworth) ✓.
+  - **BOM consideration:** C2=11nF не E12 standard. Production
+    realization: **10nF + 1nF film cap parallel** (E12 components
+    obtainable, ±2-5% tolerance).
+
+  **Alternative rejected:** equal-R/equal-C с **non-unity gain VCVS**
+  (K=1.586 для Butterworth, реализуется через op-amp с R_fb / R_in
+  divider). Cons: +2 precision resistors, op-amp gain pressure на GBW,
+  больше component count.
+
+- **Empirical validation (Phase D iteration 2):**
+  - Passband flat 0 dB (10 Hz - 100 Hz).
+  - **-3 dB точно at 1024 Hz** (matches analytical f₀ within < 1 Hz).
+  - Monotonic rolloff (no peaking) — confirms Q=0.707 strict.
+  - -39.6 dB @ 10 kHz (matches ideal -40 dB/decade Butterworth).
+
+- **Также bootstrap'нут TL072 macromodel** (`data/models/opamps/
+  generic/TL072.lib`) — Phase D первое место, где нужен realistic
+  op-amp (не GENERIC_OPAMP_2POLE). Two-pole macromodel: A0=2e5,
+  GBW=3 MHz, fp1=15 Hz, fp2≈5 MHz, Rout=200 Ω. Bug в Phase D
+  iteration 1: C1 macromodel был `53.05u` (μF, typo) вместо `53.05n`
+  → GBW=3 kHz (не 3 MHz) → filter degraded. Fix → exact Butterworth
+  restored.
+
+- **Связано:** `tests/integration/adapters/schematic_kicad/test_active_lpf_sallen_key_facade.py`
+  (builder + 2 acceptance tests), `tests/integration/application/test_measure_gain_calibration_active_lpf_sallen_key.py`
+  (3 calibration tests), `data/templates/active-lpf-sallen-key/`
+  (materialized template), `data/models/opamps/generic/TL072.lib`
+  (bootstrap macromodel), KB topic
+  `docker/runtime-agent-knowledge-base/spice.active-filter-sallen-key.md`.
+
 ### 2026-06-02 — T027 Phase C ADR-T027c: Koren tube models PWRS → ngspice syntax (все 15 моделей)
 
 - **Контекст.** T027 Phase C — `tube-phono-riaa` template — первое
