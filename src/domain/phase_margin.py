@@ -88,6 +88,30 @@ class LoopGainAlwaysAboveUnityError(ValueError):
     """
 
 
+class NoFeedbackLoopDetectedError(ValueError):
+    """
+    Auto-detect не нашёл feedback loop в netlist'е.
+
+    Spec Q3=b — actionable error: «no feedback loop detected; if loop
+    exists, please pass --loop-break-node + --loop-break-element
+    explicitly». Raised в `detect_feedback_break_node` use case'е
+    (Phase B.5).
+    """
+
+
+class AutoDetectConfidenceTooLowError(ValueError):
+    """
+    Auto-detect нашёл feedback loop, но confidence ниже threshold.
+
+    Spec §3 «Loop break», C4 convention — в non-TTY caller получает
+    actionable error «auto-detect confidence below threshold, please
+    pass --loop-break-node + --loop-break-element explicitly».
+
+    В TTY-mode use case вместо этой ошибки возвращает confirmation
+    prompt (Phase B.6).
+    """
+
+
 # Spec §5 (Clarify Q10=b) stability thresholds в градусах.
 _STABILITY_HIGH_MIN_DEG = 60.0
 _STABILITY_ADEQUATE_MIN_DEG = 45.0
