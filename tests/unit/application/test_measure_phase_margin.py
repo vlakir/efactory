@@ -27,7 +27,7 @@ from domain.phase_margin_injection import (
     RosenstarkReturnRatioStrategy,
     TianStrategy,
 )
-from ports.outbound.injection_netlist_patcher import (
+from domain.injection_patcher import (
     NetlistPatchResult,
     ProbePair,
 )

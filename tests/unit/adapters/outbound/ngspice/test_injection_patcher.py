@@ -11,7 +11,7 @@ from adapters.outbound.ngspice.injection_patcher import (
     open_break,
     short_break,
 )
-from ports.outbound.injection_netlist_patcher import (
+from domain.injection_patcher import (
     InjectionNetlistPatcher,
     NetlistPatchResult,
     ProbePair,

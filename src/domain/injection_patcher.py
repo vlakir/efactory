@@ -1,7 +1,15 @@
 """
-InjectionNetlistPatcher — outbound port для SPICE netlist topology
-surgery в контексте loop-gain measurement (T153, ADR-T153c +
-ADR-T153d edge-vs-node refinement 2026-06-01).
+InjectionNetlistPatcher — SPICE netlist topology surgery для loop-gain
+measurement (T153, ADR-T153c + ADR-T153d edge-vs-node refinement
+2026-06-01).
+
+Protocol живёт в `domain/`, а не в `ports/outbound/`, чтобы
+`domain.phase_margin_injection` мог импортировать его без нарушения
+hexagonal layers (domain не имеет права import port — T153 B.6 fix).
+Adapter (`adapters/outbound/ngspice/injection_patcher.py`) реализует
+Protocol structurally — оставлять port в `ports/` как тонкий
+re-export не нужно, contracts по-прежнему работают через structural
+typing.
 
 Семантически отделён от `NetlistEditor` (T131), который занимается
 sourcing / library inclusion. Здесь — четыре операции, нужные

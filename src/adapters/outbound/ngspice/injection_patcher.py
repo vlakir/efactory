@@ -63,7 +63,7 @@ from __future__ import annotations
 
 import re
 
-from ports.outbound.injection_netlist_patcher import (
+from domain.injection_patcher import (
     NetlistPatchResult,
     ProbePair,
 )
@@ -281,7 +281,7 @@ class NgspiceInjectionNetlistPatcher:
     `InjectionNetlistPatcher` adapter поверх ngspice text conventions.
 
     Тонкая обёртка над module-level functions для conformance с
-    `ports.outbound.injection_netlist_patcher.InjectionNetlistPatcher`
+    `domain.injection_patcher.InjectionNetlistPatcher`
     Protocol.
     """
 

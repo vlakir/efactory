@@ -150,6 +150,7 @@ if TYPE_CHECKING:
     from application.create_project import CreateProjectResult
     from application.reindex_projects import ReindexSummary
     from domain.decision import Decision
+    from domain.injection_patcher import InjectionNetlistPatcher
     from domain.measurement import (
         BandwidthMeasurement,
         GainMeasurement,
@@ -165,7 +166,6 @@ if TYPE_CHECKING:
     from ports.outbound.app_manager import AppManager, RunResult
     from ports.outbound.decision_repository import DecisionRepository
     from ports.outbound.git_repository import GitRepository
-    from ports.outbound.injection_netlist_patcher import InjectionNetlistPatcher
     from ports.outbound.knowledge_base import KbStore
     from ports.outbound.netlist_editor import NetlistEditor
     from ports.outbound.project_file_repository import ProjectFileRepository

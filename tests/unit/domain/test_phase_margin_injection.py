@@ -18,7 +18,7 @@ from domain.phase_margin_injection import (
     TianStrategy,
 )
 from domain.simulation import AcSweep
-from ports.outbound.injection_netlist_patcher import (
+from domain.injection_patcher import (
     NetlistPatchResult,
     ProbePair,
 )

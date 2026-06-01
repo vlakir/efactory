@@ -29,15 +29,15 @@ from typing import TYPE_CHECKING, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ports.outbound.injection_netlist_patcher import (
+from domain.injection_patcher import (
     NetlistPatchResult,
     ProbePair,
 )
 
 if TYPE_CHECKING:
+    from domain.injection_patcher import InjectionNetlistPatcher
     from domain.phase_margin import InjectionMethod
     from domain.simulation import AcSweep
-    from ports.outbound.injection_netlist_patcher import InjectionNetlistPatcher
 
 
 _FROZEN = ConfigDict(frozen=True, extra='forbid')
