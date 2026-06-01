@@ -61,21 +61,23 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T163** — [taken 2026-06-01, branch `T163-bjt-ce-nfb`]
-  **BJT CE NFB fixture для full 4-method cross-validation matrix.**
-  Single-stage CE shunt-shunt feedback (R_F collector→base) с
-  2N3904 — закрывает per-topology matrix в ADR-T153g (BJT CE row
-  `?` → empirical). Single PR (Phase A fixture + Phase B
-  4-method calibration). Spec — `specs/T163-bjt-ce-nfb/spec.md`
-  (Analyzed, 1 Critical: 2N3904 SPICE model licensing — fallback
-  на generic Gummel-Poon если ON Semi запрещает redistribute).
-  Acceptance: V strict @ canonical break (primary), ≥1
-  cross-validate strict ±3° (желательно), matrix documented с
-  reasoning для degenerate (обязательно). ADR-T153g + KB
-  spice.feedback-break-point.md updated. T164 Level 3 smoke (8
-  scenarios) — отдельный PR после, TODO 0ea5f0ef.
-
 ## Done
+
+- **T163** — [closed 2026-06-01, PR #100] **BJT CE shunt-shunt NFB
+  fixture для full 4-method cross-validation matrix.** Single-stage CE
+  с voltage-divider bias + AC-only shunt-shunt feedback (R_F=47k +
+  C_F=1µ DC-block, collector→base) на Q2N3904. Closes ADR-T153g BJT
+  CE row (`?` → empirical): V + Tian strict @ canonical break `(vout,
+  C_F)` (PM=126.28° ± 2°, fc=299 Hz; Tian within 1.89° of V), I +
+  Rosenstark documented degenerate с physical reasoning. Pattern
+  идентичен op-amp C.1 (V+Tian strict, I+Rosenstark degenerate).
+  +9 tests (3 fixture + 5 calibration + 1 KB regression); coverage
+  86.08% (+0.03% vs T164 baseline). Spec —
+  `specs/T163-bjt-ce-nfb/spec.md`. ADR — `DECISIONS.md` (ADR-T163 +
+  ADR-T153g matrix row population). KB — `docker/runtime-agent-
+  knowledge-base/spice.feedback-break-point.md` extended с BJT CE
+  shunt-shunt section. Bundle T164 Level 3 smoke (8 scenarios) —
+  отдельный PR после, TODO 0ea5f0ef.
 
 - **T164** — [closed 2026-06-01, PR #99] **Auto-detect heuristic
   refinement для multi-loop tube NFB + KiCad-export element ordering.**
