@@ -1,0 +1,30 @@
+* 6Н30П-EB — советский двойной триод, low-µ high-current.
+*
+* Sovtek/Electro-Harmonix production. Mu ≈ 15, gm ≈ 18 mA/V, ra ≈ 1.5 kΩ.
+* Typical operating point: V_a=180V, V_GK=-2V → I_a ≈ 30 mA per section.
+* Anode dissipation ≈ 4 W. Heater 6.3V/0.825A.
+*
+* Используется в audiophile preamp / driver applications (e.g., Audio
+* Note Kondo, BAT VK-30 — high-current low-impedance line stage).
+*
+* Koren parameters fitted from BartolaValves community dataset
+* (https://www.bartola.co.uk/valves/), simplified для typical-sample
+* curves. Для production-grade fitting под конкретные образцы — T031.
+*
+* ngspice-syntax (sgn·pwr·abs форма для PWRS equivalent) из коробки —
+* T166 2026-06-02 added per T027 Phase C convention.
+*
+* tube_type: triode
+* Pins: P (plate), G (grid), K (cathode) — single section.
+*       Dual operation — instantiate two copies (sharing heater externally).
+.SUBCKT 6N30P_EB P G K
+* Koren parameters: MU=15 EX=1.4 KG1=100 KP=110 KVB=14
+E1 7 0 VALUE={V(P,K)/110*LN(1+EXP(110*(1/15+V(G,K)/SQRT(14+V(P,K)*V(P,K)))))}
+G1 P K VALUE={(sgn(V(7))*pwr(abs(V(7)),1.4)+sgn(V(7))*pwr(abs(V(7)),1.4))/100}
+* Inter-electrode capacitances (typical for high-gm dual triode).
+C1 G K 6p
+C2 G P 3p
+C3 P K 1p
+* Grid leak — protects floating grid в model edge cases.
+RGI G K 1MEG
+.ENDS 6N30P_EB
