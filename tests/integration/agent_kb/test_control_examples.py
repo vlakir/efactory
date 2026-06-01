@@ -170,6 +170,27 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         'tube-line-preamp',
     ),
+    # T027 Phase C Level 2 — KB sync regression для tube-phono-riaa
+    # (12AX7 + passive RIAA inter-stage Lipshitz design) + agent routing
+    # mapping для phono / винил preamp / MM cartridge.
+    (
+        'phono preamp RIAA passive inter-stage Lipshitz',
+        'spice.tube-phono-riaa',
+        'Lipshitz',
+    ),
+    (
+        'создай винил phono RIAA проект',
+        'agent.command-routing',
+        'tube-phono-riaa',
+    ),
+    # T027 Phase C addendum (Vladimir request 2026-06-02) — KB sync
+    # для convert_pwrs_to_ngspice converter и Koren/Ayumi HSPICE-syntax
+    # compatibility issues.
+    (
+        'ngspice PWRS error tube model HSPICE syntax',
+        'spice.ngspice-syntax-compat',
+        'convert_pwrs_to_ngspice',
+    ),
 ]
 
 

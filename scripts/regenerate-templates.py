@@ -108,6 +108,14 @@ _TUBE_LINE_PREAMP_BUILDER_PATH = (
     / 'schematic_kicad'
     / 'test_tube_line_preamp_facade.py'
 )
+_TUBE_PHONO_RIAA_BUILDER_PATH = (
+    _REPO_ROOT
+    / 'tests'
+    / 'integration'
+    / 'adapters'
+    / 'schematic_kicad'
+    / 'test_tube_phono_riaa_facade.py'
+)
 
 
 def _import_builder(builder_path: Path, attr: str) -> object:
@@ -154,6 +162,13 @@ def _import_tube_line_preamp_builder() -> object:
     return _import_builder(
         _TUBE_LINE_PREAMP_BUILDER_PATH,
         '_build_tube_line_preamp',
+    )
+
+
+def _import_tube_phono_riaa_builder() -> object:
+    return _import_builder(
+        _TUBE_PHONO_RIAA_BUILDER_PATH,
+        '_build_tube_phono_riaa',
     )
 
 
@@ -780,6 +795,120 @@ def _bake_tube_line_preamp(target_dir: Path) -> None:
     )
 
 
+def _bake_tube_phono_riaa(target_dir: Path) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    sch_path = target_dir / f'{PROJECT_NAME_PLACEHOLDER}.kicad_sch'
+    build = _import_tube_phono_riaa_builder()
+    build(sch_path)  # type: ignore[operator]
+
+    # Replace absolute model path → relative `models/...`.
+    sch_text = sch_path.read_text(encoding='utf-8')
+    sch_text = sch_text.replace(
+        str(_MODELS_DIR / 'tubes' / 'koren' / '12AX7.lib'),
+        'models/12AX7.lib',
+    )
+    sch_path.write_text(sch_text, encoding='utf-8')
+
+    pro_name = f'{PROJECT_NAME_PLACEHOLDER}.kicad_pro'
+    pro_path = target_dir / pro_name
+    pro_path.write_text(
+        json.dumps(
+            {
+                'board': {'design_settings': {}},
+                'meta': {'filename': pro_name, 'version': 3},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+
+    models_target = target_dir / 'models'
+    models_target.mkdir(exist_ok=True)
+    shutil.copy(
+        _MODELS_DIR / 'tubes' / 'koren' / '12AX7.lib',
+        models_target / '12AX7.lib',
+    )
+
+    (target_dir / 'template.yaml').write_text(
+        'name: tube-phono-riaa\n'
+        'description: |\n'
+        '  Tube phono RIAA preamp на 12AX7 (Koren parametrization, обе\n'
+        '  половины ECC83). Двухкаскадный CC + passive RIAA inter-stage\n'
+        '  EQ network (Lipshitz-derived values для τ1=3180µs / τ2=318µs /\n'
+        '  τ3=75µs стандартных RIAA time constants). MM cartridge input\n'
+        '  ~5 mV @ 1 kHz → ~900 mV output (45 dB mid-band reference).\n'
+        '  RIAA compliance ±1 dB в 20 Hz – 20 kHz audio band.\n'
+        'summary: Phono preamp 12AX7 + passive RIAA — MM cartridge → line level.\n',
+        encoding='utf-8',
+    )
+
+    (target_dir / 'README.md').write_text(
+        f'# tube-phono-riaa template\n\n'
+        f'Двухкаскадный all-triode phono preamp на 12AX7 (Koren\n'
+        f'parametrization, `Valve:ECC83` unit 1 + unit 2 = ECC83B) с\n'
+        f'**passive RIAA inter-stage EQ network**:\n\n'
+        f'- **Stage 1 (CC):** R_p1=100 kΩ, R_k1=1.5 kΩ ‖ C_k1=100 µF.\n'
+        f'- **C_couple_1:** 470 nF Stage 1 plate → RIAA network input.\n'
+        f'- **Passive RIAA inter-stage** (Lipshitz-derived values):\n'
+        f'  - R_riaa_1 = 68 kΩ (series)\n'
+        f'  - C_riaa_1 = 11 nF (direct shunt to GND, τ3 contribution)\n'
+        f'  - R_riaa_2 = 9.1 kΩ (series with C_riaa_2)\n'
+        f'  - C_riaa_2 = 33 nF (LF/mid τ2 shunt)\n'
+        f'  - R_g2 = 1 MΩ (V1B grid leak — safety reference к GND)\n'
+        f'- **Stage 2 (CC):** R_p2=100 kΩ, R_k2=1.5 kΩ ‖ C_k2=100 µF.\n'
+        f'- **C_out:** 0.47 µF к assumed 47 kΩ line-amp Rin.\n\n'
+        f'**Mid-band reference gain @ 1 kHz: ≈ 180 V/V (≈ 45 dB)** — для\n'
+        f'MM cartridge 5 mV → 900 mV line level.\n\n'
+        f'## RIAA Compliance\n\n'
+        f'Empirical AC sweep (ngspice 44, Koren 12AX7 patched к ngspice\n'
+        f'syntax — T027 Phase C), worst error 0.65 dB @ 50 Hz:\n\n'
+        f'| Freq    | Inverse RIAA target | Empirical relative | Error  |\n'
+        f'|---------|---------------------|--------------------|--------|\n'
+        f'| 20 Hz   | +19.27 dB           | +19.82 dB          | +0.55  |\n'
+        f'| 50 Hz   | +16.95 dB           | +17.60 dB          | +0.65  |\n'
+        f'| 100 Hz  | +13.09 dB           | +13.52 dB          | +0.43  |\n'
+        f'| 200 Hz  | +8.22 dB            | +8.51 dB           | +0.29  |\n'
+        f'| 500 Hz  | +2.65 dB            | +2.74 dB           | +0.09  |\n'
+        f'| 1 kHz   | 0 dB (reference)    | 0 dB               | 0      |\n'
+        f'| 2 kHz   | -2.59 dB            | -2.53 dB           | +0.06  |\n'
+        f'| 5 kHz   | -8.22 dB            | -7.99 dB           | +0.23  |\n'
+        f'| 10 kHz  | -13.74 dB           | -13.46 dB          | +0.28  |\n'
+        f'| 20 kHz  | -19.62 dB           | -19.33 dB          | +0.29  |\n\n'
+        f'**Compliance ±1 dB в 20 Hz – 20 kHz audio band ✓** (per spec §4).\n\n'
+        f'## Lipshitz design math\n\n'
+        f'Для inverse RIAA transfer function `H(s) = (1+sτ2)/((1+sτ1)(1+sτ3))`\n'
+        f'на series-shunt topology (R1 series + (R2+C2)‖C1 shunt to GND):\n\n'
+        f'- τ2 = R2·C2 = 318 µs\n'
+        f'- τ_X = R1·(C1+C2) = τ1 + τ3 - τ2 = 2937 µs\n'
+        f'- τb = R2·C1·C2/(C1+C2) = τ1·τ3/τ_X = 81.2 µs\n'
+        f'- Solving: C1/C2 = 0.343, R1 = 66.3 kΩ\n\n'
+        f'E12 nearest values: R1=68k, R2=9.1k, C1=11n, C2=33n. Resulting\n'
+        f'effective τ1=3222 µs (target 3180, +1.3%), τ3=69.7 µs (target 75,\n'
+        f'-7%). Within ±1 dB compliance budget.\n\n'
+        f'## Файлы\n\n'
+        f'- `{PROJECT_NAME_PLACEHOLDER}.kicad_sch` — KiCad-схема.\n'
+        f'- `{PROJECT_NAME_PLACEHOLDER}.kicad_pro` — KiCad project (для GUI Simulator).\n'
+        f'- `models/12AX7.lib` — Koren parametrization (ngspice-syntax\n'
+        f'  patched T027 Phase C 2026-06-02, original HSPICE `PWRS()` →\n'
+        f'  `sgn·pwr·abs` equivalent).\n\n'
+        f'## Запуск симуляции\n\n'
+        f'    /sim-run\n'
+        f'    # или напрямую:\n'
+        f'    efactory bridge sim-run --schematic <имя_проекта>.kicad_sch\n\n'
+        f'## Рекомендованные measurements\n\n'
+        f'    # Mid-band reference gain (target ≈ 180 V/V = 45 dB):\n'
+        f'    efactory bridge measure gain <PROJECT> \\\n'
+        f'        --schematic <PROJECT>.kicad_sch --frequency 1000 --mode small\n\n'
+        f'    # Bandwidth + RIAA compliance check (AC sweep 20Hz-20kHz):\n'
+        f'    efactory bridge measure bandwidth <PROJECT> \\\n'
+        f'        --schematic <PROJECT>.kicad_sch --f-low 20 --f-high 20000\n',
+        encoding='utf-8',
+    )
+
+
 _BAKERS: dict[str, object] = {
     'se-amp': _bake_se_amp,
     'nfb-se-amp': _bake_nfb_se_amp,
@@ -787,6 +916,7 @@ _BAKERS: dict[str, object] = {
     'bjt-ce-nfb': _bake_bjt_ce_nfb,
     'tube-pp-amp': _bake_tube_pp_amp,
     'tube-line-preamp': _bake_tube_line_preamp,
+    'tube-phono-riaa': _bake_tube_phono_riaa,
 }
 
 
