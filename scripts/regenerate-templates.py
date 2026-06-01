@@ -17,11 +17,42 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
+import random
 import shutil
 import sys
+import uuid
 from pathlib import Path
+
+# Deterministic UUIDs: `Schematic` facade зовёт `uuid.uuid4()` для каждого
+# wire/pin/symbol через `_new_uuid()` в writer'е (16 вызовов на симбол).
+# Стандартный `uuid.uuid4()` использует `os.urandom` (через secrets) — не
+# поддаётся seeding'у. Чтобы baked templates были bit-stable между
+# `regenerate-templates.py` runs (иначе CI snapshot-check вечно ругается на
+# UUID drift), monkey-patch'аем `uuid.uuid4` на функцию, использующую
+# seeded `random.Random`. Re-seed выполняется перед каждым baker (см.
+# `_reseed_uuid_rng_for_template`) — гарантирует, что partial run
+# `--template <name>` даёт тот же output, что и full run, и что между
+# templates UUIDs не collid'ят (seed = sha256(template_name)).
+#
+# Production code (`uuid.uuid4()` в runtime efactory) не затронут — patch
+# действует только пока работает этот script.
+_SEEDED_UUID_RNG = random.Random()
+
+
+def _seeded_uuid4() -> uuid.UUID:
+    return uuid.UUID(int=_SEEDED_UUID_RNG.getrandbits(128), version=4)
+
+
+def _reseed_uuid_rng_for_template(template_name: str) -> None:
+    digest = hashlib.sha256(template_name.encode('utf-8')).digest()
+    seed = int.from_bytes(digest[:8], 'big')
+    _SEEDED_UUID_RNG.seed(seed)
+
+
+uuid.uuid4 = _seeded_uuid4  # type: ignore[assignment]
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _TEMPLATES_DIR = _REPO_ROOT / 'data' / 'templates'
@@ -256,6 +287,7 @@ def main() -> int:
         target = _TEMPLATES_DIR / name
         if target.exists():
             shutil.rmtree(target)
+        _reseed_uuid_rng_for_template(name)
         baker = _BAKERS[name]
         baker(target)  # type: ignore[operator]
         print(f'Baked {name}: {target}')
