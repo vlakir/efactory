@@ -25,6 +25,50 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-01 — T153 ADR-T153e: confirmation callback вместо port + threshold policy у callback
+
+- **Контекст.** T153 Phase B.5.x — интеграция auto-detect в use case
+  `measure_phase_margin`: `break_node` / `break_element_ref` стали
+  optional, при их отсутствии use case вызывает
+  `detect_feedback_break_node` и должен решить, принять ли
+  предложенный edge. Spec §3 описывает три режима policy:
+  TTY-confirmation (`typer.confirm`), non-TTY auto-accept выше
+  threshold (exit 2 ниже), `--no-confirm` skip в TTY. Spec analyze
+  W7 рекомендует callable type alias вместо ABC port.
+- **Решение.** Два связанных:
+  1. **Confirmation hook = `Callable[[AutoDetectInfo], bool]`**
+     (`ConfirmationCallback` type alias в `domain/phase_margin.py`).
+     Не Protocol, не ABC.
+  2. **Threshold policy живёт в callback'е, не в use case.** Use case
+     вызывает `detect_feedback_break_node(..., confidence_threshold=0.0)`
+     — всегда получает `AutoDetectInfo` — передаёт callback'у.
+     Callback (собирается composition root'ом CLI в B.6) сравнивает
+     `info.confidence` с threshold + учитывает TTY/--no-confirm.
+- **Альтернативы.**
+  - *Protocol/ABC `ConfirmationPort`*. Отвергнут per W7: «port
+    overkill для one-method interface», добавляет class hierarchy
+    без выгод над callable.
+  - *Threshold check внутри use case (через `detect_…(threshold=0.8)`
+    как сейчас).* Отвергнут: CLI вынужден ловить два error path —
+    `AutoDetectConfidenceTooLowError` от detect-функции и
+    `AutoDetectRejectedError` от callback — для одной семантики
+    «не подошло».
+  - *Default `auto_detect_confirmation=lambda _: True`.* Отвергнут:
+    silent auto-accept без явного решения caller'а опасно для
+    feedback-схем (можно молча применить wrong break edge).
+- **Последствия.**
+  - Use case остался async + pure orchestration; policy логика и
+    TTY-зависимость инкапсулированы в callback'е (composition root /
+    CLI в B.6).
+  - Новый domain error `AutoDetectRejectedError` (ValueError subclass)
+    несёт chosen_node + confidence в message — actionable CLI hint.
+  - Поведение существующего `detect_feedback_break_node` не
+    изменилось (threshold-аргумент опциональный, default 0.8); use
+    case передаёт 0.0 чтобы делегировать policy callback'у.
+  - В B.5.x явно требуется callback при auto-detect ветке —
+    ValueError если caller забыл. Это сильнее `default=lambda True`,
+    но безопаснее для feedback-математики.
+
 ### 2026-06-01 — T153 ADR-T153d: edge vs node — break контракт через пару (node, element_ref)
 
 - **Контекст.** При старте T153 Phase B.3 (NgspiceInjectionNetlistPatcher

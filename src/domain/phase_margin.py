@@ -23,6 +23,7 @@ Domain — без знания о JSON-сериализации; ответст�
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from typing import Annotated, Literal, Self
 
 from pydantic import (
@@ -112,6 +113,20 @@ class AutoDetectConfidenceTooLowError(ValueError):
     """
 
 
+class AutoDetectRejectedError(ValueError):
+    """
+    Auto-detect нашёл feedback loop, но caller-provided confirmation
+    callback вернул False.
+
+    Phase B.5.x — `measure_phase_margin` делегирует threshold policy
+    callback'у (W7 lean: `Callable[[AutoDetectInfo], bool]`). Если
+    callback решает отклонить кандидата (низкая confidence в non-TTY,
+    user отказался в interactive TTY и т.п.) — use case прерывается
+    этой ошибкой. Сообщение содержит chosen edge + confidence для
+    actionable CLI hint.
+    """
+
+
 # Spec §5 (Clarify Q10=b) stability thresholds в градусах.
 _STABILITY_HIGH_MIN_DEG = 60.0
 _STABILITY_ADEQUATE_MIN_DEG = 45.0
@@ -182,6 +197,13 @@ class AutoDetectInfo(BaseModel):
                 )
                 raise ValueError(msg)
         return self
+
+
+# `measure_phase_margin` auto-detect path передаёт `AutoDetectInfo`
+# в callback; True → accept, False → `AutoDetectRejectedError`.
+# W7 (T153 spec analyze): callable type alias, не Protocol/ABC —
+# one-method interface, port overkill.
+type ConfirmationCallback = Callable[[AutoDetectInfo], bool]
 
 
 # ------------------------------------------------------- FeedbackCycle ----

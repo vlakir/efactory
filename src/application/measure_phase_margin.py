@@ -1,36 +1,47 @@
 """
-measure_phase_margin — loop-gain → PhaseMarginMeasurement (T153 Phase B.4).
+measure_phase_margin — loop-gain → PhaseMarginMeasurement (T153 Phase B.4 + B.5.x).
 
-**Phase B.4 = option B**: explicit edge-pair `(break_node,
-break_element_ref)` обязателен; auto-detect через
-`NetlistGraphAnalyzer` (ADR-T153b) отложен на Phase B.5.
+Phase B.4 baseline: explicit edge-pair `(break_node, break_element_ref)`.
+Phase B.5.x: оба аргумента стали optional — при их отсутствии use case
+вызывает `detect_feedback_break_node` под капотом и делегирует решение
+callback'у `auto_detect_confirmation` (W7 lean: callable-type alias,
+не Protocol/ABC — threshold policy живёт в callback'е, который
+собирается composition root'ом CLI).
 
 Pipeline:
 
-1. Read netlist text.
-2. `setup = strategy.prepare(text, break_node, break_element_ref)` —
+1. Validate args: либо оба explicit, либо ни одного (+ callback при
+   auto-detect).
+2. Read netlist text.
+3. Auto-detect path (если break edge не задан): `detect_feedback_break_node`
+   (threshold=0.0 — callback владеет policy) → `AutoDetectInfo` →
+   callback(info) → True/False. False → `AutoDetectRejectedError`.
+   `NoFeedbackLoopDetectedError` пробрасывается caller'у.
+4. `setup = strategy.prepare(text, break_node, break_element_ref)` —
    1-2 patched netlist'а в `setup.patches`. `ValueError` от patcher'а
    (element_ref не найден / break_node не в pin'ах) → re-raise как
    `LoopBreakNodeNotFoundError`.
-3. Для каждого `patch`: write tmp `.cir` рядом с исходным netlist'ом
+5. Для каждого `patch`: write tmp `.cir` рядом с исходным netlist'ом
    (суффикс `.tmp_pm_<idx>.cir`), run `Simulator.run(path,
    AcAnalysis(sweep='dec', n_points=…))`. Собрать `AcSweep`-объекты.
-4. `loop_gain = strategy.combine(sweeps_tuple, setup)` — комплексная
+6. `loop_gain = strategy.combine(sweeps_tuple, setup)` — комплексная
    контурная передача `T(jω)`.
-5. `crossover = find_unity_crossover(loop_gain)` — primary downward
+7. `crossover = find_unity_crossover(loop_gain)` — primary downward
    crossing + interpolated phase + extras. Raise'ит `NoUnityGainCrossoverError`
    / `LoopGainAlwaysAboveUnityError` напрямую — не оборачиваем.
-6. `margin_deg = 180 + crossover.phase_at_crossover_deg`. Guard на
+8. `margin_deg = 180 + crossover.phase_at_crossover_deg`. Guard на
    `[-180, 360]` (см. validator `PhaseMarginMeasurement.margin_deg`).
-7. `stability_class` derived через domain-helper consistent с margin.
-8. Build `PhaseMarginMeasurement` (`measured_at_node = break_node`,
-   `injection_method = strategy.method_name`).
-9. Optional persistence через `SimResultsRepository.write` —
-   `analysis_type = AnalysisType.PHASE_MARGIN`.
+9. `stability_class` derived через domain-helper consistent с margin.
+10. Build `PhaseMarginMeasurement` (`measured_at_node = break_node`,
+    `injection_method = strategy.method_name`, `auto_detect_info`
+    из шага 3 если был auto-detect).
+11. Optional persistence через `SimResultsRepository.write` —
+    `analysis_type = AnalysisType.PHASE_MARGIN`.
 
-Не делает: auto-detect (Phase B.5), gain margin computation (флаг
-`with_gain_margin` reserved, но импла отложена на Phase B.4 follow-up
-или B.6), confirmation prompts (нет смысла без auto-detect).
+Не делает: gain margin computation (флаг `with_gain_margin` reserved,
+импла отложена на B.6), TTY confirmation prompt construction (это
+ответственность CLI в B.6 — собирает callback из `typer.confirm` /
+non-TTY policy и инжектит сюда).
 """
 
 from __future__ import annotations
@@ -39,7 +50,9 @@ import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from application.detect_feedback_break_node import detect_feedback_break_node
 from domain.phase_margin import (
+    AutoDetectRejectedError,
     LoopBreakNodeNotFoundError,
     PhaseMarginMeasurement,
     _expected_stability_class,
@@ -51,6 +64,7 @@ from domain.simulation import AcAnalysis
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from domain.phase_margin import AutoDetectInfo, ConfirmationCallback
     from domain.phase_margin_injection import InjectionStrategy
     from domain.simulation import AcSweep
     from ports.outbound.sim_results import SimResultsRepository
@@ -69,8 +83,9 @@ async def measure_phase_margin(
     *,
     netlist: Path,
     injection_strategy: InjectionStrategy,
-    break_node: str,
-    break_element_ref: str,
+    break_node: str | None = None,
+    break_element_ref: str | None = None,
+    auto_detect_confirmation: ConfirmationCallback | None = None,
     simulator: Simulator,
     f_low: float = _DEFAULT_F_LOW,
     f_high: float = _DEFAULT_F_HIGH,
@@ -81,16 +96,22 @@ async def measure_phase_margin(
     tool: str = 'ngspice',
 ) -> PhaseMarginMeasurement:
     """
-    Измерить phase margin для замкнутой петли (explicit edge-pair).
+    Измерить phase margin для замкнутой петли (explicit edge-pair или auto-detect).
 
     Args:
         netlist: путь к SPICE-netlist'у замкнутой системы.
         injection_strategy: domain-strategy с инжектированным
             `InjectionNetlistPatcher` (composition root собирает).
-        break_node: имя нета, в котором режется петля.
+        break_node: имя нета, в котором режется петля. Optional: если
+            не задан, активируется auto-detect ветка. Должен идти в
+            паре с `break_element_ref` (оба или ни одного).
         break_element_ref: ref элемента, чья ссылка на `break_node`
             будет переименована в `<break_node>__fwd`. Edge-pair
             (ADR-T153d).
+        auto_detect_confirmation: callback `(AutoDetectInfo) -> bool`,
+            обязателен в auto-detect ветке. Решает, принять ли
+            предложенный analyzer'ом edge. CLI (B.6) собирает callback
+            из `typer.confirm` / non-TTY threshold-policy.
         simulator: outbound port (ngspice).
         f_low: нижняя граница AC sweep'а (Hz, default 1).
         f_high: верхняя граница AC sweep'а (Hz, default 1e6).
@@ -103,13 +124,18 @@ async def measure_phase_margin(
 
     Returns:
         `PhaseMarginMeasurement` с margin_deg, crossover_hz,
-        stability_class и метаданными.
+        stability_class и метаданными. `auto_detect_info` set если
+        была auto-detect ветка, иначе None.
 
     Raises:
-        ValueError: partial persistence DI (writer без root или
+        ValueError: half-explicit edge-pair (один из break_node /
+            break_element_ref задан, другой None); auto-detect без
+            callback; partial persistence DI (writer без root или
             наоборот); simulator вернул нет ac_sweep; computed margin
             outside [-180, 360].
         LoopBreakNodeNotFoundError: explicit edge не найден.
+        NoFeedbackLoopDetectedError: auto-detect не нашёл feedback loop.
+        AutoDetectRejectedError: callback отклонил предложенный edge.
         NoUnityGainCrossoverError: нет downward 0 dB crossing'а.
         LoopGainAlwaysAboveUnityError: |T| > 1 во всём свеппе.
         SimulatorUnavailableError / SimulationFailedError: forward'аются.
@@ -124,11 +150,18 @@ async def measure_phase_margin(
 
     base_text = await asyncio.to_thread(netlist.read_text)
 
+    resolved_node, resolved_element_ref, auto_detect_info = _resolve_break_edge(
+        netlist_text=base_text,
+        break_node=break_node,
+        break_element_ref=break_element_ref,
+        auto_detect_confirmation=auto_detect_confirmation,
+    )
+
     try:
         setup = injection_strategy.prepare(
             base_text,
-            break_node=break_node,
-            break_element_ref=break_element_ref,
+            break_node=resolved_node,
+            break_element_ref=resolved_element_ref,
         )
     except ValueError as exc:
         raise LoopBreakNodeNotFoundError(str(exc)) from exc
@@ -171,10 +204,11 @@ async def measure_phase_margin(
     measurement = PhaseMarginMeasurement(
         margin_deg=margin_deg,
         crossover_hz=crossover.crossover_hz,
-        measured_at_node=break_node,
+        measured_at_node=resolved_node,
         injection_method=injection_strategy.method_name,
         stability_class=stability_class,
         extra_crossovers_hz=crossover.extra_crossovers_hz,
+        auto_detect_info=auto_detect_info,
     )
 
     if sim_results_writer is not None and project_root is not None:
@@ -190,6 +224,51 @@ async def measure_phase_margin(
         )
 
     return measurement
+
+
+def _resolve_break_edge(
+    *,
+    netlist_text: str,
+    break_node: str | None,
+    break_element_ref: str | None,
+    auto_detect_confirmation: ConfirmationCallback | None,
+) -> tuple[str, str, AutoDetectInfo | None]:
+    """
+    Validate edge-pair args + (если auto-detect) запустить detect + callback.
+
+    Возвращает `(node, element_ref, auto_detect_info)`. Explicit path:
+    `auto_detect_info=None`. Half-explicit и auto-detect-без-callback —
+    `ValueError`. Callback вернул False — `AutoDetectRejectedError`.
+    """
+    if break_node is not None and break_element_ref is not None:
+        return break_node, break_element_ref, None
+    if break_node is None and break_element_ref is None:
+        if auto_detect_confirmation is None:
+            msg = (
+                'measure_phase_margin: auto_detect_confirmation callback '
+                'обязателен когда break_node / break_element_ref не заданы '
+                '(auto-detect ветка не имеет дефолтной policy).'
+            )
+            raise ValueError(msg)
+        # callback владеет threshold policy (W7, ADR-T153e) — передаём 0.0.
+        info = detect_feedback_break_node(
+            netlist_text=netlist_text,
+            confidence_threshold=0.0,
+        )
+        if not auto_detect_confirmation(info):
+            msg = (
+                f'auto-detect rejected: chosen edge '
+                f'(node={info.chosen_node!r}, '
+                f'element={info.chosen_element_ref!r}) '
+                f'confidence {info.confidence:.3f} not accepted by caller'
+            )
+            raise AutoDetectRejectedError(msg)
+        return info.chosen_node, info.chosen_element_ref, info
+    msg = (
+        'measure_phase_margin: break_node и break_element_ref должны быть '
+        'переданы пара (оба или ни одного — последнее активирует auto-detect).'
+    )
+    raise ValueError(msg)
 
 
 def _build_snapshot(

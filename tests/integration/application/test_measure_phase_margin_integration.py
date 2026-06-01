@@ -37,6 +37,7 @@ from adapters.outbound.platform_native.platform_layer import (
 from adapters.outbound.subprocess_apps.app_manager import SubprocessAppManager
 from application.measure_phase_margin import measure_phase_margin
 from domain.phase_margin import (
+    AutoDetectInfo,
     LoopGainAlwaysAboveUnityError,
     NoUnityGainCrossoverError,
     PhaseMarginMeasurement,
@@ -134,3 +135,49 @@ async def test_middlebrook_current_orchestration_completes(
         assert result.injection_method == 'middlebrook_current'
     except (NoUnityGainCrossoverError, LoopGainAlwaysAboveUnityError):
         pass
+
+
+@needs_ngspice
+async def test_auto_detect_orchestration_completes(
+    tmp_path: Path,
+) -> None:
+    """Smoke (Phase B.5.x): auto-detect ветка end-to-end через real ngspice.
+
+    Acceptance — callback вызван с реальным `AutoDetectInfo`, pipeline
+    выполнился до crossover detection (success ИЛИ domain error). Не
+    проверяем точное содержимое measurement.auto_detect_info — это
+    регрессирующая часть, юнит-тесты её покрывают.
+    """
+    netlist = tmp_path / 'opamp_pole.cir'
+    netlist.write_text(_OPAMP_INV_WITH_POLE)
+    strategy = MiddlebrookVoltageStrategy(NgspiceInjectionNetlistPatcher())
+    captured: list[AutoDetectInfo] = []
+
+    def accept_any(info: AutoDetectInfo) -> bool:
+        captured.append(info)
+        return True
+
+    try:
+        result = await measure_phase_margin(
+            netlist=netlist,
+            injection_strategy=strategy,
+            auto_detect_confirmation=accept_any,
+            simulator=_make_simulator(),
+            f_low=1.0,
+            f_high=1e7,
+            n_points_per_decade=50,
+        )
+        assert isinstance(result, PhaseMarginMeasurement)
+        assert result.auto_detect_info is not None
+        assert result.measured_at_node == result.auto_detect_info.chosen_node
+    except (NoUnityGainCrossoverError, LoopGainAlwaysAboveUnityError):
+        pass
+
+    # Callback должен был быть вызван даже если pipeline упал на crossover.
+    assert len(captured) == 1
+    assert captured[0].chosen_element_ref in {
+        'R_fb',
+        'R_amp',
+        'C_amp',
+        'R_load',
+    }

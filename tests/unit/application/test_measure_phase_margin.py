@@ -13,8 +13,11 @@ from adapters.outbound.ngspice.injection_patcher import (
 )
 from application.measure_phase_margin import measure_phase_margin
 from domain.phase_margin import (
+    AutoDetectInfo,
+    AutoDetectRejectedError,
     LoopBreakNodeNotFoundError,
     LoopGainAlwaysAboveUnityError,
+    NoFeedbackLoopDetectedError,
     NoUnityGainCrossoverError,
     PhaseMarginMeasurement,
 )
@@ -23,6 +26,10 @@ from domain.phase_margin_injection import (
     MiddlebrookVoltageStrategy,
     RosenstarkReturnRatioStrategy,
     TianStrategy,
+)
+from ports.outbound.injection_netlist_patcher import (
+    NetlistPatchResult,
+    ProbePair,
 )
 from domain.sim_results import AnalysisType, SimResult
 from domain.simulation import (
@@ -708,3 +715,291 @@ def test_phase_margin_measurement_stability_class_sanity() -> None:
     """
     # arbitrary check, not real assertion of math
     assert math.isclose(180.0 - 89.4, 90.6, abs_tol=0.01)
+
+
+# ============================== auto-detect (Phase B.5.x) ===================
+
+# Фикстура с детектируемым feedback loop (E_amp = active forward,
+# R_fb = passive feedback). Совпадает с тестами `detect_feedback_break_node`.
+_OPAMP_INV_FEEDBACK_NETLIST = (
+    '* op-amp inverting amp с output RC pole (B.5.x auto-detect)\n'
+    'V_in vin 0 AC 1 0\n'
+    'R_in vin in_neg 1k\n'
+    'R_fb vout in_neg 10k\n'
+    'E_amp v_open 0 0 in_neg 1e5\n'
+    'R_amp v_open vout 1k\n'
+    'C_amp vout 0 10u\n'
+    'R_load vout 0 1Meg\n'
+    '.end\n'
+)
+
+
+class _RecordingCallback:
+    """Confirmation callback фикстура: записывает AutoDetectInfo и возвращает скриптовый ответ."""
+
+    def __init__(self, *, accept: bool) -> None:
+        self._accept = accept
+        self.calls: list[AutoDetectInfo] = []
+
+    def __call__(self, info: AutoDetectInfo) -> bool:
+        self.calls.append(info)
+        return self._accept
+
+
+class _FakePatcher:
+    """In-test InjectionNetlistPatcher: возвращает constant ProbePair.
+
+    Use case делегирует netlist text patching strategy.prepare(); для
+    auto-detect unit-тестов нам безразличен фактический patched netlist —
+    важна только pair probe-имён, по которым AcSweep подбирается.
+    Реальный `NgspiceInjectionNetlistPatcher` тестируется в B.3.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, str]] = []  # (op, node, element_ref)
+
+    def insert_voltage_source(
+        self,
+        netlist: str,
+        *,
+        break_node: str,
+        break_element_ref: str,
+        source_ref: str,
+        ac_magnitude: float = 1.0,
+    ) -> NetlistPatchResult:
+        del source_ref, ac_magnitude  # тестируем только трассировку edge
+        self.calls.append(('voltage', break_node, break_element_ref))
+        return NetlistPatchResult(
+            patched_netlist=netlist + '\n* fake voltage injection\n',
+            probe_pair=ProbePair(
+                fwd='v(probe_fwd)',
+                rev='v(probe_rev)',
+            ),
+        )
+
+    def insert_current_source(
+        self,
+        netlist: str,
+        *,
+        break_node: str,
+        break_element_ref: str,
+        source_ref: str,
+        ac_magnitude: float = 1.0,
+    ) -> NetlistPatchResult:
+        del source_ref, ac_magnitude
+        self.calls.append(('current', break_node, break_element_ref))
+        return NetlistPatchResult(
+            patched_netlist=netlist + '\n* fake current injection\n',
+            probe_pair=ProbePair(
+                fwd='i(probe_fwd)',
+                rev='i(probe_rev)',
+            ),
+        )
+
+    def open_break(
+        self,
+        netlist: str,
+        *,
+        break_node: str,
+        break_element_ref: str,
+    ) -> NetlistPatchResult:
+        self.calls.append(('open', break_node, break_element_ref))
+        return NetlistPatchResult(
+            patched_netlist=netlist + '\n* fake open break\n',
+            probe_pair=ProbePair(
+                fwd='v(probe_fwd)',
+                rev='v(probe_rev)',
+            ),
+        )
+
+    def short_break(
+        self,
+        netlist: str,
+        *,
+        break_node: str,
+        break_element_ref: str,
+        gnd_node: str = '0',
+    ) -> NetlistPatchResult:
+        del gnd_node
+        self.calls.append(('short', break_node, break_element_ref))
+        return NetlistPatchResult(
+            patched_netlist=netlist + '\n* fake short break\n',
+            probe_pair=ProbePair(
+                fwd='v(probe_fwd)',
+                rev='v(probe_rev)',
+            ),
+        )
+
+
+def _fake_probe_sweep() -> AcSweep:
+    """Single-pole T sweep на фейковых probe-именах v(probe_fwd)/v(probe_rev)."""
+    return _single_pole_sweep(
+        g0=100.0,
+        fp=1.0,
+        frequencies=_DEC_FREQUENCIES,
+        probe_fwd='v(probe_fwd)',
+        probe_rev='v(probe_rev)',
+    )
+
+
+async def test_auto_detect_calls_callback_with_info(tmp_path: Path) -> None:
+    netlist = tmp_path / 'fb.cir'
+    netlist.write_text(_OPAMP_INV_FEEDBACK_NETLIST)
+    strategy = MiddlebrookVoltageStrategy(_FakePatcher())
+    sim = FakeSimulator(results=[SimulationResult(ac_sweep=_fake_probe_sweep())])
+    callback = _RecordingCallback(accept=True)
+
+    result = await measure_phase_margin(
+        netlist=netlist,
+        injection_strategy=strategy,
+        simulator=sim,
+        auto_detect_confirmation=callback,
+    )
+
+    assert len(callback.calls) == 1
+    info = callback.calls[0]
+    assert isinstance(info, AutoDetectInfo)
+    assert info.chosen_element_ref in {'R_fb', 'R_amp', 'C_amp', 'R_load'}
+    assert result.auto_detect_info == info
+    assert result.measured_at_node == info.chosen_node
+
+
+async def test_auto_detect_uses_chosen_edge_for_patcher(tmp_path: Path) -> None:
+    netlist = tmp_path / 'fb.cir'
+    netlist.write_text(_OPAMP_INV_FEEDBACK_NETLIST)
+    patcher = _FakePatcher()
+    strategy = MiddlebrookVoltageStrategy(patcher)
+    sim = FakeSimulator(results=[SimulationResult(ac_sweep=_fake_probe_sweep())])
+    callback = _RecordingCallback(accept=True)
+
+    await measure_phase_margin(
+        netlist=netlist,
+        injection_strategy=strategy,
+        simulator=sim,
+        auto_detect_confirmation=callback,
+    )
+
+    assert len(patcher.calls) == 1
+    op, node, element_ref = patcher.calls[0]
+    info = callback.calls[0]
+    assert op == 'voltage'
+    assert node == info.chosen_node
+    assert element_ref == info.chosen_element_ref
+
+
+async def test_auto_detect_rejected_raises(tmp_path: Path) -> None:
+    netlist = tmp_path / 'fb.cir'
+    netlist.write_text(_OPAMP_INV_FEEDBACK_NETLIST)
+    strategy = MiddlebrookVoltageStrategy(_FakePatcher())
+    sim = FakeSimulator(results=[])  # не должен вызываться
+    callback = _RecordingCallback(accept=False)
+
+    with pytest.raises(AutoDetectRejectedError, match='confidence'):
+        await measure_phase_margin(
+            netlist=netlist,
+            injection_strategy=strategy,
+            simulator=sim,
+            auto_detect_confirmation=callback,
+        )
+    assert sim.calls == []
+    assert len(callback.calls) == 1
+
+
+async def test_auto_detect_path_requires_callback(tmp_path: Path) -> None:
+    netlist = tmp_path / 'fb.cir'
+    netlist.write_text(_OPAMP_INV_FEEDBACK_NETLIST)
+    strategy = MiddlebrookVoltageStrategy(_FakePatcher())
+    sim = FakeSimulator(results=[])
+
+    with pytest.raises(ValueError, match='auto_detect_confirmation'):
+        await measure_phase_margin(
+            netlist=netlist,
+            injection_strategy=strategy,
+            simulator=sim,
+            # break_node/break_element_ref не заданы, callback не передан
+        )
+    assert sim.calls == []
+
+
+async def test_half_explicit_node_without_element_raises(tmp_path: Path) -> None:
+    netlist = tmp_path / 'fb.cir'
+    netlist.write_text(_OPAMP_INV_FEEDBACK_NETLIST)
+    strategy = MiddlebrookVoltageStrategy(_FakePatcher())
+    sim = FakeSimulator(results=[])
+
+    with pytest.raises(ValueError, match='break_node.*break_element_ref'):
+        await measure_phase_margin(
+            netlist=netlist,
+            injection_strategy=strategy,
+            simulator=sim,
+            break_node='in_neg',
+            # break_element_ref не задан
+        )
+    assert sim.calls == []
+
+
+async def test_half_explicit_element_without_node_raises(tmp_path: Path) -> None:
+    netlist = tmp_path / 'fb.cir'
+    netlist.write_text(_OPAMP_INV_FEEDBACK_NETLIST)
+    strategy = MiddlebrookVoltageStrategy(_FakePatcher())
+    sim = FakeSimulator(results=[])
+
+    with pytest.raises(ValueError, match='break_node.*break_element_ref'):
+        await measure_phase_margin(
+            netlist=netlist,
+            injection_strategy=strategy,
+            simulator=sim,
+            break_element_ref='R_fb',
+            # break_node не задан
+        )
+    assert sim.calls == []
+
+
+async def test_no_feedback_loop_propagated_from_detect(tmp_path: Path) -> None:
+    """Pure RC ladder без active element → NoFeedbackLoopDetectedError."""
+    netlist_text = (
+        'V_in a 0 AC 1\n'
+        'R1 a b 1k\n'
+        'C1 b 0 1u\n'
+        '.end\n'
+    )
+    netlist = tmp_path / 'rc.cir'
+    netlist.write_text(netlist_text)
+    strategy = MiddlebrookVoltageStrategy(_FakePatcher())
+    sim = FakeSimulator(results=[])
+    callback = _RecordingCallback(accept=True)
+
+    with pytest.raises(NoFeedbackLoopDetectedError):
+        await measure_phase_margin(
+            netlist=netlist,
+            injection_strategy=strategy,
+            simulator=sim,
+            auto_detect_confirmation=callback,
+        )
+    assert sim.calls == []
+    assert callback.calls == []
+
+
+async def test_explicit_path_auto_detect_info_is_none(tmp_path: Path) -> None:
+    """Regression: explicit edge-pair → auto_detect_info=None в measurement."""
+    netlist = tmp_path / 'amp.cir'
+    netlist.write_text(_OPAMP_INV)
+    strategy = MiddlebrookVoltageStrategy(NgspiceInjectionNetlistPatcher())
+    ac = _single_pole_sweep(
+        g0=100.0,
+        fp=1.0,
+        frequencies=_DEC_FREQUENCIES,
+        probe_fwd='v(in_neg__fwd)',
+        probe_rev='v(in_neg)',
+    )
+    sim = FakeSimulator(results=[SimulationResult(ac_sweep=ac)])
+
+    result = await measure_phase_margin(
+        netlist=netlist,
+        injection_strategy=strategy,
+        break_node='in_neg',
+        break_element_ref='R_fb',
+        simulator=sim,
+    )
+
+    assert result.auto_detect_info is None
