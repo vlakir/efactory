@@ -61,16 +61,24 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T153** — [2026-05-31, deferred from T023 Clarify Q-B] **`bridge
-  measure phase-margin <NETLIST> --loop-break-node <node>`** для
-  feedback-схем. Возвращает `(margin_deg, crossover_hz)` + опц.
-  gain margin. Phase A создаёт первую feedback-фикстуру в
-  `data/templates/` (триггер из BACKLOG закрывается внутри задачи).
-  Полный ритуал spec → clarify → analyze → фазы A-E. Spec —
-  `specs/T153-phase-margin/spec.md` (Draft, готов к Clarify; 13
-  open questions).
-
 ## Done
+
+- **T153** — [closed 2026-06-01, PR #98] **`bridge measure phase-margin
+  <NETLIST> --loop-break-node <node>`** для feedback-схем.
+  Multi-phase: A (NFB SE tube fixture nfb-se-amp) + B (use case +
+  CLI + slash + KB + T021 integration + edit-and-resim extension) +
+  C (calibration C.1 op-amp + C.3 tube NFB; C.2 BJT skipped, T163
+  BACKLOG) + D (Level 3 smoke + AC sanitizer fix ADR-T153h +
+  C.3 calibration values revised). Closed PR'ами #94 (B.6), #95
+  (B.7), #96 (C.1), #97 (C.3), #98 (D). Final coverage: 1659 passed
+  @ 85.98% (+95 vs T153 start baseline). Spec —
+  `specs/T153-phase-margin/spec.md`. ADRs: T153a (4-method strategy),
+  T153b (NetlistGraphAnalyzer), T153c-d (injection patcher + edge
+  contract), T153e (auto-detect callback), T153f (op-amp break
+  convention), T153g (per-topology matrix), T153h (Q7=a enforced
+  via AC sanitizer). BACKLOG triggers: T163 (BJT CE fixture для
+  full 4-method matrix), T164 (auto-detect refinement multi-loop
+  tube + KiCad `/`-prefix).
 
 - **T021** — [closed 2026-05-30, PR #93] **`bridge edit-and-resim`
   с автосравнением метрик до/после.** Финальная содержательная задача
