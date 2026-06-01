@@ -23,6 +23,7 @@ _EXPECTED_COMMANDS = {
     'measure-gain',
     'measure-bandwidth',
     'measure-thd',
+    'measure-phase-margin',  # T153 Phase B.6
     'plot-ac',
     'plot-tran',
     'kb-search',

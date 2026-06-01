@@ -12,7 +12,11 @@ data/models/
 │   └── custom/     # советские лампы + custom
 ├── transformers/   # category=transformer — OPT, IT, PT, choke (T007)
 │   └── generic/    # generic typical-class fits
-└── loads/          # category=load — speakers + dummy loads (T007)
+├── loads/          # category=load — speakers + dummy loads (T007)
+│   └── generic/
+├── diodes/         # category=diode — rectifier/signal/schottky/zener/led (T101)
+│   └── duncan/
+└── opamps/         # category=opamp — op-amp macromodels (T153)
     └── generic/
 ```
 
@@ -40,6 +44,8 @@ efactory transformer list                # все трансформаторы
 efactory transformer show --id OPT_SE_5K_8
 efactory load list                       # speakers + dummy loads
 efactory load show --id SPEAKER_8OHM
+efactory opamp list                      # op-amp macromodels (T153)
+efactory opamp show --id GENERIC_OPAMP
 ```
 
 Каждый subapp фильтрует общий SpiceModelLibrary по category. Если
@@ -58,6 +64,12 @@ efactory load show --id SPEAKER_8OHM
   - `SPEAKER_8OHM_RES` — чисто 8Ω R (для AC sweep без артефактов).
   - `SPEAKER_4OHM` — 4Ω вариант с резонансом ~60 Hz.
   - `DUMMY_LOAD_8R` — power resistor 8Ω (для P_max / THD measurements).
+- **opamps/** (T153):
+  - `GENERIC_OPAMP` — single-pole macromodel (A0=100 dB, fp=10 Hz,
+    GBW=1 MHz, Rout=50 Ω). Cross-validation reference для phase-margin
+    injection methods (Middlebrook V/I, Tian, Rosenstark return-ratio).
+    Не vendor-specific — для конкретных моделей (LM741/OPA134) ждём T030
+    (`model_import_url`).
 
 ## Качество параметров
 

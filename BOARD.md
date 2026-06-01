@@ -61,6 +61,14 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T153** — [2026-05-31, deferred from T023 Clarify Q-B] **`bridge
+  measure phase-margin <NETLIST> --loop-break-node <node>`** для
+  feedback-схем. Возвращает `(margin_deg, crossover_hz)` + опц.
+  gain margin. Phase A создаёт первую feedback-фикстуру в
+  `data/templates/` (триггер из BACKLOG закрывается внутри задачи).
+  Полный ритуал spec → clarify → analyze → фазы A-E. Spec —
+  `specs/T153-phase-margin/spec.md` (Draft, готов к Clarify; 13
+  open questions).
 
 ## Done
 

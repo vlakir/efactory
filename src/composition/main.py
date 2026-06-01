@@ -25,6 +25,9 @@ from adapters.outbound.knowledge_base_filesystem.store import FileSystemKbStore
 from adapters.outbound.manifest_yaml.project_manifest_repository import (
     FilesystemProjectManifestRepository,
 )
+from adapters.outbound.ngspice.injection_patcher import (
+    NgspiceInjectionNetlistPatcher,
+)
 from adapters.outbound.ngspice.netlist_substitution import NgspiceNetlistEditor
 from adapters.outbound.ngspice.simulator import NgspiceSimulator
 from adapters.outbound.platform_native.platform_layer import (
@@ -89,6 +92,7 @@ def build_cli_app() -> typer.Typer:
         schematic_exporter=KicadCliSchematicExporter(app_manager),
         simulator=NgspiceSimulator(app_manager),
         netlist_editor=NgspiceNetlistEditor(),
+        injection_patcher=NgspiceInjectionNetlistPatcher(),
         kb_store=FileSystemKbStore(
             built_in_dir=settings.kb_built_in_dir,
             host_mutated_dir=settings.kb_host_mutated_dir,

@@ -23,6 +23,7 @@ tags: [agent, slash-commands, routing, scope]
 | «какой gain», «коэффициент усиления», «K» | `/measure-gain --freq <Hz>` |
 | «какая полоса», «bandwidth», «-3 dB полоса» | `/measure-bandwidth` |
 | «THD», «искажения», «гармоники» | `/measure-thd --freq <Hz> --v-in-peak <V>` |
+| «запас по фазе», «phase margin», «стабильность петли», «PM», «loop stability» | `/measure-phase-margin [--loop-break-node <n> --loop-break-element <ref>]` |
 | «как зависит X от R/C», «параметрический sweep», «варьировать Rk», «таблица gain vs ...», «sweep по 1-2 компонентам» | `/sweep --metric <op|gain|bandwidth|thd> --param REF=v1,v2,...` |
 | «если поменять X на Y, как изменится gain/bandwidth/thd», «what-if», «как повлияет замена R5», «сравнение до/после», «delta после правки» | `/edit-and-resim --set REF=VALUE [...] --measure <gain\|bandwidth\|thd> [...]` |
 | «создай проект», «новый проект <NAME>» | `/project-create <NAME>` |
@@ -52,6 +53,16 @@ tags: [agent, slash-commands, routing, scope]
   если baseline-measure упало, edits НЕ применяются. Для one-shot
   (1-5 edits + 1-3 метрики). Для диапазона значений → `/sweep`
   (T022), не `/edit-and-resim`.
+
+- **«phase margin auto-detect отклонил edge / NoUnityGainCrossover»** —
+  default `--injection-method middlebrook-voltage` даёт `T_v`, не
+  `T_loop` (для op-amp |T_v| < 1 во всём диапазоне → no crossover, это
+  ожидаемая calibration ситуация Phase B.4, не bug). Попробуй
+  `--injection-method tian` (double V+I) или
+  `--injection-method rosenstark-return-ratio` (open + short break).
+  Если auto-detect отклонил edge с низкой confidence — задай пару
+  `--loop-break-node <node> --loop-break-element <element_ref>`
+  вручную (edge-pair однозначно идентифицирует один wire в graph).
 
 - **«ngspice OOM / memory growth на TRAN»** — см. KB
   `spice.ngspice-version-upgrade` (контейнер использует 45.2 из

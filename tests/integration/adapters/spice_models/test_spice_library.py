@@ -12,7 +12,7 @@ from adapters.outbound.spice_models.conversion import (
 from adapters.outbound.spice_models.spice_library import (
     FilesystemSpiceModelLibrary,
 )
-from domain.spice_model import ModelSource, TubeType
+from domain.spice_model import ComponentCategory, ModelSource, OpampKind, TubeType
 from ports.outbound.spice_model_library import (
     SpiceModelLibraryDuplicateError,
     SpiceModelNotFoundError,
@@ -400,3 +400,47 @@ async def test_rectifier_read_subckt_includes_model_directive(tmp_path: Path) ->
     assert '.SUBCKT TEST_RECT' in block
     assert '.MODEL DIODE_TEST' in block
     assert '.ENDS TEST_RECT' in block
+
+
+# ---------- T153 opamp category ----------
+
+_OPAMP_SUBCKT = """\
+* subcategory: single_pole
+* Generic single-pole opamp macromodel.
+.SUBCKT TEST_OPAMP INP INN OUT
+G1 0 nint INP INN 1
+R1 nint 0 100k
+C1 nint 0 159.155n
+E1 nbuf 0 nint 0 1
+Rout nbuf OUT 50
+.ENDS TEST_OPAMP
+"""
+
+
+async def test_opamp_category_loaded_from_header(tmp_path: Path) -> None:
+    """T153: opamps/ scanned and OPAMP category resolved via header."""
+    _seed(
+        tmp_path, ModelSource.GENERIC, 'TEST_OPAMP.lib', _OPAMP_SUBCKT,
+        category='opamps',
+    )
+    repo = FilesystemSpiceModelLibrary(tmp_path)
+
+    model = (await repo.list_all())[0]
+
+    assert model.category is ComponentCategory.OPAMP
+    assert model.opamp_kind is OpampKind.SINGLE_POLE
+    assert model.subckt_pins == ('INP', 'INN', 'OUT')
+
+
+async def test_opamp_read_subckt_returns_block(tmp_path: Path) -> None:
+    _seed(
+        tmp_path, ModelSource.GENERIC, 'TEST_OPAMP.lib', _OPAMP_SUBCKT,
+        category='opamps',
+    )
+    repo = FilesystemSpiceModelLibrary(tmp_path)
+
+    block = await repo.read_subckt('TEST_OPAMP')
+
+    assert '.SUBCKT TEST_OPAMP INP INN OUT' in block
+    assert 'G1 0 nint INP INN 1' in block
+    assert '.ENDS TEST_OPAMP' in block

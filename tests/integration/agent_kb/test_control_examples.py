@@ -100,6 +100,12 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         '/edit-and-resim',
     ),
+    # T153 Phase B.6 Level 2 — KB sync regression для /measure-phase-margin.
+    (
+        'запас по фазе стабильность петли phase margin',
+        'agent.command-routing',
+        '/measure-phase-margin',
+    ),
 ]
 
 

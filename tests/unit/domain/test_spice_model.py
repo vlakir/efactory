@@ -11,6 +11,7 @@ from domain.spice_model import (
     ComponentCategory,
     LoadKind,
     ModelSource,
+    OpampKind,
     SpiceModel,
     TransformerKind,
     TubeType,
@@ -26,6 +27,20 @@ def _tube(**overrides: object) -> SpiceModel:
         'source': ModelSource.KOREN,
         'file_path': Path('/data/models/tubes/koren/GENERIC_TRIODE.lib'),
         'subckt_pins': ('P', 'G', 'K'),
+    }
+    defaults.update(overrides)
+    return SpiceModel.model_validate(defaults)
+
+
+def _opamp(**overrides: object) -> SpiceModel:
+    defaults: dict[str, object] = {
+        'id': 'GENERIC_OPAMP',
+        'name': 'GENERIC_OPAMP',
+        'category': ComponentCategory.OPAMP,
+        'subcategory': OpampKind.SINGLE_POLE.value,
+        'source': ModelSource.GENERIC,
+        'file_path': Path('/data/models/opamps/generic/GENERIC_OPAMP.subckt'),
+        'subckt_pins': ('INP', 'INN', 'OUT'),
     }
     defaults.update(overrides)
     return SpiceModel.model_validate(defaults)
@@ -90,6 +105,24 @@ def test_load_kind_accessor_raises_for_tube() -> None:
         _ = m.load_kind
 
 
+def test_spice_model_opamp_with_full_metadata() -> None:
+    m = _opamp()
+    assert m.category is ComponentCategory.OPAMP
+    assert m.opamp_kind is OpampKind.SINGLE_POLE
+
+
+def test_opamp_kind_accessor_raises_for_tube() -> None:
+    m = _tube()
+    with pytest.raises(ValueError, match='opamp_kind accessor invalid'):
+        _ = m.opamp_kind
+
+
+def test_tube_type_accessor_raises_for_opamp() -> None:
+    m = _opamp()
+    with pytest.raises(ValueError, match='tube_type accessor invalid'):
+        _ = m.tube_type
+
+
 @pytest.mark.parametrize(
     'good_id',
     ['EL34', '6N2P', '6P14P', '12AX7', 'GENERIC_TRIODE', 'EL34_KOREN',
@@ -136,11 +169,16 @@ def test_component_category_enum_values() -> None:
         ComponentCategory.TRANSFORMER,
         ComponentCategory.LOAD,
         ComponentCategory.DIODE,
+        ComponentCategory.OPAMP,
     }
 
 
 def test_transformer_kind_enum() -> None:
     assert TransformerKind.OPT.value == 'opt'
+
+
+def test_opamp_kind_enum_values() -> None:
+    assert OpampKind.SINGLE_POLE.value == 'single_pole'
 
 
 def test_load_kind_enum_values() -> None:

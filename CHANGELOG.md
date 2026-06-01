@@ -36,6 +36,20 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T153 Phase A.1 — `GENERIC_OPAMP` macromodel + opamp component category.**
+  Cross-validation reference для phase-margin injection methods (Phase B-C):
+  single-pole macromodel (G + R + C + E + Rout) c A0=100 dB, fp=10 Hz,
+  GBW=1 MHz, Rout=50 Ω. Положена в `data/models/opamps/generic/
+  GENERIC_OPAMP.lib` — выбран **option B** (полная integration в
+  `ComponentCategory`, не helper-папка): `ComponentCategory.OPAMP` +
+  `OpampKind.SINGLE_POLE` + `opamp_kind` typed accessor; адаптер
+  `FilesystemSpiceModelLibrary` сканит `opamps/`; bridge `efactory opamp
+  list/show` зарегистрирован; user overlay работает по тому же паттерну.
+  Acceptance tests на open-loop AC sweep подтверждают design параметры
+  (A0 at f=1 Hz, unity-gain crossover at f=GBW, phase ≈ -90° at GBW,
+  Rout=50 Ω через voltage-divider probe). 4 acceptance + 2 integration +
+  4 unit теста. Не vendor-specific (LM741/OPA134 — ждём T030).
+
 - **T021 — `bridge edit-and-resim` с автосравнением метрик до/после.**
   Финальная содержательная задача analysis-first ordering Фазы 2
   (после T023 метрики и T022 sweep). Команда `bridge edit-and-resim

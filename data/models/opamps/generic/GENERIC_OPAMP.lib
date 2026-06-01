@@ -1,0 +1,25 @@
+* subcategory: single_pole
+* Generic single-pole op-amp macromodel (T153 phase-margin reference).
+*
+* Pins: INP (V+), INN (V-), OUT.
+* DC gain A0 = 1e5 V/V (100 dB), dominant pole fp = 10 Hz,
+* GBW = A0·fp = 1 MHz, output resistance Rout = 50 ohm.
+*
+* Topology:
+*   G1: VCCS, I = gm·(V(INP)-V(INN)), gm = 1 S.
+*   R1: gain-stage load, A0 = gm·R1 = 1·100k = 1e5.
+*   C1: dominant-pole cap, fp = 1/(2π·R1·C1) ≈ 10 Hz.
+*   E1: unity-gain VCVS buffer.
+*   Rout: output impedance.
+*
+* Not a vendor model (no LM741/OPA134 fit) — pure macromodel for
+* cross-validation of phase-margin injection methods (Middlebrook V/I,
+* Tian, Rosenstark return-ratio) on a circuit with analytically known
+* open-loop response.
+.SUBCKT GENERIC_OPAMP INP INN OUT
+G1 0 nint INP INN 1
+R1 nint 0 100k
+C1 nint 0 159.155n
+E1 nbuf 0 nint 0 1
+Rout nbuf OUT 50
+.ENDS GENERIC_OPAMP
