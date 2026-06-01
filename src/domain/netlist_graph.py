@@ -289,8 +289,15 @@ _NON_FEEDBACK_TYPES: frozenset[ElementType] = frozenset(
 # Safety cap чтобы DFS не взрывался на больших схемах:
 _MAX_CYCLES = 256
 _MAX_CYCLE_LENGTH = 16
-# Минимальное число distinct нет'ов в valid cycle (избегаем 2-cycles).
-_MIN_CYCLE_LENGTH = 3
+# Минимальное число distinct нет'ов в valid cycle.
+# Phase C.1.5 lowered 3→2: 2-net cycles — это direct feedback loops
+# через single passive (R_fb) + single active (op-amp). На op-amp
+# inverting fixture такой cycle [vout, in_neg, vout] — единственный
+# «настоящий» feedback path; 3-net cycles через ground (R_load) дают
+# degenerate breaks. find_cycles + score_break_candidates всё ещё
+# фильтруют шум через `≥1 active + ≥1 passive` requirement (R||C
+# 2-net cycles без active не валидны).
+_MIN_CYCLE_LENGTH = 2
 
 # Confidence weights — re-tuned для realistic opamp fixtures (Phase B.5
 # empirical adjustment к ADR-T153b §5 initial weights — calibration
@@ -546,27 +553,49 @@ def _pick_break_edge(
     Cycle representation: net_path[i] → element_ids[i] → net_path[i+1].
     Длина element_ids = len(net_path) - 1.
 
-    Heuristic: первый passive element в walk'е, чей **next** или
-    **prev** element в цикле — active. Break_node = shared net между
+    Heuristic: первый passive element в walk'е, чей **prev** или
+    **next** element в цикле — active. Break_node = shared net между
     ними. Это формализует «boundary между active и passive run'ами».
+
+    **prev-first preference** (T153 Phase C.1.5 calibration finding):
+    typical feedback loop topology — `<forward_active> → break_node →
+    <feedback_passive>`. Boundary на «driver-output side» (где forward
+    active передаёт сигнал в feedback passive) — это net на КОНЦЕ
+    active'а / НАЧАЛЕ passive'а в walk'е. Соответствует **prev** check
+    (active элемент перед passive). Этот break point — low-Z driver
+    side, корректен для Middlebrook V single-injection (C.1.3 empirical
+    validation). Если ни prev, ни next не active, fallback на «next»
+    (исторический выбор pre-C.1.5).
     """
     n = len(element_ids)
-    for i, elt_id in enumerate(element_ids):
-        if id_to_type.get(elt_id) not in _PASSIVE_TYPES:
-            continue
-        next_elt = element_ids[(i + 1) % n]
-        prev_elt = element_ids[(i - 1) % n]
-        if id_to_type.get(next_elt) in _ACTIVE_TYPES:
-            # boundary: passive elt_id at net_path[i+1] meets active next_elt
-            return net_path[i + 1], elt_id
-        if id_to_type.get(prev_elt) in _ACTIVE_TYPES:
-            # boundary: passive elt_id at net_path[i] meets active prev_elt
-            return net_path[i], elt_id
+    # Two-pass: сначала ищем boundary где break_node — non-ground;
+    # ground breaks (`Vinj N 0` → probe `v(0)` отсутствует в ngspice
+    # output) — degenerate fallback. C.1.5 finding (op-amp с R_load на
+    # ground): pick_edge без ground-skip может выбрать (`0`, R_load)
+    # вместо (vout, R_fb).
+    for allow_ground in (False, True):
+        for i, elt_id in enumerate(element_ids):
+            if id_to_type.get(elt_id) not in _PASSIVE_TYPES:
+                continue
+            next_elt = element_ids[(i + 1) % n]
+            prev_elt = element_ids[(i - 1) % n]
+            if id_to_type.get(prev_elt) in _ACTIVE_TYPES:
+                node = net_path[i]
+                if allow_ground or node not in _GROUND_NETS:
+                    return node, elt_id
+            if id_to_type.get(next_elt) in _ACTIVE_TYPES:
+                node = net_path[i + 1]
+                if allow_ground or node not in _GROUND_NETS:
+                    return node, elt_id
 
-    # Fallback: первый passive elt, net на ИХ начале
-    for i, elt_id in enumerate(element_ids):
-        if id_to_type.get(elt_id) in _PASSIVE_TYPES:
-            return net_path[i], elt_id
+    # Fallback: первый passive elt, net на ИХ начале (тоже с ground-skip)
+    for allow_ground in (False, True):
+        for i, elt_id in enumerate(element_ids):
+            if id_to_type.get(elt_id) not in _PASSIVE_TYPES:
+                continue
+            node = net_path[i]
+            if allow_ground or node not in _GROUND_NETS:
+                return node, elt_id
 
     # Не должно достижимо (find_cycles гарантирует ≥1 passive)
     msg = '_pick_break_edge: no passive element in cycle'

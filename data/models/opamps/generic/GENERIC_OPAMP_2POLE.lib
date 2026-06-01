@@ -1,0 +1,35 @@
+* subcategory: two_pole
+* Generic two-pole op-amp macromodel (T153 Phase C.1 reference).
+*
+* Pins: INP (V+), INN (V-), OUT.
+* DC gain A0 = 1e5 V/V (100 dB).
+* Dominant pole fp1 = 10 Hz (gm·R1, C1 — same as single-pole sibling).
+* Second pole  fp2 ≈ 66.3 kHz (R2·C2 stage between buffer and Rout).
+* GBW = A0·fp1 = 1 MHz; output resistance Rout = 50 ohm.
+*
+* Designed for inverting amp with R_in=1k, R_fb=10k (β=1/11),
+* T_loop_DC ≈ Aβ = 9091, unity-gain crossover ≈ 64.7 kHz,
+* analytical PM ≈ 45.6° at crossover (45° target ±2°).
+*
+* Topology:
+*   G1:    VCCS, I = gm·(V(INP)-V(INN)), gm = 1 S.
+*   R1:    gain-stage load, A0 = gm·R1 = 1·100k = 1e5.
+*   C1:    dominant-pole cap, fp1 = 1/(2π·R1·C1) ≈ 10 Hz.
+*   E1:    unity-gain VCVS buffer (isolates stages).
+*   R2,C2: second pole stage, fp2 = 1/(2π·R2·C2) ≈ 66.3 kHz.
+*   E2:    unity-gain VCVS buffer (isolates Rout from C2).
+*   Rout:  output impedance.
+*
+* Not a vendor model — pure macromodel for cross-validation of
+* phase-margin injection methods (Middlebrook V/I, Tian, Rosenstark
+* return-ratio) on a circuit with analytically known PM.
+.SUBCKT GENERIC_OPAMP_2POLE INP INN OUT
+G1   0    nint INP INN 1
+R1   nint 0    100k
+C1   nint 0    159.155n
+E1   nbuf 0    nint 0   1
+R2   nbuf n2   100k
+C2   n2   0    24p
+E2   n3   0    n2   0   1
+Rout n3   OUT  50
+.ENDS GENERIC_OPAMP_2POLE
