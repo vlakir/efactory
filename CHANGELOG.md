@@ -36,6 +36,21 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T166 — SPICE models для EH 6922 и 6Н30П-EB + sanity-check fixtures.**
+  Two new tube models requested Vladimir post-Phase C: (1) `data/models/
+  tubes/ayumi/6922.inc` — explicit brand alias для EH 6922 ≡ 6DJ8 ≡
+  ECC88 ≡ E88CC family (same Ayumi parametrization, SUBCKT renamed
+  для clarity); (2) `data/models/tubes/custom/6N30P_EB.lib` — Sovtek/
+  EH 6Н30П-EB low-µ high-current dual triode (Koren parameters
+  MU=15, EX=1.4, KG1=100, KP=110, KVB=14 fitted from BartolaValves
+  community dataset). Также patched `data/models/tubes/ayumi/6DJ8.inc`
+  через existing efactory converters `convert_pwrs_to_ngspice` +
+  `convert_ayumi_to_ngspice` (PWRS → sgn·pwr·abs, ^ → **) для работы
+  `.include` workflow на ngspice 44. Sanity-check fixtures для обеих
+  ламп: simple SE-amp common-cathode topology через `Valve:ECC88`
+  symbol, 3 acceptance tests each (model includes, OP-point active
+  region, TRAN amplification verification). Pre-push 5/5 ✓.
+
 - **T027 Phase C — `tube-phono-riaa` template fixture (12AX7 + passive
   RIAA inter-stage Lipshitz EQ).** Двухкаскадный all-triode phono
   preamp на 12AX7 Koren (обе половины `Valve:ECC83`) с **passive
