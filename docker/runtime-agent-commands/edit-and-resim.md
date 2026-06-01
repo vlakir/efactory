@@ -1,13 +1,13 @@
 ---
 description: Применить edits к схеме и сравнить выбранные метрики до/после (delta).
-argument-hint: '<PROJECT> --schematic <abs.kicad_sch> --set REF=VALUE [...] --measure gain|bandwidth|thd [...] [--freq Hz] [--v-in-peak V] [--f-low Hz] [--f-high Hz] [--mode small|large] [--output text|json] [--output-file PATH]'
+argument-hint: '<PROJECT> --schematic <abs.kicad_sch> --set REF=VALUE [...] --measure gain|bandwidth|thd|phase-margin [...] [--freq Hz] [--v-in-peak V] [--f-low Hz] [--f-high Hz] [--mode small|large] [--loop-break-node N] [--loop-break-element REF] [--injection-method METHOD] [--output text|json] [--output-file PATH]'
 allowed-tools: Bash
 ---
 
 Пользователь хочет «what-if» эксперимент: изменить один-несколько
 компонентов в schematic и сразу увидеть, как это сказалось на ключевых
-метриках (gain / bandwidth / thd) — без ручного цикла measure → edit
-→ measure → diff.
+метриках (gain / bandwidth / thd / phase-margin) — без ручного цикла
+measure → edit → measure → diff.
 
 Args от пользователя: `$ARGUMENTS` (project + flags). Используй
 **абсолютные пути** для `--schematic` (cwd-instability T014 A2).
@@ -21,14 +21,26 @@ Args от пользователя: `$ARGUMENTS` (project + flags). Исполь
    Больше 10 — soft warn в stderr (continue).
 
 3. Определи **метрики**: один или несколько `--measure {gain,
-   bandwidth, thd}` (повторяемый). Дубликаты silently дедуплицируются.
+   bandwidth, thd, phase-margin}` (повторяемый). Дубликаты silently
+   дедуплицируются.
 
 4. Передай те же measure-флаги, что и в одноимённых `bridge measure`
    командах — `--freq`, `--v-in-peak`, `--f-low`/`--f-high`,
    `--mode`, `--output-signal`, `--input-signal`, `--input-source`.
    Команда применяет их ко всем метрикам, которым они нужны
    (gain/thd берут `--freq`; gain-large/thd берут `--v-in-peak`;
-   bandwidth берёт `--f-low/--f-high`).
+   bandwidth и phase-margin берут `--f-low/--f-high`).
+
+   Для `phase-margin` дополнительно:
+   - `--loop-break-node <NET>` + `--loop-break-element <REF>` —
+     edge-pair, в котором режется петля. Обе опции вместе ИЛИ ни
+     одной (auto-detect через graph analyzer).
+   - `--injection-method {middlebrook-voltage,middlebrook-current,tian,
+     rosenstark-return-ratio}` — метод инжекции (default
+     middlebrook-voltage).
+   - `--confidence-threshold 0..1` (default 0.8) — порог auto-detect.
+   - `--no-confirm` — не спрашивать подтверждение в TTY.
+   - `--pm-n-points-per-decade N` (default 100) — разрешение AC sweep.
 
 5. Запусти: `efactory bridge edit-and-resim <PROJECT> --schematic
    <abs> --set REF=V [...] --measure M [...] [...]`.
@@ -47,6 +59,13 @@ Args от пользователя: `$ARGUMENTS` (project + flags). Исполь
   `--v-in-peak` и `--input-signal v(...)` (RMS-computation).
 - **Multi-V netlist** (e.g. SE amp с B+ и input source): без
   `--input-source <REF>` measure_* auto-detect упадёт с ambiguity.
+- **`--measure phase-margin`** требует либо пары `--loop-break-node
+  + --loop-break-element` (explicit edge, ADR-T153d), либо auto-detect
+  через graph analyzer (без обоих опций). Half-explicit (только одна
+  из двух) → exit 2.
+- **`--measure phase-margin` в non-TTY без `--no-confirm`**: callback
+  возвращает True при confidence ≥ threshold (стандартное поведение
+  для batch-режима). В TTY будет prompt.
 - **Baseline failure → exit 1, schematic не тронут** (strict policy:
   если baseline-измерение упало, edit'ы не применяются — нечего
   сравнивать). Сообщение: `baseline <metric> measurement failed: ...
@@ -69,6 +88,12 @@ Args от пользователя: `$ARGUMENTS` (project + flags). Исполь
   --freq 1k --f-low 20 --f-high 20k`.
 - **«Подкорректировал R5 и C3 одновременно — как полоса?»** →
   `--set R5=2k --set C3=470n --measure bandwidth`.
+- **«Если уменьшу R_fb до 47k, как изменится запас по фазе?»** →
+  `--set R_fb=47k --measure phase-margin --loop-break-node in_neg
+  --loop-break-element R_fb --f-low 1 --f-high 1Meg`.
+- **«До и после: gain + phase-margin одной командой»** →
+  `--set R5=2k --measure gain --measure phase-margin --freq 1k
+  --loop-break-node in_neg --loop-break-element R_fb`.
 
 ## Когда НЕ выбирать
 

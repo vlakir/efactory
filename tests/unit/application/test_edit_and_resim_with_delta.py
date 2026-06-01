@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -29,11 +29,23 @@ from domain.measurement_delta import (
     GainDelta,
     ThdDelta,
 )
+from domain.phase_margin import (
+    AutoDetectInfo,
+    AutoDetectRejectedError,
+    LoopBreakNodeNotFoundError,
+    PhaseMarginDelta,
+    PhaseMarginMeasurement,
+)
 from ports.outbound.schematic_exporter import SchematicExportError
 from ports.outbound.simulator import SimulationFailedError
 
 if TYPE_CHECKING:
-    from domain.simulation import AnalysisSpec, SimulationResult
+    from domain.phase_margin import ConfirmationCallback
+    from domain.phase_margin_injection import (
+        InjectionSetup,
+        InjectionStrategy,
+    )
+    from domain.simulation import AcSweep, AnalysisSpec, SimulationResult
 
 
 # --------------------------------------------------------------- Fakes / fixtures ----
@@ -176,6 +188,47 @@ def _thd(**overrides: object) -> ThdMeasurement:
     return ThdMeasurement(**defaults)  # type: ignore[arg-type]
 
 
+def _phase_margin(**overrides: object) -> PhaseMarginMeasurement:
+    defaults: dict[str, object] = {
+        'margin_deg': 65.0,
+        'crossover_hz': 12_000.0,
+        'measured_at_node': 'in_neg',
+        'injection_method': 'middlebrook_voltage',
+        'stability_class': 'high',
+    }
+    defaults.update(overrides)
+    return PhaseMarginMeasurement(**defaults)  # type: ignore[arg-type]
+
+
+class _FakeInjectionStrategy:
+    """Минимальный stub `InjectionStrategy` для wiring-тестов.
+
+    Use case передаёт его в `measure_phase_margin`, но тесты эту
+    функцию monkeypatch'ат — strategy туда не доходит. Held только
+    как marker «something not-None», чтобы пройти entry-validator.
+    """
+
+    method_name = 'middlebrook_voltage'
+
+    def prepare(
+        self,
+        netlist: str,
+        *,
+        break_node: str,
+        break_element_ref: str,
+    ) -> InjectionSetup:
+        msg = "FakeInjectionStrategy: measure_phase_margin must be mocked"
+        raise AssertionError(msg)
+
+    def combine(
+        self,
+        sweeps: tuple[AcSweep, ...],
+        setup: InjectionSetup,
+    ) -> object:
+        msg = "FakeInjectionStrategy: measure_phase_margin must be mocked"
+        raise AssertionError(msg)
+
+
 def _seq_measure(results: list[object]) -> Callable[..., object]:
     """Возвращает async-callable, отдающий из `results` по очереди."""
 
@@ -219,6 +272,7 @@ def _patch_measures(
     gain: Callable[..., object] | None = None,
     bandwidth: Callable[..., object] | None = None,
     thd: Callable[..., object] | None = None,
+    phase_margin: Callable[..., object] | None = None,
 ) -> None:
     if gain is not None:
         monkeypatch.setattr(
@@ -234,6 +288,11 @@ def _patch_measures(
         monkeypatch.setattr(
             'application.edit_and_resim_with_delta.measure_thd',
             thd,
+        )
+    if phase_margin is not None:
+        monkeypatch.setattr(
+            'application.edit_and_resim_with_delta.measure_phase_margin',
+            phase_margin,
         )
 
 
@@ -656,3 +715,307 @@ def test_multiple_matches_error_also_triggers_rollback(
             )
         )
     assert schematic_path.read_text() == original_text
+
+
+# --------------------------------------------- phase_margin extension (B.7) ----
+
+
+def test_config_phase_margin_half_explicit_edge_pair_rejected() -> None:
+    """loop_break_node без break_element_ref (или наоборот) — fail-fast."""
+    with pytest.raises(ValueError, match='break_element_ref'):
+        EditAndResimConfig(
+            metrics=['phase_margin'],
+            loop_break_node='in_neg',
+        )
+    with pytest.raises(ValueError, match='loop_break_node'):
+        EditAndResimConfig(
+            metrics=['phase_margin'],
+            break_element_ref='R_fb',
+        )
+
+
+def test_config_phase_margin_explicit_edge_pair_accepted() -> None:
+    cfg = EditAndResimConfig(
+        metrics=['phase_margin'],
+        loop_break_node='in_neg',
+        break_element_ref='R_fb',
+    )
+    assert cfg.loop_break_node == 'in_neg'
+    assert cfg.break_element_ref == 'R_fb'
+
+
+def test_config_phase_margin_no_break_edge_accepted_for_auto_detect() -> None:
+    """Оба None — валидно (auto-detect ветка)."""
+    cfg = EditAndResimConfig(metrics=['phase_margin'])
+    assert cfg.loop_break_node is None
+    assert cfg.break_element_ref is None
+
+
+def test_phase_margin_requires_injection_strategy(
+    monkeypatch: pytest.MonkeyPatch,
+    schematic_path: Path,
+) -> None:
+    """`'phase_margin' in metrics` без injection_strategy → fail-fast."""
+    _patch_edit(monkeypatch, _seq_edit())
+    cfg = EditAndResimConfig(
+        metrics=['phase_margin'],
+        loop_break_node='in_neg',
+        break_element_ref='R_fb',
+    )
+    with pytest.raises(ValueError, match='injection_strategy'):
+        _run(
+            edit_and_resim_with_delta(
+                schematic=schematic_path,
+                edits=[('R5', '2k')],
+                config=cfg,
+                exporter=FakeExporter(),
+                simulator=_DummySimulator(),
+                netlist_editor=_DummyNetlistEditor(),
+            )
+        )
+
+
+def test_happy_path_phase_margin_explicit_edge(
+    monkeypatch: pytest.MonkeyPatch,
+    schematic_path: Path,
+) -> None:
+    """Baseline 65° → after 48° → PhaseMarginDelta(Δ=-17°, Δ%≈-26.15%)."""
+    _patch_measures(
+        monkeypatch,
+        phase_margin=_seq_measure(
+            [
+                _phase_margin(margin_deg=65.0, stability_class='high'),
+                _phase_margin(margin_deg=48.0, stability_class='adequate'),
+            ]
+        ),
+    )
+    _patch_edit(monkeypatch, _seq_edit())
+
+    cfg = EditAndResimConfig(
+        metrics=['phase_margin'],
+        loop_break_node='in_neg',
+        break_element_ref='R_fb',
+    )
+    report = _run(
+        edit_and_resim_with_delta(
+            schematic=schematic_path,
+            edits=[('R_fb', '47k')],
+            config=cfg,
+            exporter=FakeExporter(),
+            simulator=_DummySimulator(),
+            netlist_editor=_DummyNetlistEditor(),
+            injection_strategy=cast('InjectionStrategy', _FakeInjectionStrategy()),
+        )
+    )
+    assert len(report.deltas) == 1
+    delta = report.deltas[0]
+    assert isinstance(delta, PhaseMarginDelta)
+    assert delta.delta_absolute == pytest.approx(-17.0)
+    assert delta.delta_relative_percent == pytest.approx((-17.0 / 65.0) * 100.0)
+    assert delta.failed_reason is None
+
+
+def test_phase_margin_kwargs_forwarded_to_measure(
+    monkeypatch: pytest.MonkeyPatch,
+    schematic_path: Path,
+) -> None:
+    """edit_and_resim передаёт break-edge / strategy / callback / sweep params."""
+    captured: list[dict[str, object]] = []
+
+    async def _capture(**kwargs: object) -> PhaseMarginMeasurement:
+        captured.append(kwargs)
+        return _phase_margin()
+
+    _patch_measures(monkeypatch, phase_margin=_capture)
+    _patch_edit(monkeypatch, _seq_edit())
+
+    strategy = _FakeInjectionStrategy()
+    callback: ConfirmationCallback = lambda _info: True  # noqa: E731
+    cfg = EditAndResimConfig(
+        metrics=['phase_margin'],
+        loop_break_node='in_neg',
+        break_element_ref='R_fb',
+        f_low_hz=10.0,
+        f_high_hz=1e5,
+        pm_n_points_per_decade=50,
+    )
+    _run(
+        edit_and_resim_with_delta(
+            schematic=schematic_path,
+            edits=[('R_fb', '47k')],
+            config=cfg,
+            exporter=FakeExporter(),
+            simulator=_DummySimulator(),
+            netlist_editor=_DummyNetlistEditor(),
+            injection_strategy=cast('InjectionStrategy', strategy),
+            auto_detect_confirmation=callback,
+            timeout_seconds=42.0,
+        )
+    )
+    assert len(captured) == 2  # baseline + after
+    for call in captured:
+        assert call['break_node'] == 'in_neg'
+        assert call['break_element_ref'] == 'R_fb'
+        assert call['injection_strategy'] is strategy
+        assert call['auto_detect_confirmation'] is callback
+        assert call['f_low'] == 10.0
+        assert call['f_high'] == 1e5
+        assert call['n_points_per_decade'] == 50
+        assert call['timeout_seconds'] == 42.0
+
+
+def test_phase_margin_auto_detect_path_forwards_none_edge(
+    monkeypatch: pytest.MonkeyPatch,
+    schematic_path: Path,
+) -> None:
+    """Без explicit edge use case передаёт break_node=None в measure_*."""
+    captured: list[dict[str, object]] = []
+
+    async def _capture(**kwargs: object) -> PhaseMarginMeasurement:
+        captured.append(kwargs)
+        info = AutoDetectInfo(
+            chosen_node='in_neg',
+            chosen_element_ref='R_fb',
+            confidence=0.95,
+        )
+        return _phase_margin(auto_detect_info=info)
+
+    _patch_measures(monkeypatch, phase_margin=_capture)
+    _patch_edit(monkeypatch, _seq_edit())
+
+    cfg = EditAndResimConfig(metrics=['phase_margin'])
+    report = _run(
+        edit_and_resim_with_delta(
+            schematic=schematic_path,
+            edits=[('R_fb', '47k')],
+            config=cfg,
+            exporter=FakeExporter(),
+            simulator=_DummySimulator(),
+            netlist_editor=_DummyNetlistEditor(),
+            injection_strategy=cast('InjectionStrategy', _FakeInjectionStrategy()),
+            auto_detect_confirmation=lambda _info: True,
+        )
+    )
+    for call in captured:
+        assert call['break_node'] is None
+        assert call['break_element_ref'] is None
+    delta = report.deltas[0]
+    assert isinstance(delta, PhaseMarginDelta)
+    assert delta.before.auto_detect_info is not None
+    assert delta.before.auto_detect_info.chosen_node == 'in_neg'
+
+
+def test_phase_margin_baseline_failure_aborts(
+    monkeypatch: pytest.MonkeyPatch,
+    schematic_path: Path,
+) -> None:
+    """LoopBreakNodeNotFoundError на baseline → BaselineFailedError, no edits."""
+    _patch_measures(
+        monkeypatch,
+        phase_margin=_seq_measure(
+            [LoopBreakNodeNotFoundError('break edge not in netlist')]
+        ),
+    )
+    edits_done: list[tuple[str, str]] = []
+
+    def _recording_editor(path: Path, ref: str, value: str) -> str:
+        edits_done.append((ref, value))
+        return 'old'
+
+    _patch_edit(monkeypatch, _recording_editor)
+
+    cfg = EditAndResimConfig(
+        metrics=['phase_margin'],
+        loop_break_node='in_neg',
+        break_element_ref='R_fb',
+    )
+    with pytest.raises(BaselineFailedError, match='baseline phase_margin'):
+        _run(
+            edit_and_resim_with_delta(
+                schematic=schematic_path,
+                edits=[('R_fb', '47k')],
+                config=cfg,
+                exporter=FakeExporter(),
+                simulator=_DummySimulator(),
+                netlist_editor=_DummyNetlistEditor(),
+                injection_strategy=cast(
+                    'InjectionStrategy', _FakeInjectionStrategy()
+                ),
+            )
+        )
+    assert edits_done == []
+
+
+def test_phase_margin_after_failure_records_failed_reason(
+    monkeypatch: pytest.MonkeyPatch,
+    schematic_path: Path,
+) -> None:
+    """After-measure failure → PhaseMarginDelta.from_failed_after."""
+    _patch_measures(
+        monkeypatch,
+        phase_margin=_seq_measure(
+            [
+                _phase_margin(margin_deg=65.0),
+                AutoDetectRejectedError('confidence too low after edit'),
+            ]
+        ),
+    )
+    _patch_edit(monkeypatch, _seq_edit())
+
+    cfg = EditAndResimConfig(metrics=['phase_margin'])
+    report = _run(
+        edit_and_resim_with_delta(
+            schematic=schematic_path,
+            edits=[('R_fb', '47k')],
+            config=cfg,
+            exporter=FakeExporter(),
+            simulator=_DummySimulator(),
+            netlist_editor=_DummyNetlistEditor(),
+            injection_strategy=cast('InjectionStrategy', _FakeInjectionStrategy()),
+            auto_detect_confirmation=lambda _info: True,
+        )
+    )
+    delta = report.deltas[0]
+    assert isinstance(delta, PhaseMarginDelta)
+    assert delta.after is None
+    assert delta.failed_reason is not None
+    assert 'AutoDetectRejectedError' in delta.failed_reason
+    assert delta.delta_absolute is None
+
+
+def test_phase_margin_combined_with_gain_metric(
+    monkeypatch: pytest.MonkeyPatch,
+    schematic_path: Path,
+) -> None:
+    """Смешанный набор metrics: gain + phase_margin в одной команде."""
+    _patch_measures(
+        monkeypatch,
+        gain=_seq_measure([_gain(value_db=20.0), _gain(value_db=22.0)]),
+        phase_margin=_seq_measure(
+            [
+                _phase_margin(margin_deg=70.0, stability_class='high'),
+                _phase_margin(margin_deg=55.0, stability_class='adequate'),
+            ]
+        ),
+    )
+    _patch_edit(monkeypatch, _seq_edit())
+
+    cfg = EditAndResimConfig(
+        metrics=['gain', 'phase_margin'],
+        frequency_hz=1000.0,
+        loop_break_node='in_neg',
+        break_element_ref='R_fb',
+    )
+    report = _run(
+        edit_and_resim_with_delta(
+            schematic=schematic_path,
+            edits=[('R_fb', '47k')],
+            config=cfg,
+            exporter=FakeExporter(),
+            simulator=_DummySimulator(),
+            netlist_editor=_DummyNetlistEditor(),
+            injection_strategy=cast('InjectionStrategy', _FakeInjectionStrategy()),
+        )
+    )
+    kinds = {type(d) for d in report.deltas}
+    assert kinds == {GainDelta, PhaseMarginDelta}

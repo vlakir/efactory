@@ -25,7 +25,7 @@ tags: [agent, slash-commands, routing, scope]
 | «THD», «искажения», «гармоники» | `/measure-thd --freq <Hz> --v-in-peak <V>` |
 | «запас по фазе», «phase margin», «стабильность петли», «PM», «loop stability» | `/measure-phase-margin [--loop-break-node <n> --loop-break-element <ref>]` |
 | «как зависит X от R/C», «параметрический sweep», «варьировать Rk», «таблица gain vs ...», «sweep по 1-2 компонентам» | `/sweep --metric <op|gain|bandwidth|thd> --param REF=v1,v2,...` |
-| «если поменять X на Y, как изменится gain/bandwidth/thd», «what-if», «как повлияет замена R5», «сравнение до/после», «delta после правки» | `/edit-and-resim --set REF=VALUE [...] --measure <gain\|bandwidth\|thd> [...]` |
+| «если поменять X на Y, как изменится gain/bandwidth/thd/PM», «what-if», «как повлияет замена R5», «сравнение до/после», «delta после правки», «как изменится запас по фазе если» | `/edit-and-resim --set REF=VALUE [...] --measure <gain\|bandwidth\|thd\|phase-margin> [...] [--loop-break-node <n> --loop-break-element <ref>]` |
 | «создай проект», «новый проект <NAME>» | `/project-create <NAME>` |
 | «запусти симуляцию», «.op / .tran / .ac», «прогони netlist» | `/sim-run` |
 | «переключись на проект <NAME>» | `/project-use <NAME>` (display-only) |
@@ -53,6 +53,15 @@ tags: [agent, slash-commands, routing, scope]
   если baseline-measure упало, edits НЕ применяются. Для one-shot
   (1-5 edits + 1-3 метрики). Для диапазона значений → `/sweep`
   (T022), не `/edit-and-resim`.
+
+- **«как изменится phase margin после правки feedback резистора»** —
+  `/edit-and-resim --set R_fb=47k --measure phase-margin
+  --loop-break-node in_neg --loop-break-element R_fb` (T153 B.7).
+  Edge-pair либо explicit (обе опции), либо auto-detect (ни одной).
+  Можно комбинировать с другими метриками одной командой:
+  `--measure gain --measure phase-margin --freq 1k`. Default
+  injection-method `middlebrook-voltage` даёт T_v, не T_loop — для
+  op-amp воркфлоу попробуй `--injection-method tian`.
 
 - **«phase margin auto-detect отклонил edge / NoUnityGainCrossover»** —
   default `--injection-method middlebrook-voltage` даёт `T_v`, не
