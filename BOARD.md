@@ -63,6 +63,17 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T164** — [closed 2026-06-01, PR #99] **Auto-detect heuristic
+  refinement для multi-loop tube NFB + KiCad-export element ordering.**
+  Stimulus-distance BFS ranking в `_pick_break_edge` (walk-direction
+  invariant — op-amp KiCad-export ordering picks `(vout, R_fb)` как и
+  inline) + multi-active boost в `score_break_candidates` (NFB SE
+  3-active cycle с canonical `(sec_a, C_fb)` ranked above local chord)
+  + chord-compound penalty (compound cycle [active, passive] chord +
+  sub-cycle демоутируется на multi-active circuits). ADR-T164 в
+  `DECISIONS.md`. Coverage: 1665 passed @ 86.05% (+6 vs T153 Phase D
+  baseline 1659: 5 T164 integration + 1 KB control).
+
 - **T153** — [closed 2026-06-01, PR #98] **`bridge measure phase-margin
   <NETLIST> --loop-break-node <node>`** для feedback-схем.
   Multi-phase: A (NFB SE tube fixture nfb-se-amp) + B (use case +

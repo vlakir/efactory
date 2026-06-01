@@ -439,63 +439,6 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   method convergence). Triggers: closing 4-method matrix gap;
   research-style validation methodology demand.
 
-- **T164** — [2026-06-01, заведено в T153 Phase C.3 ADR-T153g]
-  **Auto-detect heuristic refinement для multi-loop tube NFB.**
-
-  **Контекст.** T153 Phase C.3 показал что `score_break_candidates`
-  на NFB SE tube amp находит ~72 feedback cycles (local cathode
-  degeneration через unbypassed R_k1 + global NFB через R_fb +
-  parasitic cycles через ground), все с confidence < 0.5 (best
-  candidate `sec_b/R_load` — load junction, **не** feedback).
-  `detect_feedback_break_node` корректно raises
-  `AutoDetectConfidenceTooLowError` на default threshold 0.8, но
-  user-experience degraded: на tube NFB fixture auto-detect не
-  helpful, user должен передать break explicitly через
-  `--loop-break-node sec_a --loop-break-element C_fb`. KB
-  `spice.feedback-break-point.md` documents this — workaround
-  есть, fix откладывается до этой задачи.
-
-  **Phase D 2026-06-01 extends scope:** auto-detect также **ломается
-  на KiCad-exported op-amp inverting netlist** из-за leading `/` в
-  node names (`/in_neg`, `/vout`). Inline C.1 test (без `/`) даёт
-  правильный `(vout, R_fb)`; same topology с `/`-prefix даёт wrong
-  `(in_neg, R_fb)` conf=0.4 — `_pick_break_edge` prev-first preference
-  ломается. См. T153 Phase D Smoke S3 transcript. Fix должен покрыть
-  оба случая: KiCad-style node names + multi-loop tube topology.
-
-  **Подходы (Phase 0 research).**
-  - (a) **Cycle deduplication + dominant-loop preference:** 72
-    cycles в основном — variations одного физического loop через
-    разные intermediate nodes. Compress в N canonical loops через
-    edge-set equivalence + boost confidence для outer loop с
-    transformer / OPT (топологически distinguishable).
-  - (b) **Topology-aware confidence boost:** detect OPT subckt
-    (X… OPT_SE_*) в cycle → boost confidence для cycle проходящего
-    через X_OPT (это global NFB outer loop в SE/PP amp).
-  - (c) **Multi-candidate return:** `detect_feedback_break_node`
-    возвращает top-3 candidates вместо single — user CLI prompts
-    «pick from [vout/R_fb conf=0.62, sec_a/C_fb conf=0.55,
-    sec_b/R_load conf=0.45]».
-  - (d) **Node-name-prefix normalization** (Phase D Smoke S3 root
-    cause): `_pick_break_edge` heuristic должен быть invariant к
-    leading `/` (KiCad export convention). Strip `/` для активной /
-    пассивной классификации либо нормализовать перед matching.
-
-  **Acceptance.**
-  - На NFB SE fixture (`data/templates/nfb-se-amp/`) auto-detect
-    возвращает `(sec_a, C_fb)` (canonical break per ADR-T153g) с
-    confidence ≥ 0.7.
-  - На op-amp inverting fixture (inline AND KiCad-exported)
-    сохраняется выбор `(vout, R_fb)` / `(/vout, R_fb)` с
-    confidence ≥ 0.8 — leading `/` не должен ломать heuristic.
-  - Existing tests `test_measure_phase_margin_calibration*.py`
-    + `test_auto_detect_*` все green без regression.
-
-  Scope ~1-2 дня. Triggers: user complaint про bad auto-detect UX
-  на tube fixtures / KiCad-exported circuits; или подготовка к
-  C.3 retro update.
-
-
 ### Tech Debt (отложено)
 
 <!-- Задачи признанные нужными, но без активного владельца / времени.

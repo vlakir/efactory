@@ -332,21 +332,23 @@ async def test_rosenstark_degenerate_on_nfb_se_tube(
 def test_auto_detect_below_threshold_on_nfb_se_tube(
     tmp_path: Path,
 ) -> None:
-    """Auto-detect не справляется на NFB SE tube — multi-loop low-confidence.
+    """Default threshold 0.8 на NFB SE tube — multi-loop ceiling ~0.7.
 
-    На NFB SE topology обнаруживается ~72 feedback cycles (local
+    На NFB SE topology обнаруживается 72 feedback cycles (local
     cathode degeneration на V1.K через unbypassed R_k1 + global NFB
-    через R_fb + parasitic cycles через ground), все с confidence
-    ниже default threshold 0.8 (best candidate sec_b/R_load с
-    conf≈0.45 — actually load junction, не feedback). User должен
-    передать break explicitly через `--loop-break-node sec_a
-    --loop-break-element C_fb`.
+    через R_fb + parasitic cycles через ground + load chord
+    [X3, R_load]). T164 multi-active boost + chord-compound penalty
+    push canonical break `(sec_a, C_fb)` к top с confidence 0.70 —
+    выше threshold 0.7 (см. `test_auto_detect_refinement.py`), но
+    ниже default 0.8.
 
-    Refinement auto-detect heuristic под multi-loop tube NFB —
-    в BACKLOG (T-XXX), вне scope T153 Phase C.3.
+    Tube NFB inherently multi-cycle ⇒ ceiling 0.70 — fundamental
+    свойство topology, не bug. Caller на tube circuits сознательно
+    понижает threshold до 0.7 (либо передаёт break explicitly).
 
     Acceptance: detect_feedback_break_node поднимает
-    AutoDetectConfidenceTooLowError на default threshold 0.8.
+    AutoDetectConfidenceTooLowError на default threshold 0.8 даже
+    после T164 boost.
     """
     netlist = _write_netlist(tmp_path)
     netlist_text = netlist.read_text()

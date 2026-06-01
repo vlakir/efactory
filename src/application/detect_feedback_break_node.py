@@ -74,7 +74,7 @@ def detect_feedback_break_node(
         )
         raise NoFeedbackLoopDetectedError(msg)
 
-    info = score_break_candidates(cycles)
+    info = score_break_candidates(cycles, graph)
     if info.confidence < confidence_threshold:
         msg = (
             f'auto-detect confidence {info.confidence:.3f} below threshold '

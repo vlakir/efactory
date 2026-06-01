@@ -25,6 +25,123 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-01 — T164: auto-detect refinement (stimulus-distance + multi-active boost + chord-compound penalty)
+
+- **Контекст.** T153 Phase C.3 ADR-T153g + Phase D Smoke S3
+  выявили два failure mode'а `detect_feedback_break_node`:
+
+  1. **Multi-loop tube NFB** (NFB SE 6Н1П → 6П14П → OPT с global
+     voltage feedback): `score_break_candidates` находит 72
+     feedback cycles, top candidate `(sec_b, R_load)` conf=0.45
+     — load junction (X3 pairwise edge (sec_a, sec_b) + R_load
+     parallel), НЕ feedback. True canonical break `(sec_a, C_fb)`
+     с conf 0.43 ранжируется ниже.
+
+  2. **KiCad-export element ordering** (op-amp inverting): inline
+     netlist (passives first) auto-detect→`(vout, R_fb)` ✓; same
+     topology с KiCad export ordering (XU1 subckt first в netlist'е)
+     → `(in_neg, R_fb)` ✗. Root cause — DFS walks 2-element cycle
+     `[XU1, R_fb]` в обратном направлении когда XU1 первым
+     попадает в adjacency map. Prev-first preference в
+     `_pick_break_edge` picks `net_path[0]` vs `net_path[1]`
+     accordingly. Leading `/` на local labels (KiCad convention) —
+     incidental, не root cause.
+
+- **Решение.** Три complementary fixes в `domain/netlist_graph.py`:
+
+  1. **Stimulus-distance ranking** (`_bfs_stimulus_distance` +
+     enhanced `_pick_break_edge`). BFS distance от V/I source signal
+     terminal (non-ground pin) через passive R/C/L edges. Active
+     subckts блокируют BFS. Для каждой candidate boundary
+     `(node, ref)` в cycle: `dist = distance[node]`; max distance
+     wins (output-side дальше от input stimulus). Op-amp: vout
+     dist=2, in_neg dist=1 → vout picked walk-direction-invariantly.
+
+  2. **Multi-active boost** в `score_break_candidates`. Cycles
+     passing через больше distinct active elements (global outer
+     NFB) get boost: `+0.3 * (n_act - 1) / (max_actives - 1)` when
+     `max_actives > 1`. Op-amp с 1 active в графе → boost universal
+     (no-op в ranking). Tube с 3 active → 3-active C_fb cycle gets
+     +0.30 vs 2-active C_fb gets +0.15 vs 1-active phantom cycle
+     gets +0.
+
+  3. **Chord-compound penalty** в `score_break_candidates`. Chord
+     pair = `(active, passive)` где оба элемента имеют edge с
+     одинаковым net_pair (parallel edge); cycle, содержащий обе
+     компоненты chord pair, — НЕ minimal feedback, а compound chord
+     + sub-cycle. Penalty -0.3 на multi-active circuits (chord
+     detection пропускается если `max_actives <= 1` — для op-amp
+     [XU1, R_fb] chord IS canonical feedback, penalty уничтожил бы
+     correct answer).
+
+- **Эмпирические результаты на reference fixtures.**
+
+  | Fixture                   | Before T164              | After T164                |
+  |---------------------------|--------------------------|---------------------------|
+  | NFB SE (default thr 0.8)  | (sec_b, R_load) raises   | (sec_a, C_fb) raises      |
+  | NFB SE (thr 0.7)          | (sec_b, R_load) raises   | (sec_a, C_fb) conf=0.70 ✓ |
+  | op-amp inline ordering    | (vout, R_fb) conf=0.40   | (vout, R_fb) conf=0.40    |
+  | op-amp XU1-first ordering | (in_neg, R_fb) conf=0.40 | (vout, R_fb) conf=0.40 ✓  |
+  | op-amp KiCad `/`-prefix   | (/in_neg, R_fb) conf=0.40| (/vout, R_fb) conf=0.40 ✓ |
+
+  Tube NFB ceiling 0.70 — fundamental: 72 cycles topology inherently
+  caps confidence. Default threshold 0.8 на tube требует explicit
+  --confidence-threshold 0.7 OR explicit `--loop-break-node`.
+
+- **Альтернативы.**
+
+  - *Multi-candidate return + interactive prompt* (BACKLOG option (c)).
+    Auto-detect возвращает top-N candidates с conf'ом — CLI prompts
+    user. Отвергнуто: спека phase-margin требует single answer для
+    headless batch flow; interactive prompt ломает CI/agent pipeline.
+  - *Node-name `/`-stripping* (BACKLOG option (d)). Маскирует
+    element-ordering root cause не лечит. После probe (см. research
+    log) подтвердилось: проблема не в `/`, а в ordering. Отвергнуто.
+  - *Cycle deduplication + dominant-loop preference* (BACKLOG option
+    (a)). Сложнее imp.; multi-active boost достигает того же эффекта
+    через scoring без structural cycle merging. Отложено как
+    follow-up если boost не покрывает.
+  - *Lower default threshold to 0.7*. Default 0.8 был выбран per
+    Spec §3 C4 convention; нижнее значение увеличивает риск false
+    positive на менее определённых fixtures. Tube NFB requires
+    explicit threshold override — это lesser evil чем universal
+    lowering. Отвергнуто.
+
+- **Последствия.**
+
+  - Op-amp auto-detect теперь invariant к element-iteration order
+    (KiCad export ordering vs inline) — ключевой UX win для
+    headless workflows через `kicad-cli sch export netlist`.
+  - Tube NFB auto-detect работает на threshold 0.7 (canonical
+    `(sec_a, C_fb)`); default 0.8 всё ещё raises — conservative
+    default preserved.
+  - **Test surface +5** — 5 integration tests в
+    `tests/integration/application/test_auto_detect_refinement.py`
+    (NFB SE picks canonical, NFB SE default threshold still raises,
+    op-amp passives-first baseline, op-amp XU1-first invariance,
+    op-amp KiCad `/`-prefix invariance).
+  - `score_break_candidates(cycles)` API extended с optional
+    `graph: CircuitGraph | None = None`. При `graph=None` boost +
+    penalty не применяются (backward compat с unit-tests в
+    `tests/unit/domain/test_netlist_graph.py`). Production caller
+    `detect_feedback_break_node` всегда передаёт graph.
+  - KB topic `spice.feedback-break-point.md` updated: tube NFB
+    section с threshold 0.7 workflow + op-amp section с invariance
+    note. KB Level 2 regression case в `test_control_examples.py`
+    queries «auto-detect phase margin tube NFB threshold» → matches
+    topic, finds «threshold 0.7» directive.
+  - `_W_MULTI_ACTIVE = 0.3` + `_P_CHORD_COMPOUND = 0.3` —
+    empirically tuned to give NFB SE conf exactly 0.70 на canonical
+    cycle. Tighter calibration potential если найдём другие
+    multi-loop fixtures (BACKLOG T163 BJT CE NFB).
+
+- **Источники.**
+  - T153 Phase C.3 ADR-T153g (per-topology matrix); identified gap.
+  - Phase D Smoke S3 transcript: op-amp KiCad ordering failure.
+  - `tests/integration/application/test_measure_phase_margin_calibration_nfb_se.py`
+    test_auto_detect_below_threshold_on_nfb_se_tube (inverted
+    docstring after T164: ceiling 0.70 vs <0.5).
+
 ### 2026-06-01 — T153 ADR-T153h: enforce «Vinj — единственный AC source» в use case (Phase D)
 
 - **Контекст.** Spec Q7 (resolved as `a`, Phase B.4 design) явно

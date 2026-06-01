@@ -128,6 +128,14 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'spice.feedback-break-point',
         'sec_a',
     ),
+    # T164 Level 2 — KB sync regression для auto-detect refinement
+    # (multi-active boost + stimulus-distance ranking — tube NFB
+    # auto-detect at threshold 0.7, op-amp invariance к KiCad ordering).
+    (
+        'auto-detect phase margin tube NFB threshold confidence',
+        'spice.feedback-break-point',
+        'threshold 0.7',
+    ),
 ]
 
 

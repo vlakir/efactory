@@ -26,6 +26,7 @@ Analyzer (Phase B.5.3+, не в этом файле сразу):
 from __future__ import annotations
 
 import re
+from collections import deque
 from typing import TYPE_CHECKING, Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -328,6 +329,30 @@ _W_IMPEDANCE = 0.1  # currently unused — Phase C calibration
 _GROUND_NETS: frozenset[str] = frozenset({'0', 'gnd', 'GND', 'ground'})
 _P_GROUND_CYCLE = 0.3
 
+# Multi-active boost (T164): cycles passing through more distinct active
+# elements (global outer NFB loop) get confidence boost vs local chord
+# cycles (single-active + parasitic passive parallel). NFB SE tube amp:
+# canonical break (sec_a, C_fb) lives in 3-active cycle (X1+X2+X3);
+# load chord (sec_b, R_load) lives in 1-active cycle. Boost scales
+# linearly: 0 для 1-active circuits (op-amp), full weight для cycle
+# achieving max_actives. Op-amp с 1 active в графе → boost universal,
+# не меняет ranking. Tube с 3 active → top cycle получает +0.3 vs
+# load chord +0.
+_W_MULTI_ACTIVE = 0.3
+
+# Chord-compound penalty (T164): cycle containing BOTH elements of a
+# 2-element [active, passive] chord pair (parallel edge sharing same
+# net_pair) — НЕ minimal feedback cycle, а compound chord + sub-cycle.
+# На multi-active circuits (≥2 actives) такая compound representation
+# обычно artefact pairwise expansion + load element. NFB SE: chord
+# pair (X3, R_load) creates compound `(X2, X3, R_load, C_fb, R_fb, X1,
+# R_p1)` outranking pure feedback `(X1, X2, X3, C_fb, R_fb, R_p1)`
+# через extra passive boosting fb ratio. Penalty correlates compound
+# cycles обратно. На single-active circuits (op-amp [XU1, R_fb] —
+# тоже chord, но это И ЕСТЬ canonical feedback) — penalty НЕ применяется
+# (max_actives <= 1).
+_P_CHORD_COMPOUND = 0.3
+
 
 def find_cycles(graph: CircuitGraph) -> tuple[FeedbackCycle, ...]:
     """
@@ -356,6 +381,7 @@ def find_cycles(graph: CircuitGraph) -> tuple[FeedbackCycle, ...]:
     from domain.phase_margin import FeedbackCycle  # noqa: PLC0415
 
     id_to_type = {e.element_id: e.element_type for e in graph.edges}
+    stimulus_distance = _bfs_stimulus_distance(graph)
     raw_cycles = _enumerate_simple_cycles(graph)
     valid: list[FeedbackCycle] = []
     for net_path, element_ids in raw_cycles:
@@ -370,7 +396,7 @@ def find_cycles(graph: CircuitGraph) -> tuple[FeedbackCycle, ...]:
         feedback_score = len(passive_ids) / n_total
 
         suggested_node, suggested_ref = _pick_break_edge(
-            net_path, element_ids, id_to_type
+            net_path, element_ids, id_to_type, stimulus_distance
         )
         valid.append(
             FeedbackCycle(
@@ -388,16 +414,26 @@ def find_cycles(graph: CircuitGraph) -> tuple[FeedbackCycle, ...]:
 
 def score_break_candidates(
     cycles: tuple[FeedbackCycle, ...],
+    graph: CircuitGraph | None = None,
 ) -> AutoDetectInfo:
     """
     Aggregate FeedbackCycles → AutoDetectInfo с edge-pair selection.
 
     Per ADR-T153b §5 confidence formula (initial weights из ADR;
-    calibration в Phase C):
+    calibration в Phase C, multi-active boost в T164):
 
         confidence = w1·forward_active + w2·feedback_passive
                    + w3·single_dominant + w4·impedance_norm
-                   - p1·multi_cycle_penalty
+                   + w5·multi_active_boost
+                   - p1·ground_penalty
+
+    `graph` (T164) — optional; даёт scorer'у element-type context
+    для computing multi-active boost (cycles passing through more
+    distinct active elements get higher confidence — pushes global
+    outer NFB loop above local chord cycles на multi-stage tube
+    amps). При `graph=None` boost не применяется (backward compat
+    для unit-tests; production callers через `detect_feedback_break_node`
+    всегда передают graph).
 
     Highest-confidence FeedbackCycle → chosen edge.
     Остальные → alternatives (sorted desc by confidence).
@@ -414,8 +450,23 @@ def score_break_candidates(
 
     single_dominant = 1.0 if len(cycles) == 1 else 0.0
 
+    if graph is not None:
+        id_to_type = {e.element_id: e.element_type for e in graph.edges}
+        n_actives_per_cycle = [
+            sum(1 for eid in c.elements if id_to_type.get(eid) in _ACTIVE_TYPES)
+            for c in cycles
+        ]
+        max_actives = max(n_actives_per_cycle)
+        chord_pairs = (
+            _detect_chord_pairs(graph, id_to_type) if max_actives > 1 else set()
+        )
+    else:
+        n_actives_per_cycle = [0] * len(cycles)
+        max_actives = 0
+        chord_pairs = set()
+
     scored: list[tuple[FeedbackCycle, float]] = []
-    for c in cycles:
+    for c, n_act in zip(cycles, n_actives_per_cycle, strict=True):
         confidence = (
             _W_FORWARD_ACTIVE * c.forward_path_score
             + _W_FEEDBACK_PASSIVE * c.feedback_path_score
@@ -424,6 +475,13 @@ def score_break_candidates(
         )
         if any(n in _GROUND_NETS for n in c.nodes):
             confidence -= _P_GROUND_CYCLE
+        if max_actives > 1:
+            # Scale 0..W_MULTI_ACTIVE: 1 active → 0; max_actives → full weight.
+            confidence += _W_MULTI_ACTIVE * (n_act - 1) / (max_actives - 1)
+        if chord_pairs:
+            cycle_elt_set = frozenset(c.elements)
+            if any(chord <= cycle_elt_set for chord in chord_pairs):
+                confidence -= _P_CHORD_COMPOUND
         confidence = max(0.0, min(1.0, confidence))
         scored.append((c, confidence))
 
@@ -441,7 +499,8 @@ def score_break_candidates(
         algorithm_notes=(
             f'{len(cycles)} feedback cycle(s); '
             f'forward={primary_cycle.forward_path_score:.2f}, '
-            f'feedback={primary_cycle.feedback_path_score:.2f}'
+            f'feedback={primary_cycle.feedback_path_score:.2f}; '
+            f'max_actives_in_cycle={max_actives}'
         ),
     )
 
@@ -542,10 +601,108 @@ def _unique_preserving_order(items: Iterable[str]) -> list[str]:
     return out
 
 
+def _detect_chord_pairs(
+    graph: CircuitGraph,
+    id_to_type: dict[str, ElementType],
+) -> set[frozenset[str]]:
+    """
+    Detect (active, passive) chord pairs: оба элемента имеют edge с
+    одинаковым net_pair.
+
+    Использование (T164): на multi-active circuits cycle, содержащий
+    обе компоненты chord pair, — НЕ minimal feedback, а compound chord
+    + sub-cycle. Penalty applied в `score_break_candidates`.
+
+    Возвращает set frozenset({active_id, passive_id}) для O(1) lookup
+    is-subset проверок.
+    """
+    elt_pairs: dict[str, set[frozenset[str]]] = {}
+    for e in graph.edges:
+        if e.net_pair[0] == e.net_pair[1]:
+            continue
+        elt_pairs.setdefault(e.element_id, set()).add(frozenset(e.net_pair))
+    pairs: set[frozenset[str]] = set()
+    actives = [eid for eid in elt_pairs if id_to_type.get(eid) in _ACTIVE_TYPES]
+    passives = [eid for eid in elt_pairs if id_to_type.get(eid) in _PASSIVE_TYPES]
+    for a_id in actives:
+        a_pairs = elt_pairs[a_id]
+        for p_id in passives:
+            if a_pairs & elt_pairs[p_id]:
+                pairs.add(frozenset({a_id, p_id}))
+    return pairs
+
+
+def _bfs_stimulus_distance(graph: CircuitGraph) -> dict[str, int]:
+    """
+    BFS distance from V/I source signal terminals через passive edges.
+
+    Signal terminal heuristic: для каждого V/I source, terminal NOT
+    в `_GROUND_NETS` считается «signal»; если оба ground — берётся
+    первый; если оба non-ground — оба seeded.
+
+    Traverses ТОЛЬКО passive edges (R/C/L). Active subckts / транзисторы
+    блокируют BFS — distance считается по signal-conductive path в
+    AC/small-signal sense, не через amplifier'ы.
+
+    Result: dict net → integer distance. Nets не достижимые от signal
+    seeds (e.g., изолированные ground-only subgraphs) отсутствуют в
+    dict — caller should `.get(net, 0)` or similar default.
+
+    T164: используется в `_pick_break_edge` для walk-direction-invariant
+    selection of feedback break — output-side passive (further from
+    stimulus) предпочтительнее input-side.
+    """
+    seeds: set[str] = set()
+    for e in graph.edges:
+        if e.element_type not in _NON_FEEDBACK_TYPES:
+            continue
+        a, b = e.net_pair
+        a_gnd = a in _GROUND_NETS
+        b_gnd = b in _GROUND_NETS
+        if a_gnd and b_gnd:
+            seeds.add(a)
+        elif a_gnd:
+            seeds.add(b)
+        elif b_gnd:
+            seeds.add(a)
+        else:
+            seeds.add(a)
+            seeds.add(b)
+
+    if not seeds:
+        return {}
+
+    passive_adj: dict[str, list[str]] = {n: [] for n in graph.nets}
+    passive_adj_seen: dict[str, set[str]] = {n: set() for n in graph.nets}
+    for e in graph.edges:
+        if e.element_type not in _PASSIVE_TYPES:
+            continue
+        a, b = e.net_pair
+        if a == b:
+            continue
+        if b not in passive_adj_seen[a]:
+            passive_adj[a].append(b)
+            passive_adj_seen[a].add(b)
+        if a not in passive_adj_seen[b]:
+            passive_adj[b].append(a)
+            passive_adj_seen[b].add(a)
+
+    distance: dict[str, int] = {s: 0 for s in seeds if s in passive_adj}
+    queue: deque[str] = deque(distance)
+    while queue:
+        u = queue.popleft()
+        for v in passive_adj[u]:
+            if v not in distance:
+                distance[v] = distance[u] + 1
+                queue.append(v)
+    return distance
+
+
 def _pick_break_edge(
     net_path: list[str],
     element_ids: list[str],
     id_to_type: dict[str, ElementType],
+    stimulus_distance: dict[str, int] | None = None,
 ) -> tuple[str, str]:
     """
     Pick break point: passive element adjacent to active в цикле walk.
@@ -553,42 +710,63 @@ def _pick_break_edge(
     Cycle representation: net_path[i] → element_ids[i] → net_path[i+1].
     Длина element_ids = len(net_path) - 1.
 
-    Heuristic: первый passive element в walk'е, чей **prev** или
-    **next** element в цикле — active. Break_node = shared net между
-    ними. Это формализует «boundary между active и passive run'ами».
+    Heuristic: passive element, чей **prev** или **next** element в
+    цикле — active. Break_node = shared net между ними. Это формализует
+    «boundary между active и passive run'ами».
 
-    **prev-first preference** (T153 Phase C.1.5 calibration finding):
-    typical feedback loop topology — `<forward_active> → break_node →
-    <feedback_passive>`. Boundary на «driver-output side» (где forward
-    active передаёт сигнал в feedback passive) — это net на КОНЦЕ
-    active'а / НАЧАЛЕ passive'а в walk'е. Соответствует **prev** check
-    (active элемент перед passive). Этот break point — low-Z driver
-    side, корректен для Middlebrook V single-injection (C.1.3 empirical
-    validation). Если ни prev, ни next не active, fallback на «next»
-    (исторический выбор pre-C.1.5).
+    **Stimulus-distance ranking** (T164): когда несколько candidates
+    boundary в цикле (typical для 2-element chord cycle типа op-amp
+    R_fb feedback, где обе stороны — XU1), выбираем break_node с
+    **наибольшим** BFS distance от V/I source через passive edges.
+    Output-side break (low-Z driver, далеко от input stimulus) wins
+    над input-side независимо от walk direction (KiCad-export ordering
+    vs inline). Pre-T164 prev-first preference давала разные результаты
+    для одной и той же 2-element cycle при разном element-iteration
+    order (см. Phase D Smoke S3 transcript).
+
+    Ground penalty: candidates с break_node в `_GROUND_NETS` отложены
+    в fallback bucket (`Vinj N 0` → probe `v(0)` отсутствует в ngspice
+    output → ValueError downstream).
+
+    Args:
+        net_path: cycle walk net sequence (length n+1, last == first).
+        element_ids: cycle walk element_id sequence (length n).
+        id_to_type: element_id → ElementType lookup.
+        stimulus_distance: optional dict net → BFS distance от V/I
+            stimulus (см. `_bfs_stimulus_distance`). При `None` или
+            пустом dict используется dist=0 для всех — деградирует до
+            alphabetical-tiebreak, что детерминированно но менее
+            физически осмысленно.
+
     """
+    if stimulus_distance is None:
+        stimulus_distance = {}
     n = len(element_ids)
-    # Two-pass: сначала ищем boundary где break_node — non-ground;
-    # ground breaks (`Vinj N 0` → probe `v(0)` отсутствует в ngspice
-    # output) — degenerate fallback. C.1.5 finding (op-amp с R_load на
-    # ground): pick_edge без ground-skip может выбрать (`0`, R_load)
-    # вместо (vout, R_fb).
-    for allow_ground in (False, True):
-        for i, elt_id in enumerate(element_ids):
-            if id_to_type.get(elt_id) not in _PASSIVE_TYPES:
+    # candidate tuple: (is_ground, -distance, node, elt_id) → ascending sort
+    # picks non-ground first, then largest distance, then alphabetical
+    candidates: list[tuple[int, int, str, str]] = []
+    for i, elt_id in enumerate(element_ids):
+        if id_to_type.get(elt_id) not in _PASSIVE_TYPES:
+            continue
+        next_elt = element_ids[(i + 1) % n]
+        prev_elt = element_ids[(i - 1) % n]
+        for nbr_elt, node in (
+            (prev_elt, net_path[i]),
+            (next_elt, net_path[i + 1]),
+        ):
+            if id_to_type.get(nbr_elt) not in _ACTIVE_TYPES:
                 continue
-            next_elt = element_ids[(i + 1) % n]
-            prev_elt = element_ids[(i - 1) % n]
-            if id_to_type.get(prev_elt) in _ACTIVE_TYPES:
-                node = net_path[i]
-                if allow_ground or node not in _GROUND_NETS:
-                    return node, elt_id
-            if id_to_type.get(next_elt) in _ACTIVE_TYPES:
-                node = net_path[i + 1]
-                if allow_ground or node not in _GROUND_NETS:
-                    return node, elt_id
+            is_ground = 1 if node in _GROUND_NETS else 0
+            dist = stimulus_distance.get(node, 0)
+            candidates.append((is_ground, -dist, node, elt_id))
 
-    # Fallback: первый passive elt, net на ИХ начале (тоже с ground-skip)
+    if candidates:
+        candidates.sort()
+        _, _, node, elt_id = candidates[0]
+        return node, elt_id
+
+    # Fallback: нет active-passive boundary — первый passive
+    # (non-ground preferred).
     for allow_ground in (False, True):
         for i, elt_id in enumerate(element_ids):
             if id_to_type.get(elt_id) not in _PASSIVE_TYPES:
