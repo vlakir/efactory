@@ -409,36 +409,6 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   saturation-aware 3D FEM inductance (e.g., flyback choke с
   high DC bias).
 
-- **T163** — [2026-06-01, заведено в T153 Phase C.3 ADR-T153g]
-  **BJT CE NFB fixture для full 4-method cross-validation matrix.**
-
-  **Контекст.** T153 Phase C.1 (op-amp inverting) validated strict
-  Middlebrook V + Tian, deferred I + Rosenstark на BJT/MOSFET. T153
-  Phase C.3 (tube SE NFB) validated strict Middlebrook V только,
-  documented I + Tian + Rosenstark degenerate из-за tube unilateral
-  physics + OPT reactive impedance. **BJT common-emitter с emitter
-  resistor + R_fb collector→base** — natural fixture для current-
-  mode break (base = high-Z current input), bidirectional two-port
-  break (passive interconnect между active stages), и all-4 method
-  cross-validation. Закроет per-topology applicability matrix в
-  ADR-T153g (BJT CE row ?→✓✓✓✓).
-
-  **Acceptance.**
-  - Новая fixture `data/templates/bjt-ce-nfb/` (builder pipeline,
-    snapshot test, README с component values из textbook reference
-    — Sedra-Smith Ch. 10 example).
-  - Calibration test `test_measure_phase_margin_calibration_bjt_ce.py`
-    с 4 strict parametrized cases (V, I, Tian, Rosenstark) — все
-    дают PM within ±3° vs analytical reference либо vs strictest
-    method (V).
-  - ADR-T153g updated с BJT CE row + analytical reference table.
-  - KB topic `spice.feedback-break-point.md` extended с BJT
-    canonical break point + per-method optimal break recommendation.
-
-  Scope ~2-3 дня (fixture tuning + 4-method debugging + cross-
-  method convergence). Triggers: closing 4-method matrix gap;
-  research-style validation methodology demand.
-
 ### Tech Debt (отложено)
 
 <!-- Задачи признанные нужными, но без активного владельца / времени.

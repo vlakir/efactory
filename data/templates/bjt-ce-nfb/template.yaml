@@ -1,0 +1,7 @@
+name: bjt-ce-nfb
+description: |
+  Single-stage common-emitter NPN (2N3904) amp с voltage-divider
+  bias + shunt-shunt AC feedback (R_F=47k + C_F=1µ DC-block,
+  collector→base). Q-point V_CE≈7.8V / I_C≈1mA. Reference fixture
+  для T153 phase-margin 4-method matrix (ADR-T153g BJT CE row).
+summary: BJT CE shunt-shunt NFB (2N3904) — фикстура для phase-margin 4-method calibration.

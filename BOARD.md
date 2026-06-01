@@ -61,6 +61,20 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T163** — [taken 2026-06-01, branch `T163-bjt-ce-nfb`]
+  **BJT CE NFB fixture для full 4-method cross-validation matrix.**
+  Single-stage CE shunt-shunt feedback (R_F collector→base) с
+  2N3904 — закрывает per-topology matrix в ADR-T153g (BJT CE row
+  `?` → empirical). Single PR (Phase A fixture + Phase B
+  4-method calibration). Spec — `specs/T163-bjt-ce-nfb/spec.md`
+  (Analyzed, 1 Critical: 2N3904 SPICE model licensing — fallback
+  на generic Gummel-Poon если ON Semi запрещает redistribute).
+  Acceptance: V strict @ canonical break (primary), ≥1
+  cross-validate strict ±3° (желательно), matrix documented с
+  reasoning для degenerate (обязательно). ADR-T153g + KB
+  spice.feedback-break-point.md updated. T164 Level 3 smoke (8
+  scenarios) — отдельный PR после, TODO 0ea5f0ef.
+
 ## Done
 
 - **T164** — [closed 2026-06-01, PR #99] **Auto-detect heuristic

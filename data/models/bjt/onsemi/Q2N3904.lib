@@ -1,0 +1,19 @@
+* Q2N3904 — General-purpose NPN BJT (TO-92, 200 mA, 40 V, 250 mW).
+*
+* Source: ON Semiconductor (now onsemi) PSpice library. Canonical
+* Gummel-Poon parameters from the public 2N3904 PSpice model file
+* widely redistributed in OSS SPICE distributions (LTspice III,
+* ngspice tutorials, KiCad-eeschema-Sim Spice examples). Parameters
+* fit Q-point V_CE=10 V, I_C=10 mA typical (datasheet h_FE @ V_CE=1 V,
+* I_C=10 mA = 100…300, typical ~150).
+*
+* category: bjt
+* subcategory: small_signal_npn
+* pins: C (collector, node 1), B (base, node 2), E (emitter, node 3)
+*
+* Used in efactory T163 BJT CE NFB fixture for phase-margin
+* 4-method calibration matrix (ADR-T153g per-topology row).
+.MODEL Q2N3904 NPN(IS=6.734f XTI=3 EG=1.11 VAF=74.03 BF=416.4 NE=1.259
++ ISE=6.734f IKF=66.78m XTB=1.5 BR=.7374 NC=2 ISC=0 IKR=0 RC=1
++ CJC=3.638p MJC=.3085 VJC=.75 FC=.5 CJE=4.493p MJE=.2593 VJE=.75
++ TR=239.5n TF=301.2p ITF=.4 VTF=4 XTF=2 Rb=10)
