@@ -62,15 +62,26 @@ def test_no_feedback_loop_raises_domain_error() -> None:
         detect_feedback_break_node(netlist_text=netlist, confidence_threshold=0.5)
 
 
-def test_open_loop_amp_no_feedback() -> None:
-    """Amplifier без feedback path (open-loop) — нет cycle."""
+def test_open_loop_amp_no_real_feedback() -> None:
+    """Open-loop amplifier: signal path не возвращается на gate.
+
+    Phase C.1.5 (MIN_CYCLE_LENGTH=2): graph analyzer ловит parasitic
+    MOSFET body-drain cycle (M1 + R_d, 2-net через vdd→0), но его
+    confidence low (ground penalty + non-signal-path topology). С
+    threshold=0.5 raises `AutoDetectConfidenceTooLowError` — caller
+    видит, что auto-detect не нашёл «настоящий» feedback и должен
+    указать break point вручную (либо признать схему open-loop).
+
+    Pre-C.1.5 (MIN=3) поведение — `NoFeedbackLoopDetectedError` —
+    было artefact того, что 2-net parasitic не считался cycle.
+    """
     netlist = (
         'V_in vin 0 AC 1\n'
         'R_in vin gate 1k\n'
         'M1 vdd gate src 0 NMOS\n'
-        'R_d vdd 0 10k\n'  # no path from drain back to gate
+        'R_d vdd 0 10k\n'  # no path from drain back to gate (signal-wise)
     )
-    with pytest.raises(NoFeedbackLoopDetectedError):
+    with pytest.raises(AutoDetectConfidenceTooLowError):
         detect_feedback_break_node(netlist_text=netlist, confidence_threshold=0.5)
 
 

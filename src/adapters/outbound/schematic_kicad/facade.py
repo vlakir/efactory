@@ -23,6 +23,7 @@ from domain.schematic import (
     ComponentSpec,
     JunctionSpec,
     LabelSpec,
+    NoConnectSpec,
     Position,
     SchematicSpec,
     TextSpec,
@@ -98,6 +99,22 @@ _CONN_01X04_PINS = (
     _PinLayout('2', (-5.08, 0.0)),
     _PinLayout('3', (-5.08, 2.54)),
     _PinLayout('4', (-5.08, 5.08)),
+)
+# Simulation_SPICE:OPAMP (5-pin op-amp symbol). Library coords (Y-up):
+#   pin 1 (+):   (-7.62, +2.54)
+#   pin 2 (-):   (-7.62, -2.54)
+#   pin 3 (V+):  (-2.54, +7.62) — power, often unused for macromodels
+#   pin 4 (V-):  (-2.54, -7.62) — power, often unused for macromodels
+#   pin 5 (OUT): (+7.62,  0.0)
+# Pattern (как BJT/MOSFET/Valve): pin coords уже schematic-абсолютные
+# (Y-flipped от library), чтобы facade pin handles совпадали с реальными
+# screen positions.
+_OPAMP_PINS = (
+    _PinLayout('1', (-7.62, -2.54)),
+    _PinLayout('2', (-7.62, 2.54)),
+    _PinLayout('3', (-2.54, -7.62)),
+    _PinLayout('4', (-2.54, 7.62)),
+    _PinLayout('5', (7.62, 0.0)),
 )
 
 
@@ -353,6 +370,9 @@ _BJT_LABEL_OFFSETS = _LabelOffsets(ref=(5.08, 1.27), value=(5.08, -1.27))
 _MOSFET_LABEL_OFFSETS = _BJT_LABEL_OFFSETS
 # Conn_01x04: Reference сверху, Value снизу — canonical Connector_Generic.
 _CONN_01X04_LABEL_OFFSETS = _LabelOffsets(ref=(0.0, 5.08), value=(0.0, -7.62))
+# OpAmp (Simulation_SPICE:OPAMP) — Reference сверху-справа, Value снизу-
+# справа от body (canonical KiCad placement op-amp triangle).
+_OPAMP_LABEL_OFFSETS = _LabelOffsets(ref=(2.54, -5.08), value=(2.54, 5.08))
 
 # Sim.Device='V' (built-in voltage source) + Sim.Type='DC' — без Sim.Library.
 # Пустая Sim.Library триггерит KiCad GUI warning «Не найдено определение
@@ -536,6 +556,45 @@ class Mosfet(_ComponentHandle):
 
 
 @dataclass(frozen=True)
+class OpAmp(_ComponentHandle):
+    """
+    Op-amp (`Simulation_SPICE:OPAMP`) — 5-pin: IN+, IN-, V+, V-, OUT.
+
+    Default `add_op_amp` mapping `Sim.Pins='1=INP 2=INN 5=OUT'` подаёт
+    3-port SUBCKT-вызов: V+/V- (pins 3/4) остаются floating в
+    netlist'е, KiCad ERC выдаст warning «pin not connected», но SPICE
+    export'у это не мешает — macromodel'и (GENERIC_OPAMP_*) supply
+    pins не используют. Полные op-amp модели с собственным
+    PSRR/headroom-поведением — другая mapping (`1=IN+ 2=IN- 3=VCC
+    4=VEE 5=OUT`) + явные подключения через `.pin_vplus`/`.pin_vminus`.
+    """
+
+    @property
+    def pin_inp(self) -> Position:
+        """Non-inverting input («+»)."""
+        return self.pin_positions['1']
+
+    @property
+    def pin_inn(self) -> Position:
+        """Inverting input («-»)."""
+        return self.pin_positions['2']
+
+    @property
+    def pin_vplus(self) -> Position:
+        """Positive supply (V+)."""
+        return self.pin_positions['3']
+
+    @property
+    def pin_vminus(self) -> Position:
+        """Negative supply (V-)."""
+        return self.pin_positions['4']
+
+    @property
+    def pin_out(self) -> Position:
+        return self.pin_positions['5']
+
+
+@dataclass(frozen=True)
 class Subcircuit(_ComponentHandle):
     """
     Generic SPICE subckt-инстанс поверх Connector_Generic:Conn_01x0N.
@@ -594,6 +653,7 @@ class Schematic:
     _components: list[ComponentSpec] = field(default_factory=list)
     _wires: list[WireSpec] = field(default_factory=list)
     _junctions: list[JunctionSpec] = field(default_factory=list)
+    _no_connects: list[NoConnectSpec] = field(default_factory=list)
     _labels: list[LabelSpec] = field(default_factory=list)
     _texts: list[TextSpec] = field(default_factory=list)
     _pwr_counter: int = 0
@@ -1212,6 +1272,57 @@ class Schematic:
             pin_by_name=pin_by_name,
         )
 
+    def add_op_amp(
+        self,
+        *,
+        model_id: str,
+        lib_path: Path,
+        at: tuple[float, float] | Position,
+        reference: str | None = None,
+        rotation: float = 0.0,
+        sim_pin_mapping: str = '1=INP 2=INN 5=OUT',
+    ) -> OpAmp:
+        """
+        Op-amp (`Simulation_SPICE:OPAMP`) — 5-pin (IN+, IN-, V+, V-, OUT)
+        SUBCKT-инстанс.
+
+        Default `sim_pin_mapping='1=INP 2=INN 5=OUT'` подаёт 3-port
+        SUBCKT-call для macromodel'ей вроде `GENERIC_OPAMP_2POLE`, где
+        supply pins не используются. V+/V- (pins 3/4) остаются floating
+        в netlist'е — это даёт ERC warning, но не блокирует SPICE.
+
+        Для full op-amp моделей с supply-dependent поведением (LM358,
+        OPA134) — расширенный mapping `'1=IN+ 2=IN- 3=VCC 4=VEE 5=OUT'`
+        + явные подключения через `.pin_vplus`/`.pin_vminus`.
+        """
+        if reference is None:
+            reference = self._auto_ref('U')
+        position = _to_position(at)
+        properties = {
+            'Sim.Device': 'subckt',
+            'Sim.Library': str(lib_path),
+            'Sim.Name': model_id,
+            'Sim.Pins': sim_pin_mapping,
+        }
+        ref_pos, value_pos = _label_positions(position, _OPAMP_LABEL_OFFSETS)
+        self._components.append(
+            ComponentSpec(
+                lib_id='Simulation_SPICE:OPAMP',
+                reference=reference,
+                value=model_id,
+                position=position,
+                rotation=rotation,
+                properties=properties,
+                pins=tuple(p.name for p in _OPAMP_PINS),
+                ref_position=ref_pos,
+                value_position=value_pos,
+            ),
+        )
+        return OpAmp(
+            reference=reference,
+            pin_positions=_pin_positions(position, rotation, _OPAMP_PINS),
+        )
+
     def add_tube(
         self,
         *,
@@ -1298,6 +1409,16 @@ class Schematic:
     def junction(self, at: tuple[float, float] | Position) -> None:
         self._junctions.append(JunctionSpec(at=_to_position(at)))
 
+    def no_connect(self, at: tuple[float, float] | Position) -> None:
+        """
+        Маркер «pin намеренно не подключён» (гасит KiCad ERC warning).
+
+        Не влияет на SPICE netlist — нужен только для GUI-визуализации
+        и ERC checker'а. Типичный use case: V+/V- supply pins op-amp
+        macromodel'и, которые SPICE writer пропускает через `Sim.Pins`.
+        """
+        self._no_connects.append(NoConnectSpec(at=_to_position(at)))
+
     def label(self, text: str, *, at: tuple[float, float] | Position) -> None:
         self._labels.append(LabelSpec(text=text, position=_to_position(at)))
 
@@ -1321,6 +1442,7 @@ class Schematic:
             components=tuple(self._components),
             wires=tuple(self._wires),
             junctions=tuple(self._junctions),
+            no_connects=tuple(self._no_connects),
             labels=tuple(self._labels),
             texts=tuple(self._texts),
         )

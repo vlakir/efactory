@@ -34,6 +34,7 @@ if TYPE_CHECKING:
         ComponentSpec,
         JunctionSpec,
         LabelSpec,
+        NoConnectSpec,
         Position,
         SchematicSpec,
         TextSpec,
@@ -185,6 +186,15 @@ def _junction_block(depth: int, junction: JunctionSpec) -> list[str]:
         _t(depth + 1) + f'(at {_fmt(junction.at.x_mm)} {_fmt(junction.at.y_mm)})',
         _t(depth + 1) + '(diameter 0)',
         _t(depth + 1) + '(color 0 0 0 0)',
+        _t(depth + 1) + f'(uuid "{_new_uuid()}")',
+        _t(depth) + ')',
+    ]
+
+
+def _no_connect_block(depth: int, no_connect: NoConnectSpec) -> list[str]:
+    return [
+        _t(depth) + '(no_connect',
+        _t(depth + 1) + f'(at {_fmt(no_connect.at.x_mm)} {_fmt(no_connect.at.y_mm)})',
         _t(depth + 1) + f'(uuid "{_new_uuid()}")',
         _t(depth) + ')',
     ]
@@ -350,6 +360,8 @@ class KicadSchematicWriter:
             lines.extend(_wire_block(1, wire))
         for junction in spec.junctions:
             lines.extend(_junction_block(1, junction))
+        for no_connect in spec.no_connects:
+            lines.extend(_no_connect_block(1, no_connect))
         for label in spec.labels:
             lines.extend(_label_block(1, label))
         for text in spec.texts:

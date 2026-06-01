@@ -1,0 +1,9 @@
+name: op-amp-inverting
+description: |
+  Inverting op-amp с two-pole macromodel (GENERIC_OPAMP_2POLE):
+  R_in=1k, R_fb=10k → closed-loop gain -10 V/V (β=1/11). A0=1e5,
+  fp1=10 Hz, fp2≈66 kHz → analytical T_loop_DC ≈ 9091, crossover
+  ≈ 64 kHz, **phase margin ≈ 45°** на crossover. Reference fixture
+  для cross-validation 4 phase-margin injection methods (T153 Phase
+  C.1 calibration target).
+summary: Op-amp inverting amp 2-pole (PM≈45°) — calibration reference для phase-margin methods.

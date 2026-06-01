@@ -25,6 +25,126 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-01 — T153 ADR-T153f: break point convention + applicability matrix (Phase C.1 calibration)
+
+- **Контекст.** Phase C.1 calibration на op-amp inverting reference
+  fixture (R_in=1k, R_fb=10k, GENERIC_OPAMP_2POLE A=1e5, fp1=10 Hz,
+  fp2≈66 kHz, β=1/11, analytical T_loop_DC ≈ 9091, PM ≈ 45°)
+  выявила:
+
+  1. **Middlebrook V single-injection** `T = -V_rev/V_fwd` корректно
+     даёт `T_loop` (≈ 9091) только если break — на **low-Z driver**
+     стороне (op-amp output, transistor collector, MOSFET drain).
+     Empirical probe (C.1.1, 2026-06-01) показал: break at op-amp
+     **input** (in_neg) даёт T_v ≈ 1/A ≈ 1e-5 — degenerate, |T_v|<1
+     всегда → `NoUnityGainCrossoverError` на любой стабильной схеме.
+
+  2. **Middlebrook I single-injection** требует current-mode break
+     (BJT base, MOSFET gate). На op-amp output break — также
+     degenerate (|T_i| ≈ 2e6 в DC из-за impedance ratio).
+
+  3. **Tian double-injection** `T = (T_v·T_i − 1)/(T_v + T_i + 2)` —
+     universal: combines V+I, корректно даёт T_loop даже когда оба
+     single-injection results degenerate. Validated empirically на
+     op-amp fixture (PM ≈ 47°, crossover ≈ 62 kHz, within ±2°/±5%).
+
+  4. **Rosenstark return-ratio** требует OC/SC-compatible break
+     points (где open/short topology mod реально «разрывает» loop —
+     обычно passive interconnect между active stages). На op-amp с
+     low-Z output (op-amp driver dominates pulldown) — degenerate
+     `T = 1` constantly. Phase C.3 NFB SE tube amp (high-Z grid)
+     либо BJT fixture с natural OC/SC nodes — следующая validation
+     ступень.
+
+- **Решение.**
+
+  1. **Break point convention** для всех 4 methods:
+
+     | Method | Required break topology |
+     |---|---|
+     | Middlebrook V single | Low-Z driver output (op-amp OUT, BJT collector, MOSFET drain) |
+     | Middlebrook I single | High-Z current-mode input (BJT base, MOSFET gate) |
+     | Tian (V+I combine) | Universal — works at any breakable edge |
+     | Rosenstark (OC+SC) | Passive interconnect где open/short mod размыкает loop |
+
+  2. **Calibration test acceptance:** Middlebrook V + Tian strictly
+     validate against analytical PM ± 2° на op-amp inverting fixture
+     (T153 Phase C.1.3, `test_measure_phase_margin_calibration.py`).
+     Middlebrook I + Rosenstark — degenerate-cases с pipeline
+     integrity тестами (orchestration smoke, не strict PM
+     assertion). Полная 4-method cross-validation отложена в Phase
+     C.3 (NFB SE tube amp) либо в отдельную BJT fixture-задачу.
+
+  3. **Auto-detect heuristic refinement** (`netlist_graph.py`,
+     `score_break_candidates` + `_pick_break_edge`):
+
+     - **prev-first preference** в `_pick_break_edge`: при выборе
+       boundary между passive elt и active elt в cycle walk'е,
+       prefer **prev** (active перед passive) over **next** — это
+       соответствует driver-output side break point для Middlebrook
+       V (cycle topology `<forward_active> → break_node →
+       <feedback_passive>`).
+     - **non-ground break preference**: two-pass scan в pick_edge;
+       первый pass отбрасывает breaks где `break_node ∈ {0, gnd,
+       GND, ground}` (Vinj N 0 → probe `v(0)` отсутствует в ngspice
+       output, измерение валит'ся). Fallback на ground breaks если
+       non-ground вариант недоступен.
+     - **`_MIN_CYCLE_LENGTH = 2`** (down from 3): 2-net cycles —
+       direct feedback loops через single passive + single active
+       (op-amp inverting: [vout↔in_neg] via R_fb + OP-AMP). 3-net
+       cycles обычно идут через ground (R_load) и менее точно
+       определяют feedback path. Parasitic 2-net cycles (MOSFET
+       body-drain через R_d) подавляются ground penalty (0.3) +
+       single-dominant + low forward/feedback scoring до confidence
+       ≈ 0.3 → ниже default threshold 0.8 → AutoDetectConfidence
+       TooLowError для open-loop circuits.
+
+- **Альтернативы.**
+
+  - *Add correction formula `T_loop = -T_v/(1 + T_v)` в
+    `MiddlebrookVoltageStrategy.combine`.* Hypothesis из Phase B.4
+    (когда test was soft) была что Middlebrook formula требует
+    impedance-correction. **Отвергнуто** в C.1.1: empirical probe
+    показал что `T = -V_rev/V_fwd` КОРРЕКТНА — issue в break point
+    selection, не в formula.
+  - *Per-method correct break point selection в auto-detect.*
+    Auto-detect возвращает один break point; per-method preference
+    добавит несколько break candidates. Отложено: B.5 текущий
+    impl + C.1.5 refinement достаточно для default Middlebrook V
+    (most-used method); user explicit `--loop-break-*` остаются
+    primary CLI path при need для другого method.
+  - *Build BJT common-emitter reference fixture в C.1 для Middlebrook
+    I + Rosenstark validation.* Рассмотрено в C.1 session — BJT
+    design + tuning + 4-method debug = ~2-3 часа дополнительной
+    работы, без гарантии cross-method convergence (published examples
+    типа Middlebrook 1975 и Sedra-Smith используют специфические
+    topologies). Отложено в follow-up (BACKLOG candidate либо
+    Phase C.3 acceptance).
+
+- **Последствия.**
+
+  - C.1 calibration validates 2/4 methods strictly (Middlebrook V +
+    Tian) на op-amp reference; documented degenerate cases для I +
+    Rosenstark. Phase C.3 (NFB SE tube amp) — следующая ступень full
+    4-method cross-validation.
+  - Auto-detect heuristic улучшен: на op-amp inverting fixture
+    выбирает (vout, R_fb) — корректный driver-side break для
+    Middlebrook V (default method).
+  - Open-loop amplifiers (BJT/MOSFET без feedback) теперь могут
+    давать AutoDetectConfidenceTooLowError вместо
+    NoFeedbackLoopDetectedError (parasitic 2-net cycle detected, но
+    confidence low). UX-эквивалент — user видит «auto-detect не
+    нашёл feedback» и переходит к explicit --loop-break-*.
+
+- **Источники методов (compiled из ADR-T153a + Phase 0 research).**
+  - Middlebrook R. D., *«Measurement of Loop Gain in Feedback
+    Systems»*, IJE 38(4), 485–512, April 1975.
+  - Tian M. et al., *«Striving for Small-Signal Stability»*, IEEE
+    Circuits & Devices Magazine 17(1), 31–41, January 2001.
+  - Rosenstark S., *«Loop gain measurements in feedback amplifiers»*,
+    IJE 57(3), 415–421, 1984.
+
+
 ### 2026-06-01 — T153 ADR-T153e: confirmation callback вместо port + threshold policy у callback
 
 - **Контекст.** T153 Phase B.5.x — интеграция auto-detect в use case

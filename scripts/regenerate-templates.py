@@ -76,6 +76,14 @@ _NFB_SE_AMP_BUILDER_PATH = (
     / 'schematic_kicad'
     / 'test_nfb_se_amp_facade.py'
 )
+_OP_AMP_INVERTING_BUILDER_PATH = (
+    _REPO_ROOT
+    / 'tests'
+    / 'integration'
+    / 'adapters'
+    / 'schematic_kicad'
+    / 'test_op_amp_inverting_facade.py'
+)
 
 
 def _import_builder(builder_path: Path, attr: str) -> object:
@@ -95,6 +103,13 @@ def _import_se_amp_builder() -> object:
 
 def _import_nfb_se_amp_builder() -> object:
     return _import_builder(_NFB_SE_AMP_BUILDER_PATH, '_build_nfb_se_amp')
+
+
+def _import_op_amp_inverting_builder() -> object:
+    return _import_builder(
+        _OP_AMP_INVERTING_BUILDER_PATH,
+        '_build_op_amp_inverting',
+    )
 
 
 def _bake_se_amp(target_dir: Path) -> None:
@@ -266,9 +281,97 @@ def _bake_nfb_se_amp(target_dir: Path) -> None:
     )
 
 
+def _bake_op_amp_inverting(target_dir: Path) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    sch_path = target_dir / f'{PROJECT_NAME_PLACEHOLDER}.kicad_sch'
+    build = _import_op_amp_inverting_builder()
+    build(sch_path)  # type: ignore[operator]
+
+    # Builder embeds absolute path `<repo>/data/models/opamps/generic/
+    # GENERIC_OPAMP_2POLE.lib`. Заменяем на relative `models/...` для
+    # shipping template (см. `_bake_se_amp` для обоснования pattern'а).
+    sch_text = sch_path.read_text(encoding='utf-8')
+    sch_text = sch_text.replace(
+        str(_MODELS_DIR / 'opamps' / 'generic' / 'GENERIC_OPAMP_2POLE.lib'),
+        'models/GENERIC_OPAMP_2POLE.lib',
+    )
+    sch_path.write_text(sch_text, encoding='utf-8')
+
+    pro_name = f'{PROJECT_NAME_PLACEHOLDER}.kicad_pro'
+    pro_path = target_dir / pro_name
+    pro_path.write_text(
+        json.dumps(
+            {
+                'board': {'design_settings': {}},
+                'meta': {'filename': pro_name, 'version': 3},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+
+    models_target = target_dir / 'models'
+    models_target.mkdir(exist_ok=True)
+    shutil.copy(
+        _MODELS_DIR / 'opamps' / 'generic' / 'GENERIC_OPAMP_2POLE.lib',
+        models_target / 'GENERIC_OPAMP_2POLE.lib',
+    )
+
+    (target_dir / 'template.yaml').write_text(
+        'name: op-amp-inverting\n'
+        'description: |\n'
+        '  Inverting op-amp с two-pole macromodel (GENERIC_OPAMP_2POLE):\n'
+        '  R_in=1k, R_fb=10k → closed-loop gain -10 V/V (β=1/11). A0=1e5,\n'
+        '  fp1=10 Hz, fp2≈66 kHz → analytical T_loop_DC ≈ 9091, crossover\n'
+        '  ≈ 64 kHz, **phase margin ≈ 45°** на crossover. Reference fixture\n'
+        '  для cross-validation 4 phase-margin injection methods (T153 Phase\n'
+        '  C.1 calibration target).\n'
+        'summary: Op-amp inverting amp 2-pole (PM≈45°) — calibration reference '
+        'для phase-margin methods.\n',
+        encoding='utf-8',
+    )
+
+    (target_dir / 'README.md').write_text(
+        f'# op-amp-inverting template\n\n'
+        f'Reference inverting-amp фикстура для **calibration** четырёх phase-\n'
+        f'margin injection methods (Middlebrook V/I, Tian, Rosenstark) в\n'
+        f'рамках T153 Phase C.\n\n'
+        f'## Топология\n\n'
+        f'```\n'
+        f'Vin ──[R_in 1k]── in_neg ──┬── INN OPAMP OUT ── vout '
+        f'──[R_load 1M]── GND\n'
+        f'                           │                     │\n'
+        f'                           └──[R_fb 10k]─────────┘\n'
+        f'INP OPAMP → GND\n'
+        f'```\n\n'
+        f'Op-amp model `GENERIC_OPAMP_2POLE` (см. `models/`): A0=1e5,\n'
+        f'fp1=10 Hz, fp2≈66 kHz, Rout=50 Ω.\n\n'
+        f'## Analytical reference\n\n'
+        f'* β = R_in / (R_in + R_fb) = 1 / 11\n'
+        f'* T_loop_DC = A0 · β ≈ **9091** (79.2 dB)\n'
+        f'* Unity-gain crossover `f_c` ≈ **64 kHz**\n'
+        f'* **Phase margin ≈ 45°** (± 2° rounding для C2 = 24 pF)\n\n'
+        f'## Файлы\n\n'
+        f'* `{PROJECT_NAME_PLACEHOLDER}.kicad_sch` — KiCad-схема.\n'
+        f'* `{PROJECT_NAME_PLACEHOLDER}.kicad_pro` — KiCad project (для GUI Simulator).\n'
+        f'* `models/GENERIC_OPAMP_2POLE.lib` — SPICE subckt op-amp.\n\n'
+        f'## Phase margin measurement\n\n'
+        f'    # Explicit (правильный break point — на op-amp output side):\n'
+        f'    efactory bridge measure phase-margin <PROJECT> \\\n'
+        f'        --schematic <PROJECT>.kicad_sch \\\n'
+        f'        --loop-break-node vout --loop-break-element R_fb\n\n'
+        f'Ожидаемый результат: `PM ≈ 45° ± 2°, crossover ≈ 64 kHz ± 5%`.\n',
+        encoding='utf-8',
+    )
+
+
 _BAKERS: dict[str, object] = {
     'se-amp': _bake_se_amp,
     'nfb-se-amp': _bake_nfb_se_amp,
+    'op-amp-inverting': _bake_op_amp_inverting,
 }
 
 

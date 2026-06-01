@@ -100,6 +100,21 @@ class JunctionSpec(BaseModel):
     at: Position
 
 
+class NoConnectSpec(BaseModel):
+    """
+    No-connect marker `(no_connect (at x y))` — намеренно неподключенный pin.
+
+    Гасит KiCad ERC warning «Pin not connected» для пинов, которые
+    осознанно оставлены floating (например, V+/V- supply pins op-amp
+    macromodel'и, которые не используются). Не влияет на SPICE netlist:
+    KiCad SPICE writer уже опускает unmapped pins (через `Sim.Pins`).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    at: Position
+
+
 class LabelSpec(BaseModel):
     """
     Локальный net label — даёт имя цепи, доступное в SPICE netlist'е.
@@ -143,5 +158,6 @@ class SchematicSpec(BaseModel):
     components: tuple[ComponentSpec, ...] = ()
     wires: tuple[WireSpec, ...] = ()
     junctions: tuple[JunctionSpec, ...] = ()
+    no_connects: tuple[NoConnectSpec, ...] = ()
     labels: tuple[LabelSpec, ...] = ()
     texts: tuple[TextSpec, ...] = ()

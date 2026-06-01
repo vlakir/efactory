@@ -1,23 +1,20 @@
 """
-Integration: measure_phase_margin + real ngspice (T153 Phase B.4).
+Integration: measure_phase_margin + real ngspice (T153 Phase B.4 →
+C.1.6 strict).
 
-**Soft smoke level (Phase B.4 scope)**: проверяем что use case
-orchestration корректно проходит через real ngspice — netlist
-patcher выдаёт parsable .cir, ngspice .ac sweep выполняется,
-strategy.combine возвращает LoopGain. **Не** asserting numeric margin
-— физическая корректность формул Middlebrook V/I single-injection
-(T_v ≠ T_loop в общем случае) калибруется в Phase C на reference
-fixture'ах.
+**Phase C.1.6 update (2026-06-01):** Middlebrook V test переведён
+на strict assertion'ы после C.1 calibration validation. Break point
+исправлен на (vout, R_fb) — low-Z driver side (op-amp output),
+required для Middlebrook V single-injection (см. ADR-T153a:
+break-point convention).
 
-Acceptance: use case завершается БЕЗ ImportError / parse-fail /
-TypeError / unexpected exception'ов. PhaseMarginMeasurement object
-ИЛИ один из ожидаемых domain error'ов (NoUnityGainCrossover,
-LoopGainAlwaysAboveUnity) — оба валидируют что pipeline дошёл до
-crossover detection.
+Op-amp inverting amp с single-pole rolloff (E_amp VCVS A=1e5 +
+output RC f_p ≈ 15.9 Hz): T_loop_DC = Aβ = 9091, crossover ≈
+144.7 kHz, PM ≈ 90° (single-pole → high-frequency phase asymptote
+-90°).
 
-Op-amp inverting amp с single-pole rolloff (VCVS + RC-фильтр на
-выходе): чистая fixture для проверки orchestration целостности
-без зависимости от точной физической accuracy формул.
+Middlebrook I + auto-detect — soft (degenerate / orchestration smoke),
+не strict. См. ADR-T153a applicability matrix.
 """
 
 from __future__ import annotations
@@ -78,44 +75,53 @@ def _make_simulator() -> NgspiceSimulator:
 
 
 @needs_ngspice
-async def test_middlebrook_voltage_orchestration_completes(
+async def test_middlebrook_voltage_single_pole_pm_90deg(
     tmp_path: Path,
 ) -> None:
-    """Smoke: V-inject end-to-end через real ngspice.
+    """Strict: Middlebrook V at (vout, R_fb) даёт PM ≈ 90° (single-pole).
 
-    Acceptance — успешный pipeline (returns measurement) либо domain-
-    correct error (NoUnityGainCrossover/LoopGainAlwaysAbove) из
-    crossover detection. Оба — валидируют ngspice→adapter→strategy→
-    crossover целостность. Physics correctness — Phase C.
+    Single-pole rolloff phase asymptote -90° at high f → PM = 180° - 90°
+    = 90°. Crossover f_c = Aβ · f_p ≈ 9091 · 15.92 Hz = 144.7 kHz.
+    Acceptance: PM = 90° ± 2°, crossover ± 5%.
     """
     netlist = tmp_path / 'opamp_pole.cir'
     netlist.write_text(_OPAMP_INV_WITH_POLE)
     strategy = MiddlebrookVoltageStrategy(NgspiceInjectionNetlistPatcher())
 
-    try:
-        result = await measure_phase_margin(
-            netlist=netlist,
-            injection_strategy=strategy,
-            break_node='in_neg',
-            break_element_ref='R_fb',
-            simulator=_make_simulator(),
-            f_low=1.0,
-            f_high=1e7,
-            n_points_per_decade=50,
-        )
-        assert isinstance(result, PhaseMarginMeasurement)
-        assert result.injection_method == 'middlebrook_voltage'
-        assert result.measured_at_node == 'in_neg'
-    except (NoUnityGainCrossoverError, LoopGainAlwaysAboveUnityError):
-        # OK для B.4: pipeline дошёл до crossover detection без parse-fail'ов.
-        pass
+    result = await measure_phase_margin(
+        netlist=netlist,
+        injection_strategy=strategy,
+        break_node='vout',
+        break_element_ref='R_fb',
+        simulator=_make_simulator(),
+        f_low=1.0,
+        f_high=1e7,
+        n_points_per_decade=50,
+    )
+    assert isinstance(result, PhaseMarginMeasurement)
+    assert result.injection_method == 'middlebrook_voltage'
+    assert result.measured_at_node == 'vout'
+    assert 88.0 <= result.margin_deg <= 92.0, (
+        f'PM={result.margin_deg:.2f}°, expected 90° ± 2°'
+    )
+    # 144.7 kHz ± 5%
+    assert 137_465 <= result.crossover_hz <= 151_935, (
+        f'crossover={result.crossover_hz:.0f} Hz, expected 144700 ± 5%'
+    )
 
 
 @needs_ngspice
 async def test_middlebrook_current_orchestration_completes(
     tmp_path: Path,
 ) -> None:
-    """Smoke: I-inject end-to-end через real ngspice (см. V-test)."""
+    """Soft smoke: Middlebrook I — degenerate at op-amp output break.
+
+    Middlebrook I single-injection assumes current-mode break (BJT base,
+    MOSFET gate). On op-amp output node даёт degenerate result. Этот
+    тест валидирует orchestration integrity: pipeline доходит до
+    crossover detection без parse/strategy ошибок. Domain error
+    (LoopGainAlwaysAbove / NoUnityGainCrossover) — acceptable.
+    """
     netlist = tmp_path / 'opamp_pole.cir'
     netlist.write_text(_OPAMP_INV_WITH_POLE)
     strategy = MiddlebrookCurrentStrategy(NgspiceInjectionNetlistPatcher())
@@ -124,7 +130,7 @@ async def test_middlebrook_current_orchestration_completes(
         result = await measure_phase_margin(
             netlist=netlist,
             injection_strategy=strategy,
-            break_node='in_neg',
+            break_node='vout',
             break_element_ref='R_fb',
             simulator=_make_simulator(),
             f_low=1.0,

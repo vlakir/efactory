@@ -113,6 +113,13 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         '--measure phase-margin',
     ),
+    # T153 Phase C.1.8 Level 2 — KB sync regression для break point
+    # convention (op-amp output side для Middlebrook V).
+    (
+        'op-amp inverting phase margin break node middlebrook',
+        'spice.feedback-break-point',
+        'low-Z driver',
+    ),
 ]
 
 
