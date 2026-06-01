@@ -1,0 +1,9 @@
+name: tube-line-preamp
+description: |
+  Two-stage all-triode line preamp на 6Н2П (обе половины ECC83):
+  Stage 1 — common-cathode voltage amp (R_p=100k, R_k=1.5k+bypass);
+  Stage 2 — cathode follower (no plate load, R_k=33k без bypass,
+  low output Z для драйва кабеля / next stage).
+  Capacitor-coupled output (C_out=0.47µF) к assumed 100kΩ load.
+  Mid-band Av ≈ 64 V/V (≈36 dB).
+summary: Tube line preamp 6Н2П CC+CF — двухкаскадный buffer-amplifier.

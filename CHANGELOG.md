@@ -36,6 +36,24 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T027 Phase B — `tube-line-preamp` template fixture (CC + CF cascade
+  на 6Н2П).** Двухкаскадный all-triode line preamp на обеих половинах
+  6Н2П (`Valve:ECC83` unit 1 + unit 2 = ECC83B): Stage 1 — common-
+  cathode voltage amplifier (R_p=100kΩ, R_k=1.5kΩ ‖ C_k=22µF bypass);
+  Stage 2 — cathode follower (V1B.P → directly к B+, R_k2=33kΩ без
+  bypass — CF inherently degenerative, low output Z ≈ 800Ω для драйва
+  кабеля / next-stage power amp grid leak). C_out=0.47µF к assumed
+  100kΩ load. Mid-band Av @ 1 kHz ≈ **64 V/V (36 dB)**, calibration
+  regression ±15%. Включает: builder `_build_tube_line_preamp` (3
+  acceptance tests: model includes, topology asserts включая CF
+  defining property NO plate load, OP-point active region обеих
+  halves), bake-hook `_bake_tube_line_preamp`, materialized template
+  `data/templates/tube-line-preamp/`, snapshot test, calibration test
+  `measure_gain` mid-band, KB topic `spice.tube-line-preamp` (CF
+  pitfalls: NO plate load, NO cathode bypass), agent command-routing
+  mapping entry для «ламповый preamp / ECC83 buffer», KB L2 regression
+  case.
+
 - **T027 Phase A — `tube-pp-amp` template fixture (LTP splitter +
   PP 6П14П + center-tap OPT).** Двухкаскадный push-pull power amp на
   long-tail-pair splitter (обе половины 6Н2П, Valve:ECC83 unit 1 +

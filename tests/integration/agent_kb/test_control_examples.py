@@ -157,6 +157,19 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         'tube-pp-amp',
     ),
+    # T027 Phase B Level 2 — KB sync regression для tube-line-preamp
+    # template (CC+CF cascade) + agent routing mapping для «ламповый
+    # preamp / buffer».
+    (
+        'tube line preamp cathode follower CF cascade',
+        'spice.tube-line-preamp',
+        'CF',
+    ),
+    (
+        'создай ламповый preamp проект',
+        'agent.command-routing',
+        'tube-line-preamp',
+    ),
 ]
 
 
