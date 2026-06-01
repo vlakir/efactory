@@ -28,6 +28,7 @@ tags: [agent, slash-commands, routing, scope]
 | «если поменять X на Y, как изменится gain/bandwidth/thd/PM», «what-if», «как повлияет замена R5», «сравнение до/после», «delta после правки», «как изменится запас по фазе если» | `/edit-and-resim --set REF=VALUE [...] --measure <gain\|bandwidth\|thd\|phase-margin> [...] [--loop-break-node <n> --loop-break-element <ref>]` |
 | «создай проект», «новый проект <NAME>» | `/project-create <NAME>` |
 | «ламповый PP», «tube push-pull», «двухтактный усилитель», «PP на 6П14П / EL84» | `/project-create <NAME>` + материализуй template `tube-pp-amp` (см. KB `spice.tube-push-pull`); Phase E добавит `[TEMPLATE]` аргумент |
+| «ламповый preamp», «line preamp», «6Н2П preamp», «ECC83 buffer», «tube buffer stage» | `/project-create <NAME>` + материализуй template `tube-line-preamp` (см. KB `spice.tube-line-preamp`); Phase E добавит `[TEMPLATE]` аргумент |
 | «запусти симуляцию», «.op / .tran / .ac», «прогони netlist» | `/sim-run` |
 | «переключись на проект <NAME>» | `/project-use <NAME>` (display-only) |
 | «как обойти X», «уже было / похоже на pitfall» | `/kb-search <query>` ПЕРЕД исследованием |

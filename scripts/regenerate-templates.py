@@ -100,6 +100,14 @@ _TUBE_PP_AMP_BUILDER_PATH = (
     / 'schematic_kicad'
     / 'test_tube_pp_amp_facade.py'
 )
+_TUBE_LINE_PREAMP_BUILDER_PATH = (
+    _REPO_ROOT
+    / 'tests'
+    / 'integration'
+    / 'adapters'
+    / 'schematic_kicad'
+    / 'test_tube_line_preamp_facade.py'
+)
 
 
 def _import_builder(builder_path: Path, attr: str) -> object:
@@ -139,6 +147,13 @@ def _import_tube_pp_amp_builder() -> object:
     return _import_builder(
         _TUBE_PP_AMP_BUILDER_PATH,
         '_build_tube_pp_amp',
+    )
+
+
+def _import_tube_line_preamp_builder() -> object:
+    return _import_builder(
+        _TUBE_LINE_PREAMP_BUILDER_PATH,
+        '_build_tube_line_preamp',
     )
 
 
@@ -637,12 +652,141 @@ def _bake_tube_pp_amp(target_dir: Path) -> None:
     )
 
 
+def _bake_tube_line_preamp(target_dir: Path) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    sch_path = target_dir / f'{PROJECT_NAME_PLACEHOLDER}.kicad_sch'
+    build = _import_tube_line_preamp_builder()
+    build(sch_path)  # type: ignore[operator]
+
+    # Replace absolute model path → relative `models/...`.
+    sch_text = sch_path.read_text(encoding='utf-8')
+    sch_text = sch_text.replace(
+        str(_MODELS_DIR / 'tubes' / 'custom' / '6N2P.lib'),
+        'models/6N2P.lib',
+    )
+    sch_path.write_text(sch_text, encoding='utf-8')
+
+    pro_name = f'{PROJECT_NAME_PLACEHOLDER}.kicad_pro'
+    pro_path = target_dir / pro_name
+    pro_path.write_text(
+        json.dumps(
+            {
+                'board': {'design_settings': {}},
+                'meta': {'filename': pro_name, 'version': 3},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+
+    models_target = target_dir / 'models'
+    models_target.mkdir(exist_ok=True)
+    shutil.copy(
+        _MODELS_DIR / 'tubes' / 'custom' / '6N2P.lib',
+        models_target / '6N2P.lib',
+    )
+
+    (target_dir / 'template.yaml').write_text(
+        'name: tube-line-preamp\n'
+        'description: |\n'
+        '  Two-stage all-triode line preamp на 6Н2П (обе половины ECC83):\n'
+        '  Stage 1 — common-cathode voltage amp (R_p=100k, R_k=1.5k+bypass);\n'
+        '  Stage 2 — cathode follower (no plate load, R_k=33k без bypass,\n'
+        '  low output Z для драйва кабеля / next stage).\n'
+        '  Capacitor-coupled output (C_out=0.47µF) к assumed 100kΩ load.\n'
+        '  Mid-band Av ≈ 64 V/V (≈36 dB).\n'
+        'summary: Tube line preamp 6Н2П CC+CF — двухкаскадный buffer-amplifier.\n',
+        encoding='utf-8',
+    )
+
+    (target_dir / 'README.md').write_text(
+        f'# tube-line-preamp template\n\n'
+        f'Двухкаскадный all-triode line preamp на 6Н2П (обе половины\n'
+        f'`Valve:ECC83` unit 1 + unit 2 = `Valve:ECC83B`):\n\n'
+        f'- **Stage 1 (CC, common-cathode voltage amplifier):** V1A,\n'
+        f'  R_p1=100 kΩ plate load, R_k1=1.5 kΩ ‖ C_k1=22 µF (standard\n'
+        f'  auto-bias с bypass), C_in=100 nF input coupling.\n'
+        f'- **Stage 1-2 coupling:** C_couple=47 nF inter-stage cap.\n'
+        f'- **Stage 2 (CF, cathode follower):** V1B, V1B.P → directly\n'
+        f'  к B+ (CF defining feature: NO plate load), R_k2=33 kΩ\n'
+        f'  cathode load **без bypass** (CF inherently degenerative\n'
+        f'  by design — gain ≈ 1, low output impedance).\n'
+        f'- **Output:** C_out=0.47 µF к assumed next-stage 100 kΩ load\n'
+        f'  (e.g., power amp grid leak).\n\n'
+        f'## Топология\n\n'
+        f'```\n'
+        f'        ┌─[R_p1 100k]─ B+ ────────────────────────┐\n'
+        f'        │                                          │\n'
+        f'  Vin ─[C_in 100n]─[R_g1 1M]─G                     │\n'
+        f'                              │ V1A (6Н2П unit 1)  │\n'
+        f'                              K → R_k1 1.5k ‖ C_k1 22µ → GND\n'
+        f'                              │\n'
+        f'                              P (= V_plate1)\n'
+        f'                              │\n'
+        f'                       [C_couple 47n]\n'
+        f'                              │\n'
+        f'                       [R_g2 470k]──G\n'
+        f'                                    │ V1B (6Н2П unit 2 — Cathode Follower)\n'
+        f'                                    K (= V_cath2)\n'
+        f'                                    │\n'
+        f'                              [R_k2 33k] → GND (no bypass)\n'
+        f'                                    │\n'
+        f'                             [C_out 0.47µ]\n'
+        f'                                    │\n'
+        f'                            [R_load 100k] → GND\n'
+        f'```\n\n'
+        f'## Q-point (DC operating, validated в op-point regression test)\n\n'
+        f'* V_BB = 250 V.\n'
+        f'* Stage 1: V_plate1 ≈ 100-200 V (Stage 1 CC active region:\n'
+        f'  V_a = V_BB - I_a·R_p1, I_a ≈ 0.5-1.5 mA).\n'
+        f'* Stage 1: V_cathode1 ≈ 1-3 V (auto-bias через R_k1=1.5 kΩ).\n'
+        f'* Stage 2: V_plate2 ≈ B+ (CF — direct supply, без plate load).\n'
+        f'* Stage 2: V_cathode2 ≈ 30-100 V (CF auto-bias через R_k2=33 kΩ;\n'
+        f'  large для high impedance, gain → 1).\n\n'
+        f'## Mid-band gain (analytical + ngspice empirical)\n\n'
+        f'**Analytical estimate (datasheet μ=100, r_a=80 kΩ):**\n\n'
+        f'* Stage 1 (CC, R_k bypassed): A_v1 ≈ μ·R_p / (R_p + r_a) ≈\n'
+        f'  100·100/(100+80) ≈ 55 V/V (≈ 34.8 dB).\n'
+        f'* Stage 2 (CF): A_v2 ≈ (μ+1)·R_k2 / ((μ+1)·R_k2 + R_p + r_a)\n'
+        f'  ≈ 0.98 (close to unity, large R_k2).\n'
+        f'* Total: A_v_open-loop ≈ 55 · 0.98 ≈ 54 V/V (≈ 34.6 dB).\n\n'
+        f'**Ngspice empirical:** |A_v| @ 1 kHz mid-band ≈ **64 V/V (36 dB)**\n'
+        f'— на 16% выше analytical (Koren-style 6Н2П model gives g_m_eff\n'
+        f'выше nominal datasheet g_m=1.6 mA/V). Calibration regression\n'
+        f'fails если drift > ±15% к 64 V/V.\n\n'
+        f'## Output impedance (преимущество CF stage)\n\n'
+        f'Z_out_cf ≈ r_a / (μ+1) ≈ 80k / 101 ≈ **800 Ω** — низкий\n'
+        f'output Z, способный драйвить кабель / power amp grid leak\n'
+        f'(typical 100-470 kΩ) без HF roll-off.\n\n'
+        f'## Файлы\n\n'
+        f'- `{PROJECT_NAME_PLACEHOLDER}.kicad_sch` — KiCad-схема.\n'
+        f'- `{PROJECT_NAME_PLACEHOLDER}.kicad_pro` — KiCad project (для GUI Simulator).\n'
+        f'- `models/6N2P.lib` — оба stages (one tube, both halves).\n\n'
+        f'## Запуск симуляции\n\n'
+        f'    /sim-run\n'
+        f'    # или напрямую:\n'
+        f'    efactory bridge sim-run --schematic <имя_проекта>.kicad_sch\n\n'
+        f'## Рекомендованные measurements\n\n'
+        f'    # Mid-band voltage gain (target ≈ 64 V/V):\n'
+        f'    efactory bridge measure gain <PROJECT> \\\n'
+        f'        --schematic <PROJECT>.kicad_sch --frequency 1000 --mode small\n\n'
+        f'    # Bandwidth (-3 dB points для CC+CF cascade):\n'
+        f'    efactory bridge measure bandwidth <PROJECT> \\\n'
+        f'        --schematic <PROJECT>.kicad_sch\n',
+        encoding='utf-8',
+    )
+
+
 _BAKERS: dict[str, object] = {
     'se-amp': _bake_se_amp,
     'nfb-se-amp': _bake_nfb_se_amp,
     'op-amp-inverting': _bake_op_amp_inverting,
     'bjt-ce-nfb': _bake_bjt_ce_nfb,
     'tube-pp-amp': _bake_tube_pp_amp,
+    'tube-line-preamp': _bake_tube_line_preamp,
 }
 
 
