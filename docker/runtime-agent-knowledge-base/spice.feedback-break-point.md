@@ -50,20 +50,30 @@ unilateral (plate ≠ generator of feedback signal) → нет такого
 break point на NFB SE. Op-amp low-Z output dominates pulldown /
 short → degenerate `T = 1`.
 
-## Tube NFB amplifier ОБЯЗАТЕЛЬНО требует explicit break
+## Tube NFB amplifier — auto-detect at threshold 0.7 после T164
 
-Auto-detect heuristic на multi-loop tube topology (local cathode
-degeneration + global NFB через OPT) детектится ~72 cycles, все
-confidence < 0.5 (best candidate sec_b/R_load — load junction, не
-feedback!) → `AutoDetectConfidenceTooLowError` на default threshold
-0.8. **User должен передать break explicitly:**
+T164 (2026-06-01) добавил multi-active boost + chord-compound
+penalty в `score_break_candidates`. На multi-loop tube topology
+(local cathode degeneration + global NFB через OPT, 72 cycles)
+auto-detect теперь выбирает canonical `(sec_a, C_fb)` с confidence
+**0.70** — выше threshold 0.7, но всё ещё ниже default 0.8.
 
 ```
-# Tube NFB SE — canonical break (sec_a, C_fb)
+# Tube NFB SE — auto-detect с relaxed threshold
+bridge measure phase-margin nfb-se-amp/<sch> \
+    --confidence-threshold 0.7
+# auto-detect → (sec_a, C_fb), PM ≈ 97°, crossover ≈ 148 kHz
+
+# Альтернатива — canonical break explicit (рекомендован если threshold
+# < 0.8 нежелателен)
 bridge measure phase-margin nfb-se-amp/<sch> \
     --loop-break-node sec_a --loop-break-element C_fb
-# → PM ≈ 97°, crossover ≈ 148 kHz (very stable outer NFB loop)
 ```
+
+Tube NFB inherently multi-cycle: cap auto-detect confidence ~0.70 —
+fundamental свойство topology, не bug. Default threshold 0.8
+остаётся conservative для предотвращения mis-detection на менее
+определённых fixtures.
 
 PM≈97° на NFB SE отражает **global NFB outer loop stability** —
 сильное демпфирование, типичное для tube NFB amps с консервативным
@@ -86,11 +96,16 @@ User не должен manually выставлять `AC 0` на input source п
 phase-margin measurement. Без этого fix Middlebrook V/I давали
 contaminated PM (e.g., op-amp inverting → 4.4° вместо 45°).
 
-## Op-amp inverting amplifier — auto-detect работает после C.1.5
+## Op-amp inverting amplifier — auto-detect работает invariantly
 
-Auto-detect выбирает `(vout, R_fb)` automatically (prev-first
-preference + non-ground skip + MIN_CYCLE_LENGTH=2). Default method
-= `middlebrook_voltage`, для него driver-side break и нужен.
+Auto-detect выбирает `(vout, R_fb)` automatically через
+stimulus-distance ranking (T164): output net дальше от V_in
+source через passive edges → wins over input net независимо от
+element-iteration order в netlist. Это даёт invariance к KiCad-
+export ordering (X subckt first) vs inline ordering (passives
+first); leading `/` на local labels тоже работает out-of-box.
+Default method = `middlebrook_voltage`, для него driver-side break
+и нужен.
 
 **Anti-pattern.**
 
@@ -116,9 +131,12 @@ bridge measure phase-margin op-amp-inverting/<sch> \
   integration/application/test_measure_phase_margin_calibration.py.
 * C.3 tube NFB empirical probe (2026-06-01) — ADR-T153g + tests/
   integration/application/test_measure_phase_margin_calibration_nfb_se.py.
+* T164 auto-detect refinement (2026-06-01) — tests/integration/
+  application/test_auto_detect_refinement.py.
 
 ## See also
 
 ADR-T153a (4 method strategy pattern), ADR-T153b (NetlistGraphAnalyzer),
 ADR-T153f (op-amp break convention), ADR-T153g (per-topology matrix +
-tube NFB calibration).
+tube NFB calibration), T164 (multi-active boost + chord-compound
+penalty + stimulus-distance ranking).
