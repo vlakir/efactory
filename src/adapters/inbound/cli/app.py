@@ -80,6 +80,9 @@ from application.measure_bandwidth import (
     measure_bandwidth as measure_bandwidth_use_case,
 )
 from application.measure_gain import measure_gain as measure_gain_use_case
+from application.measure_phase_margin import (
+    measure_phase_margin as measure_phase_margin_use_case,
+)
 from application.measure_thd import measure_thd as measure_thd_use_case
 from application.prune_sim_results import (
     PruneOptionsInvalidError,
@@ -104,6 +107,22 @@ from domain.application import ApplicationKind
 from domain.decision import DecisionStatus
 from domain.knowledge_base import KbConflictError, KbEntry, KbParseError
 from domain.phase import PhaseName, PhaseStatus
+from domain.phase_margin import (
+    AutoDetectConfidenceTooLowError,
+    AutoDetectInfo,
+    AutoDetectRejectedError,
+    LoopBreakNodeNotFoundError,
+    LoopGainAlwaysAboveUnityError,
+    NoFeedbackLoopDetectedError,
+    NoUnityGainCrossoverError,
+)
+from domain.phase_margin_injection import (
+    InjectionStrategy,
+    MiddlebrookCurrentStrategy,
+    MiddlebrookVoltageStrategy,
+    RosenstarkReturnRatioStrategy,
+    TianStrategy,
+)
 from domain.simulation import (
     AcAnalysis,
     OpAnalysis,
@@ -136,12 +155,17 @@ if TYPE_CHECKING:
         GainMeasurement,
         ThdMeasurement,
     )
+    from domain.phase_margin import (
+        ConfirmationCallback,
+        PhaseMarginMeasurement,
+    )
     from domain.project import Project
     from domain.simulation import AnalysisSpec, Simulation, SimulationResult
     from domain.spice_model import SpiceModel
     from ports.outbound.app_manager import AppManager, RunResult
     from ports.outbound.decision_repository import DecisionRepository
     from ports.outbound.git_repository import GitRepository
+    from ports.outbound.injection_netlist_patcher import InjectionNetlistPatcher
     from ports.outbound.knowledge_base import KbStore
     from ports.outbound.netlist_editor import NetlistEditor
     from ports.outbound.project_file_repository import ProjectFileRepository
@@ -274,6 +298,74 @@ def _emit_thd(result: ThdMeasurement, *, output_fmt: str) -> None:
     )
 
 
+def _emit_phase_margin(
+    result: PhaseMarginMeasurement,
+    *,
+    output_fmt: str,
+) -> None:
+    if output_fmt == 'json':
+        typer.echo(result.model_dump_json(indent=2))
+        return
+    typer.echo(
+        f'Phase margin: {result.margin_deg:.2f}° @ '
+        f'{result.crossover_hz:.2f} Hz '
+        f'[{result.stability_class}, method={result.injection_method}, '
+        f'node={result.measured_at_node}]',
+    )
+    if result.auto_detect_info is not None:
+        info = result.auto_detect_info
+        typer.echo(
+            f'  auto-detect: node={info.chosen_node!r}, '
+            f'element={info.chosen_element_ref!r}, '
+            f'confidence={info.confidence * 100:.1f}%',
+        )
+    if result.extra_crossovers_hz:
+        extras = ', '.join(f'{f:.2f}' for f in result.extra_crossovers_hz)
+        typer.echo(f'  extra crossovers (Hz): {extras}', err=True)
+
+
+# Spec §3 «Loop break»: CLI string ↔ InjectionMethod Literal в domain.
+_INJECTION_STRATEGY_BUILDERS: dict[
+    str,
+    Callable[[InjectionNetlistPatcher], InjectionStrategy],
+] = {
+    'middlebrook-voltage': MiddlebrookVoltageStrategy,
+    'middlebrook-current': MiddlebrookCurrentStrategy,
+    'tian': TianStrategy,
+    'rosenstark-return-ratio': RosenstarkReturnRatioStrategy,
+}
+
+
+def _make_confirmation_callback(
+    *,
+    no_confirm: bool,
+    confidence_threshold: float,
+) -> ConfirmationCallback:
+    """
+    Собрать callback для `measure_phase_margin` auto-detect path.
+
+    Policy (Spec §3 «Loop break» C4):
+    * confidence < threshold → reject (AutoDetectRejectedError).
+    * non-TTY ИЛИ --no-confirm → accept выше threshold.
+    * interactive TTY → typer.confirm prompt с default=True.
+    """
+
+    def callback(info: AutoDetectInfo) -> bool:
+        if info.confidence < confidence_threshold:
+            return False
+        if no_confirm or not sys.stdin.isatty():
+            return True
+        typer.echo(
+            f'Auto-detected feedback break: '
+            f'node={info.chosen_node!r}, '
+            f'element={info.chosen_element_ref!r} '
+            f'(confidence {info.confidence * 100:.1f}%).',
+        )
+        return typer.confirm('Continue with this break edge?', default=True)
+
+    return callback
+
+
 def build_app(
     *,
     projects_root: Path,
@@ -287,6 +379,7 @@ def build_app(
     schematic_exporter: SchematicExporter,
     simulator: Simulator,
     netlist_editor: NetlistEditor,
+    injection_patcher: InjectionNetlistPatcher,
     kb_store: KbStore,
     sim_results_repo: SimResultsRepository,
 ) -> typer.Typer:
@@ -2707,6 +2800,150 @@ def build_app(
             raise _exit_on_bridge_error(exc) from exc
 
         _emit_thd(result, output_fmt=output)
+
+    @measure_app.command('phase-margin')
+    def measure_phase_margin_cmd(
+        netlist: Annotated[str, typer.Argument(help='Путь к SPICE netlist (.cir)')],
+        *,
+        loop_break_node: Annotated[
+            str | None,
+            typer.Option(
+                '--loop-break-node',
+                help=(
+                    'Net, в котором режется петля. Обязательно вместе с '
+                    '--loop-break-element. Если оба не заданы — auto-detect.'
+                ),
+            ),
+        ] = None,
+        loop_break_element: Annotated[
+            str | None,
+            typer.Option(
+                '--loop-break-element',
+                help=(
+                    'Ref элемента, чья ссылка на --loop-break-node '
+                    'переименовывается (edge-pair, ADR-T153d).'
+                ),
+            ),
+        ] = None,
+        injection_method: Annotated[
+            str,
+            typer.Option(
+                '--injection-method',
+                help=(
+                    'middlebrook-voltage | middlebrook-current | tian | '
+                    'rosenstark-return-ratio'
+                ),
+            ),
+        ] = 'middlebrook-voltage',
+        confidence_threshold: Annotated[
+            float,
+            typer.Option(
+                '--confidence-threshold',
+                help='Порог auto-detect confidence (0..1, default 0.8)',
+            ),
+        ] = 0.8,
+        no_confirm: Annotated[
+            bool,
+            typer.Option(
+                '--no-confirm',
+                help='Не спрашивать confirmation в TTY (batch-friendly)',
+            ),
+        ] = False,
+        f_low: Annotated[
+            str,
+            typer.Option('--f-low', help='Нижняя граница AC sweep (default 1)'),
+        ] = '1',
+        f_high: Annotated[
+            str,
+            typer.Option('--f-high', help='Верхняя граница AC sweep (default 1Meg)'),
+        ] = '1Meg',
+        n_points_per_decade: Annotated[
+            int,
+            typer.Option('--n-points-per-decade', help='Разрешение (default 100)'),
+        ] = 100,
+        output: Annotated[
+            str,
+            typer.Option('--output', help='Формат: text (default) | json'),
+        ] = 'text',
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout', help='Таймаут на каждый AC sweep (default 60.0)'),
+        ] = 60.0,
+    ) -> None:
+        if injection_method not in _INJECTION_STRATEGY_BUILDERS:
+            typer.echo(
+                f'Invalid --injection-method: {injection_method!r}; expected '
+                f'one of {sorted(_INJECTION_STRATEGY_BUILDERS)}',
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if not (0.0 <= confidence_threshold <= 1.0):
+            typer.echo(
+                f'Invalid --confidence-threshold: {confidence_threshold!r}; '
+                f'expected float in [0, 1]',
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        netlist_path = _resolve_netlist_path(netlist)
+        try:
+            f_low_hz = parse_spice_number(f_low)
+            f_high_hz = parse_spice_number(f_high)
+        except SpiceNumberFormatError as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        strategy = _INJECTION_STRATEGY_BUILDERS[injection_method](injection_patcher)
+        confirmation = _make_confirmation_callback(
+            no_confirm=no_confirm,
+            confidence_threshold=confidence_threshold,
+        )
+
+        async def _run() -> PhaseMarginMeasurement:
+            return await measure_phase_margin_use_case(
+                netlist=netlist_path,
+                injection_strategy=strategy,
+                break_node=loop_break_node,
+                break_element_ref=loop_break_element,
+                auto_detect_confirmation=confirmation,
+                simulator=simulator,
+                f_low=f_low_hz,
+                f_high=f_high_hz,
+                n_points_per_decade=n_points_per_decade,
+                timeout_seconds=timeout,
+            )
+
+        try:
+            result = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'bridge.measure.phase_margin',
+                    project=None,
+                    payload={
+                        'netlist': netlist,
+                        'injection_method': injection_method,
+                        'loop_break_node': loop_break_node,
+                        'loop_break_element': loop_break_element,
+                        'f_low_hz': f_low_hz,
+                        'f_high_hz': f_high_hz,
+                    },
+                    fn=_run,
+                ),
+            )
+        except (
+            AutoDetectConfidenceTooLowError,
+            AutoDetectRejectedError,
+            LoopBreakNodeNotFoundError,
+            LoopGainAlwaysAboveUnityError,
+            NoFeedbackLoopDetectedError,
+            NoUnityGainCrossoverError,
+            SimulationFailedError,
+            SimulatorUnavailableError,
+            SpiceNumberFormatError,
+            ValidationError,
+            ValueError,
+        ) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+
+        _emit_phase_margin(result, output_fmt=output)
 
     # === efactory kb {list,show,add,search} (Agent Knowledge Base, T134) ===
 
