@@ -308,6 +308,30 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Fixed
 
+- **T165 — cleanup ngspice temp `.tmp_*` files после measurement use
+  cases.** 4 use cases (`measure_phase_margin`, `measure_gain`,
+  `measure_bandwidth`, `measure_thd`) + CLI helper `_prepare_ac_netlist`
+  писали `<stem>.tmp_*.cir` рядом с input netlist'ом; ngspice сверху
+  клал `.wrapper.cir` + `.raw` туда же; ничего не убиралось — на
+  multi-measurement workflows накапливался мусор, провоцировал Tracker
+  segfault edge case на dev-машинах с auto-indexer'ами (см. T164+T163
+  Level 3 smoke 2026-06-01).
+  - **Pattern**: `tempfile.TemporaryDirectory(prefix='efactory-<usecase>-')`
+    в каждом use case (как уже в `bridge_sweep` /
+    `edit_and_resim_with_delta`). CLI helper переведён на
+    `@contextlib.contextmanager`, caller — на `contextlib.ExitStack`
+    для preservation узкого scope catching `ValueError` (source-
+    resolution path) при сохранении lifetime'а tmp dir на всё время
+    use case'а.
+  - **Параметризованный leak-test** покрывает все 5 путей (4 measure_*
+    + CLI helper): assertion — после операции в директории netlist'а
+    нет `.tmp_*.cir/.raw/.wrapper.cir`. На refactor'е тест зелёный.
+  - **`.gitignore` safety-net** на `**/*.tmp_*.{cir,raw,wrapper.cir}`
+    — защита от регрессии (нормально должен оставаться пустым).
+  - **Не scope**: Tracker segfault host-side (apt defect, не efactory);
+    `bridge_sweep` / `edit_and_resim_with_delta` (уже OK);
+    `prune_sim_results` (другой concern, T142 `.efactory/sim-results/`).
+
 - **T161 — defensive guard для пустого / несуществующего NETLIST
   argument в `bridge` CLI subcommands.** До фикса `uv run efactory
   bridge sim-run op ""` (shell-обёртка с неэкспортированной

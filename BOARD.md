@@ -63,6 +63,20 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T165** — [closed 2026-06-01, PR #101] **Cleanup ngspice temp
+  `.tmp_*.{cir,raw,wrapper.cir}` files после measurement use cases.**
+  4 use cases (`measure_phase_margin`, `measure_gain`, `measure_bandwidth`,
+  `measure_thd`) + CLI helper `_prepare_ac_netlist` переведены на
+  `tempfile.TemporaryDirectory(prefix='efactory-<usecase>-')` —
+  единообразный паттерн с `bridge_sweep` / `edit_and_resim_with_delta`.
+  CLI helper стал `@contextlib.contextmanager`; caller — `contextlib.
+  ExitStack` для preservation узкого scope `ValueError` catching при
+  сохранении lifetime tmp dir на всё время use case'а. TDD:
+  параметризованный leak test (5 cases) — failing pre, passing post.
+  `.gitignore` safety-net `**/*.tmp_*.{cir,raw,wrapper.cir}` —
+  защита от регрессии. Pre-push 4/4 ✓ (1679 passed @ 86.10%
+  coverage, +5 vs T163 baseline).
+
 - **T163** — [closed 2026-06-01, PR #100] **BJT CE shunt-shunt NFB
   fixture для full 4-method cross-validation matrix.** Single-stage CE
   с voltage-divider bias + AC-only shunt-shunt feedback (R_F=47k +

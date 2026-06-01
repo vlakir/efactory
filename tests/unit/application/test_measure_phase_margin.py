@@ -128,6 +128,7 @@ class FakeSimulator:
     def __init__(self, results: list[SimulationResult]) -> None:
         self._results = list(results)
         self.calls: list[tuple[Path, AnalysisSpec, float]] = []
+        self.netlist_contents: list[str] = []
 
     async def run(
         self,
@@ -136,6 +137,9 @@ class FakeSimulator:
         *,
         timeout_seconds: float = 60.0,
     ) -> SimulationResult:
+        # Snapshot content now — после T165 netlist живёт в
+        # `TemporaryDirectory` use case'а и удаляется на выходе.
+        self.netlist_contents.append(netlist.read_text())
         self.calls.append((netlist, analysis, timeout_seconds))
         if not self._results:
             msg = 'FakeSimulator: out of scripted results'
@@ -697,12 +701,13 @@ async def test_writes_patched_netlist_to_tmp_file(tmp_path: Path) -> None:
     )
 
     tmp_path_used, _, _ = sim.calls[0]
-    # tmp file под суффиксом .tmp_pm_*.cir рядом с netlist'ом
+    # tmp file под суффиксом .tmp_pm_*.cir в TemporaryDirectory (T165 —
+    # cleanup-ится на выходе из use case'а).
     assert tmp_path_used.name.startswith('amp.tmp_pm_')
     assert tmp_path_used.suffix == '.cir'
-    assert tmp_path_used.exists()
-    content = tmp_path_used.read_text()
-    # patcher вшил Vinj и переименовал в R_fb
+    # patcher вшил Vinj и переименовал в R_fb (content snapshot
+    # захвачен FakeSimulator'ом в момент simulator.run).
+    content = sim.netlist_contents[0]
     assert 'Vinj in_neg__fwd in_neg AC 1' in content
     assert 'R_fb vout in_neg__fwd 10k' in content
 

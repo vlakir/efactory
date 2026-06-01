@@ -21,9 +21,10 @@ Pipeline:
    1-2 patched netlist'а в `setup.patches`. `ValueError` от patcher'а
    (element_ref не найден / break_node не в pin'ах) → re-raise как
    `LoopBreakNodeNotFoundError`.
-5. Для каждого `patch`: write tmp `.cir` рядом с исходным netlist'ом
-   (суффикс `.tmp_pm_<idx>.cir`), run `Simulator.run(path,
-   AcAnalysis(sweep='dec', n_points=…))`. Собрать `AcSweep`-объекты.
+5. Для каждого `patch`: write tmp `.cir` в `TemporaryDirectory`
+   (T165 — cleanup гарантирован context manager'ом), run
+   `Simulator.run(path, AcAnalysis(sweep='dec', n_points=…))`.
+   Собрать `AcSweep`-объекты.
 6. `loop_gain = strategy.combine(sweeps_tuple, setup)` — комплексная
    контурная передача `T(jω)`.
 7. `crossover = find_unity_crossover(loop_gain)` — primary downward
@@ -48,7 +49,9 @@ from __future__ import annotations
 
 import asyncio
 import re
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from application.detect_feedback_break_node import detect_feedback_break_node
@@ -63,8 +66,6 @@ from domain.sim_results import AnalysisType, SimResult
 from domain.simulation import AcAnalysis
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from domain.phase_margin import AutoDetectInfo, ConfirmationCallback
     from domain.phase_margin_injection import InjectionStrategy
     from domain.simulation import AcSweep
@@ -183,20 +184,23 @@ async def measure_phase_margin(
         f_stop=f_high,
     )
     sweeps: list[AcSweep] = []
-    for idx, patch in enumerate(setup.patches):
-        tmp_netlist = netlist.with_suffix(f'.tmp_pm_{idx}.cir')
-        await asyncio.to_thread(tmp_netlist.write_text, patch.patched_netlist)
-        sim_result = await simulator.run(
-            tmp_netlist,
-            analysis,
-            timeout_seconds=timeout_seconds,
-        )
-        if sim_result.ac_sweep is None:
-            msg = (
-                f'measure_phase_margin: simulator returned no ac_sweep for patch {idx}'
+    with tempfile.TemporaryDirectory(prefix='efactory-pm-') as tmp_dir:
+        tmp_dir_path = Path(tmp_dir)
+        for idx, patch in enumerate(setup.patches):
+            tmp_netlist = tmp_dir_path / f'{netlist.stem}.tmp_pm_{idx}.cir'
+            await asyncio.to_thread(tmp_netlist.write_text, patch.patched_netlist)
+            sim_result = await simulator.run(
+                tmp_netlist,
+                analysis,
+                timeout_seconds=timeout_seconds,
             )
-            raise ValueError(msg)
-        sweeps.append(sim_result.ac_sweep)
+            if sim_result.ac_sweep is None:
+                msg = (
+                    f'measure_phase_margin: simulator returned no ac_sweep '
+                    f'for patch {idx}'
+                )
+                raise ValueError(msg)
+            sweeps.append(sim_result.ac_sweep)
 
     loop_gain = injection_strategy.combine(tuple(sweeps), setup)
     crossover = find_unity_crossover(loop_gain)

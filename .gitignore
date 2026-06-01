@@ -51,3 +51,10 @@ doc/
 
 # T113 pilot run outputs (results.json, mesh artifacts, *.msh, *.pos, etc.)
 pilot-out/
+
+# T165 safety net: ngspice measurement tmp leftovers (на случай если
+# refactor на TemporaryDirectory в src/application/measure_*.py
+# регрессирует). Должно быть пусто в нормальной работе.
+**/*.tmp_*.cir
+**/*.tmp_*.raw
+**/*.tmp_*.wrapper.cir
