@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import sys
 import tempfile
 from datetime import UTC, datetime
@@ -34,6 +35,7 @@ from adapters.inbound.cli.sweep_table_renderer import (
 from adapters.inbound.cli.template_materializer import (
     TemplateConflictError,
     TemplateNotFoundError,
+    describe_templates,
     list_templates,
     materialize_template,
 )
@@ -475,6 +477,33 @@ def build_app(
             f'Created project {project.name} at {project.path} '
             f'(id={project.id}){suffix}',
         )
+
+    @project_app.command('list-templates')
+    def list_templates_command(
+        *,
+        as_json: Annotated[
+            bool,
+            typer.Option('--json', help='Output as JSON array.'),
+        ] = False,
+    ) -> None:
+        """
+        Список доступных project templates.
+
+        Data-driven из ``data/templates/*/template.yaml`` (T027 Phase E).
+        """
+        templates = describe_templates()
+        if as_json:
+            typer.echo(json.dumps(templates, indent=2, ensure_ascii=False))
+            return
+        if not templates:
+            typer.echo('No templates found.')
+            return
+        # Human-readable table: name + summary, aligned.
+        max_name_len = max(len(t['name']) for t in templates)
+        for tpl in templates:
+            name = tpl['name'].ljust(max_name_len)
+            summary = tpl['summary'] or '(no summary)'
+            typer.echo(f'{name}  {summary}')
 
     @project_app.command('list')
     def list_() -> None:

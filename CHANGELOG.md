@@ -36,6 +36,20 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T027 Phase E — `/project-create [TEMPLATE]` slash extension +
+  `efactory project list-templates` CLI subcommand + T027 closure.**
+  Slash command `/project-create <NAME> [TEMPLATE]` (default
+  `se-amp` для back-compat) принимает optional template argument.
+  CLI subcommand `efactory project list-templates` — data-driven
+  список из `data/templates/*/template.yaml` (name + summary), с
+  human-readable table mode (default) и `--json` flag для
+  machine-readable output. Helper `describe_templates()` в
+  `template_materializer.py` parse template.yaml без yaml dependency
+  (lightweight). T027 спека закрыта (Phase A..E реализованы за
+  single-day sprint 2026-06-02, PRs #102/103/104/106/107). 8
+  shipping templates total. L3 smoke на real Claude agent — отдельной
+  session (Q13 deferral) после Phase E merge.
+
 - **T027 Phase D — `active-lpf-sallen-key` template fixture (2nd-order
   Butterworth low-pass filter + TL072 op-amp).** Classic Sallen-Key
   voltage-controlled voltage-source (VCVS) unity-gain low-pass filter

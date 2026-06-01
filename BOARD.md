@@ -61,21 +61,30 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T027** — [2026-06-02] **Расширение каталога project templates:
-  PP amp, line preamp, phono RIAA preamp, active LPF.**
-  4 новых шаблона (`tube-pp-amp`, `tube-line-preamp`,
-  `tube-phono-riaa`, `active-lpf-sallen-key`) дополнительно к
-  существующим `se-amp` / `nfb-se-amp` / `op-amp-inverting` /
-  `bjt-ce-nfb`; расширение `/project-create` slash-команды
-  template-аргументом; `efactory project list-templates` CLI helper.
-  Phased: A (PP) / B (line preamp) / C (phono RIAA) / D (Sallen-Key
-  LPF) / E (slash+CLI+closure). Spec — `specs/T027-project-templates/
-  spec.md` (Draft, Round 2 clarify ждёт ответов Vladimir).
-  Acceptance: per-topology calibration test (PM/gain/BW/RIAA
-  compliance) strict; KB sync L1+L2 каждого; L3 smoke — отдельной
-  session после merge всех 5 phases.
+(пусто)
 
 ## Done
+
+- **T027** — [closed 2026-06-02, PRs #102/103/104/106/107] **Расширение
+  каталога project templates: PP amp, line preamp, phono RIAA preamp,
+  active LPF + slash+CLI extension.** 4 новых template (`tube-pp-amp`,
+  `tube-line-preamp`, `tube-phono-riaa`, `active-lpf-sallen-key`) +
+  `/project-create <NAME> [TEMPLATE]` slash command extension
+  (default `se-amp` для back-compat) + `efactory project list-templates`
+  CLI subcommand (human-readable table + `--json` flag, data-driven из
+  `data/templates/*/template.yaml`). 4 ADRs (T027a LTP splitter,
+  T027-pptrf custom Transformer_2P_1S symbol, T027c Koren models PWRS
+  patch, T027d Sallen-Key equal-R unequal-C). KB sync L1+L2 каждой
+  фазы (4 new spice.* topics + agent.command-routing extensions + 8
+  L2 regression cases). Single-day sprint 2026-06-02. L3 smoke
+  отложена на отдельной session после Phase E merge per Q13.
+
+- **T166** — [closed 2026-06-02, PR #105] **SPICE models для EH 6922
+  и 6Н30П-EB + sanity-check fixtures.** Vladimir-requested tubes
+  added: `ayumi/6922.inc` (brand alias for 6DJ8 family) + `custom/
+  6N30P_EB.lib` (Sovtek/EH low-µ high-current). 2 facade fixtures (6
+  acceptance tests). Uses existing efactory `convert_pwrs_to_ngspice`
+  + `convert_ayumi_to_ngspice` для Ayumi 6DJ8.inc patch.
 
 - **T165** — [closed 2026-06-01, PR #101] **Cleanup ngspice temp
   `.tmp_*.{cir,raw,wrapper.cir}` files после measurement use cases.**
