@@ -61,27 +61,21 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T165** — [взято 2026-06-01, ветка `T165-ngspice-tmp-cleanup`]
-  **Cleanup ngspice temp `.raw`/`.cir`/`.wrapper.cir` files после
-  measurement use cases.** 4 measure_* use cases (`phase_margin`,
-  `gain`, `bandwidth`, `thd`) + CLI `_prepare_for_plot` (`app.py:283`)
-  пишут `.tmp_*.cir` рядом с исходным netlist'ом; ngspice кладёт
-  `.wrapper.cir` + `.raw` туда же; ничего не убирается. На multi-
-  measurement workflows накапливается мусор, провоцирует Tracker
-  segfault edge case (см. smoke 2026-06-01).
-
-  Acceptance: после любого из 5 vectorized cleanup-сценариев в
-  директории исходного netlist'а не остаётся `.tmp_*.cir`, `.tmp_*.
-  raw`, `.tmp_*.wrapper.cir` файлов. Параметризованный integration
-  test покрывает все пять путей. `.gitignore` safety-net pattern
-  на `**/sim/*.tmp_*` для защиты от регрессии.
-
-  Scope decisions: strict cleanup без debug hatch (pdb для retention);
-  pattern — `tempfile.TemporaryDirectory(prefix='efactory-<usecase>-')`
-  как уже в `bridge_sweep` / `edit_and_resim_with_delta`; CLI helper
-  включён.
-
 ## Done
+
+- **T165** — [closed 2026-06-01, PR #101] **Cleanup ngspice temp
+  `.tmp_*.{cir,raw,wrapper.cir}` files после measurement use cases.**
+  4 use cases (`measure_phase_margin`, `measure_gain`, `measure_bandwidth`,
+  `measure_thd`) + CLI helper `_prepare_ac_netlist` переведены на
+  `tempfile.TemporaryDirectory(prefix='efactory-<usecase>-')` —
+  единообразный паттерн с `bridge_sweep` / `edit_and_resim_with_delta`.
+  CLI helper стал `@contextlib.contextmanager`; caller — `contextlib.
+  ExitStack` для preservation узкого scope `ValueError` catching при
+  сохранении lifetime tmp dir на всё время use case'а. TDD:
+  параметризованный leak test (5 cases) — failing pre, passing post.
+  `.gitignore` safety-net `**/*.tmp_*.{cir,raw,wrapper.cir}` —
+  защита от регрессии. Pre-push 4/4 ✓ (1679 passed @ 86.10%
+  coverage, +5 vs T163 baseline).
 
 - **T163** — [closed 2026-06-01, PR #100] **BJT CE shunt-shunt NFB
   fixture для full 4-method cross-validation matrix.** Single-stage CE
