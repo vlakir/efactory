@@ -311,3 +311,73 @@ async def test_rosenstark_degenerate_on_op_amp(
         assert isinstance(result, PhaseMarginMeasurement)
     except (NoUnityGainCrossoverError, LoopGainAlwaysAboveUnityError):
         pass  # Degenerate result — pipeline integrity is what we test.
+
+
+def _opamp_inverting_netlist_with_kicad_ac_drive(opamp_lib_path: str) -> str:
+    """Mirror KiCad-exported netlist convention: V_in carries AC=1 drive.
+
+    KiCad / eeschema по умолчанию ставит `AC 1` на input source чтобы
+    юзерская AC-sweep команда работала out-of-box. На phase-margin
+    pipeline это **contaminates** measurement (Vinj не единственный AC
+    source → linear superposition). T153 Phase D fix: `measure_phase_margin`
+    auto-sanitizes existing AC sources before injection (Spec Q7=a
+    enforced). Этот тест проверяет, что fix работает end-to-end.
+    """
+    return (
+        f'* op-amp inverting calibration (T153 Phase D KiCad-style)\n'
+        f'.include {opamp_lib_path}\n'
+        f'V_in vin 0 DC 0 AC 1\n'
+        f'R_in vin in_neg 1k\n'
+        f'R_fb in_neg vout 10k\n'
+        f'XU1 0 in_neg vout GENERIC_OPAMP_2POLE\n'
+        f'R_load vout 0 1Meg\n'
+        f'.end\n'
+    )
+
+
+@needs_ngspice
+async def test_phase_d_kicad_ac_drive_sanitized_in_use_case(
+    tmp_path: Path,
+) -> None:
+    """T153 Phase D regression: KiCad export `V_in ... AC 1` не contaminates.
+
+    Reproduces Phase D smoke S1 finding (2026-06-01): на op-amp inverting
+    fixture exported KiCad netlist'е (с дефолтным `V_in ... AC 1`) до
+    фикса Middlebrook V давал PM=4.4° вместо expected 45° (linear-
+    superposition contamination). После Phase D fix
+    (`_zero_existing_ac_sources()` автоматически перед injection) —
+    measurement даёт PM≈45° ± 2°, идентично inline calibration test.
+
+    Acceptance: PM=45° ± 2° (то же tolerance что и inline C.1 test).
+    """
+    from pathlib import Path as _P
+
+    repo_root = _P(__file__).resolve().parents[3]
+    lib_path = repo_root / _OPAMP_LIB_REL
+    assert lib_path.exists(), f'macromodel missing: {lib_path}'
+
+    netlist = tmp_path / 'op_amp_inverting_kicad_style.cir'
+    netlist.write_text(
+        _opamp_inverting_netlist_with_kicad_ac_drive(str(lib_path))
+    )
+
+    strategy = _strategy('middlebrook_voltage')
+    result = await measure_phase_margin(
+        netlist=netlist,
+        injection_strategy=strategy,
+        break_node='vout',
+        break_element_ref='R_fb',
+        simulator=_make_simulator(),
+        f_low=1.0,
+        f_high=1e7,
+        n_points_per_decade=50,
+    )
+
+    assert isinstance(result, PhaseMarginMeasurement)
+    pm_low = _PM_TARGET_DEG - _PM_TOLERANCE_DEG
+    pm_high = _PM_TARGET_DEG + _PM_TOLERANCE_DEG
+    assert pm_low <= result.margin_deg <= pm_high, (
+        f'Phase D regression: KiCad-style AC drive contaminated measurement; '
+        f'got PM={result.margin_deg:.2f}°, '
+        f'expected {_PM_TARGET_DEG}° ± {_PM_TOLERANCE_DEG}°'
+    )

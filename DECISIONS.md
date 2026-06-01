@@ -25,6 +25,91 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-01 — T153 ADR-T153h: enforce «Vinj — единственный AC source» в use case (Phase D)
+
+- **Контекст.** Spec Q7 (resolved as `a`, Phase B.4 design) явно
+  сказал: «Vinj — единственный AC source, никакого auto-detect. Все
+  существующие V-источники в netlist'е остаются как DC bias (их AC
+  компонент = 0). Это чисто и однозначно.» — но **реализация не
+  enforced это**: полагалась на caller-side guarantee. На inline
+  test'ах C.1 (op-amp inverting) и C.3 (NFB SE tube amp) условие
+  держалось accidentally — V_in было либо `DC 0` (C.1), либо `DC 0
+  AC 1` (C.3 — bug). Phase D Level 3 smoke вскрыл что **KiCad-
+  exported netlists по умолчанию ставят `AC 1` на input source** —
+  это default для user's own AC sweeps в eeschema Simulator —
+  contaminating Middlebrook V/I single-injection через linear
+  superposition.
+
+- **Эмпирический симптом (Phase D Smoke S1, op-amp inverting).**
+  KiCad-exported netlist с `V_in /vin GND DC 0 AC 1` + Middlebrook
+  V @ `(/vout, R_fb)` → **PM=4.4° / fc=76 kHz** (wrong) вместо
+  expected PM=45° / fc=64 kHz. Симметрично, C.3 inline NFB SE test
+  с `V_in input 0 DC 0 AC 1` давал PM=115° / fc=47.5 kHz — тоже
+  contaminated artifact; true PM=97° / fc=148 kHz после sanitization.
+
+- **Решение.** Use case `measure_phase_margin` **автоматически**
+  zerou'ит AC magnitude всех top-level V/I sources до patcher
+  injection через `_zero_existing_ac_sources()` helper:
+  - Token-level regex replacement `(\bAC\s+)(\S+)` → `(group1)0`.
+  - DC bias preserved (нужен для valid operating point).
+  - AC phase argument (token после magnitude) preserved.
+  - Transient functions (SIN/PULSE/EXP/PWL) preserved.
+  - Inline comments (`;`/`$`) excluded из replacement.
+  - `.SUBCKT` body content не трогается (внутренние компоненты).
+  - Idempotent (повторное применение — no-op).
+
+  Размещён в `application/measure_phase_margin.py` (private helper),
+  не в `domain` / `adapters`: sanitization — concern исключительно
+  phase-margin use case (Spec Q7=a). `gain/bandwidth/thd` use cases
+  не нуждаются — они **используют** caller's AC source как stimulus,
+  не вводят свой.
+
+- **Альтернативы.**
+
+  - *Validate, raise `MultipleAcSourcesError`.* User-facing — заставить
+    пользователя руками выставить `AC 0` в schematic. Плохой UX: на
+    KiCad-exported netlist'ах придётся редактировать каждый, либо
+    обходить через CLI flag, либо предоставлять отдельную «netlist
+    prep» команду. Отвергнуто: спека сказала «чисто и однозначно» →
+    use case должен enforce silently, как PSpice/SIMetrix исторически.
+  - *Sanitize в патчере (`adapters/outbound/ngspice/injection_patcher`).*
+    Семантически концерн use case (Spec Q7=a — конкретно phase-margin
+    constraint), не контейнерного adapter'а. Размещение в use case
+    держит patcher protocol focused (injection topology surgery
+    только). Отвергнуто.
+  - *CLI флаг `--zero-other-ac` (opt-in).* Default-on более safe для
+    pipeline integrity; opt-out было бы лишним foot-gun. Отвергнуто.
+
+- **Последствия.**
+
+  - **Phase C.1 (op-amp) inline-test results not impacted** —
+    netlist там был `V_in vin 0 DC 0` (no AC), measurements
+    исторически correct (PM≈45° / fc≈64 kHz reproducible).
+  - **Phase C.3 (tube NFB) inline-test values revised:** PM=115° /
+    fc=47.5 kHz были artifact; current values PM≈97° / fc≈148 kHz
+    после sanitization. Тест acceptance + ADR-T153g body отредактированы
+    с явным «Phase D fix note».
+  - **KiCad export workflow works out-of-box** — user может вызвать
+    `/measure-phase-margin` сразу на exported netlist'е без manual
+    `sed`-magic / `--zero-other-ac` flag / schematic edit. UX
+    requirement из BACKLOG triggering case закрыт.
+  - **Test surface +15** — 14 unit tests на sanitizer (V/I sources,
+    multi-source, .SUBCKT exclusion, inline comments, edge cases,
+    idempotence) + 1 integration regression (`test_phase_d_kicad_
+    ac_drive_sanitized_in_use_case` в C.1 calibration file).
+  - **Spec §3 implementation note:** Q7=a now formally enforced;
+    spec body не правится (ADR — primary source), но review-comment
+    в spec можно добавить cross-ref'ом.
+
+- **Источники.**
+  - T153 Spec §«Open questions» Q7 (resolved as `a`) — Phase B.4
+    design.
+  - Empirical discovery: Phase D Smoke S1 (2026-06-01, op-amp
+    inverting headless smoke с KiCad-exported netlist).
+  - Cross-impact: ADR-T153g empirical values updated (PM=115° →
+    97°, fc=47.5 kHz → 148 kHz — was artifact, now ground-truth).
+
+
 ### 2026-06-01 — T153 ADR-T153g: per-topology break point convention (Phase C.3 tube NFB calibration)
 
 - **Контекст.** Phase C.3 calibration на `data/templates/nfb-se-amp/`
@@ -50,10 +135,12 @@ ADR-Lite: компактный лог архитектурных решений 
      fixture: `(sec_a, C_fb)`** — OPT secondary → feedback chain
      junction. Z_back at sec_a__fwd = ∞ (только C_fb attached),
      Z_fwd at sec_a = 8 Ω (R_load + OPT secondary output Z) →
-     Middlebrook V approximation **essentially exact** → PM=115° ±
-     5° / fc=47.5 kHz ± 10% empirically reproducible. Это canonical
-     **global NFB outer loop stability margin** (very stable;
-     local cathode loop отдельно).
+     Middlebrook V approximation **essentially exact** → PM≈97° ±
+     5° / fc≈148 kHz ± 10% empirically reproducible (см. **Update
+     2026-06-01 ADR-T153h** ниже — прежние values PM=115° / fc=47.5
+     kHz были artifact от `V_in ... AC 1` contamination; AC sanitizer
+     даёт ground-truth). Это canonical **global NFB outer loop
+     stability margin** (very stable; local cathode loop отдельно).
 
   3. **Tube unilateral physics ограничивает 3/4 methods на NFB SE
      fixture at canonical break:**
@@ -85,10 +172,11 @@ ADR-Lite: компактный лог архитектурных решений 
      Middlebrook V single-injection даёт trustworthy measurement.
 
   2. **Calibration test acceptance (T153 Phase C.3,
-     `test_measure_phase_margin_calibration_nfb_se.py`):**
+     `test_measure_phase_margin_calibration_nfb_se.py`; **updated
+     Phase D 2026-06-01** after AC sanitizer fix — см. ADR-T153h):**
 
-     - **Strict:** Middlebrook V @ `(sec_a, C_fb)` → PM=115° ± 5° /
-       fc=47.5 kHz ± 10%.
+     - **Strict:** Middlebrook V @ `(sec_a, C_fb)` → PM≈97° ± 5° /
+       fc≈148 kHz ± 10%.
      - **Degenerate-pipeline:** Middlebrook I + Tian + Rosenstark
        @ same break — orchestration completes (no parse/setup
        errors), result manifests как domain error (NoUnityGain /

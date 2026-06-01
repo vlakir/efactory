@@ -455,6 +455,14 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   `spice.feedback-break-point.md` documents this — workaround
   есть, fix откладывается до этой задачи.
 
+  **Phase D 2026-06-01 extends scope:** auto-detect также **ломается
+  на KiCad-exported op-amp inverting netlist** из-за leading `/` в
+  node names (`/in_neg`, `/vout`). Inline C.1 test (без `/`) даёт
+  правильный `(vout, R_fb)`; same topology с `/`-prefix даёт wrong
+  `(in_neg, R_fb)` conf=0.4 — `_pick_break_edge` prev-first preference
+  ломается. См. T153 Phase D Smoke S3 transcript. Fix должен покрыть
+  оба случая: KiCad-style node names + multi-loop tube topology.
+
   **Подходы (Phase 0 research).**
   - (a) **Cycle deduplication + dominant-loop preference:** 72
     cycles в основном — variations одного физического loop через
@@ -468,18 +476,24 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
     возвращает top-3 candidates вместо single — user CLI prompts
     «pick from [vout/R_fb conf=0.62, sec_a/C_fb conf=0.55,
     sec_b/R_load conf=0.45]».
+  - (d) **Node-name-prefix normalization** (Phase D Smoke S3 root
+    cause): `_pick_break_edge` heuristic должен быть invariant к
+    leading `/` (KiCad export convention). Strip `/` для активной /
+    пассивной классификации либо нормализовать перед matching.
 
   **Acceptance.**
   - На NFB SE fixture (`data/templates/nfb-se-amp/`) auto-detect
     возвращает `(sec_a, C_fb)` (canonical break per ADR-T153g) с
     confidence ≥ 0.7.
-  - На op-amp inverting fixture сохраняется текущий выбор
-    `(vout, R_fb)` с confidence ≥ 0.8.
+  - На op-amp inverting fixture (inline AND KiCad-exported)
+    сохраняется выбор `(vout, R_fb)` / `(/vout, R_fb)` с
+    confidence ≥ 0.8 — leading `/` не должен ломать heuristic.
   - Existing tests `test_measure_phase_margin_calibration*.py`
     + `test_auto_detect_*` все green без regression.
 
   Scope ~1-2 дня. Triggers: user complaint про bad auto-detect UX
-  на tube fixtures; или подготовка к C.3 retro update.
+  на tube fixtures / KiCad-exported circuits; или подготовка к
+  C.3 retro update.
 
 
 ### Tech Debt (отложено)

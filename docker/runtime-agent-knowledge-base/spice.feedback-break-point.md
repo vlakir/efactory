@@ -62,13 +62,29 @@ feedback!) → `AutoDetectConfidenceTooLowError` на default threshold
 # Tube NFB SE — canonical break (sec_a, C_fb)
 bridge measure phase-margin nfb-se-amp/<sch> \
     --loop-break-node sec_a --loop-break-element C_fb
-# → PM ≈ 115°, crossover ≈ 47.5 kHz (very stable outer NFB loop)
+# → PM ≈ 97°, crossover ≈ 148 kHz (very stable outer NFB loop)
 ```
 
-PM=115° на NFB SE отражает **global NFB outer loop stability** —
+PM≈97° на NFB SE отражает **global NFB outer loop stability** —
 сильное демпфирование, типичное для tube NFB amps с консервативным
 дизайном. Local cathode degeneration (R_k1 unbypassed) добавляет
 дополнительный stability margin к global loop.
+
+## Auto-sanitization existing AC sources (Phase D, 2026-06-01)
+
+`measure_phase_margin` use case **автоматически** zerou'ит AC magnitude
+всех top-level V/I sources до patcher injection (ADR-T153h, Spec
+Q7=a enforced). Это значит:
+
+- KiCad-exported netlists с дефолтным `V_in /vin GND DC 0 AC 1` —
+  работают out-of-box (default AC=1 убирается automatically).
+- DC bias (нужен для valid operating point) preserved.
+- Transient sources (SIN/PULSE/EXP/PWL) preserved.
+- `.SUBCKT` internals не трогаются.
+
+User не должен manually выставлять `AC 0` на input source перед
+phase-margin measurement. Без этого fix Middlebrook V/I давали
+contaminated PM (e.g., op-amp inverting → 4.4° вместо 45°).
 
 ## Op-amp inverting amplifier — auto-detect работает после C.1.5
 
