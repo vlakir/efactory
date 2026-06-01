@@ -61,6 +61,20 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T027** — [2026-06-02] **Расширение каталога project templates:
+  PP amp, line preamp, phono RIAA preamp, active LPF.**
+  4 новых шаблона (`tube-pp-amp`, `tube-line-preamp`,
+  `tube-phono-riaa`, `active-lpf-sallen-key`) дополнительно к
+  существующим `se-amp` / `nfb-se-amp` / `op-amp-inverting` /
+  `bjt-ce-nfb`; расширение `/project-create` slash-команды
+  template-аргументом; `efactory project list-templates` CLI helper.
+  Phased: A (PP) / B (line preamp) / C (phono RIAA) / D (Sallen-Key
+  LPF) / E (slash+CLI+closure). Spec — `specs/T027-project-templates/
+  spec.md` (Draft, Round 2 clarify ждёт ответов Vladimir).
+  Acceptance: per-topology calibration test (PM/gain/BW/RIAA
+  compliance) strict; KB sync L1+L2 каждого; L3 smoke — отдельной
+  session после merge всех 5 phases.
+
 ## Done
 
 - **T165** — [closed 2026-06-01, PR #101] **Cleanup ngspice temp

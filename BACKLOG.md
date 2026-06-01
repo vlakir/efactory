@@ -850,10 +850,12 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   apply через IPC reload).
   Acceptance: при изменении схемы из чата запущенный KiCad
   не теряет состояние, перезагружает изменения.
-- **T027** — [2026-05-15] Шаблоны проектов: SE amp, PP amp, preamp,
-  filter — в `templates/`.
-  Acceptance: `/project create --template se-amp NAME` создаёт
-  работающий проект с предзаполненной схемой и моделями.
+<!-- T027 переехала в BOARD.md → Doing 2026-06-02. Scope расширен
+     по запросу Vladimir: 4 новых шаблона (PP amp, line preamp,
+     phono RIAA preamp, active LPF) — SE amp уже закрыт ранее в
+     рамках первой фазы template-системы. Spec —
+     specs/T027-project-templates/spec.md (Draft, Round 2 clarify
+     готов к ответам). -->
 <!-- T153 переехала в BOARD.md → Doing 2026-05-31. Phase A scope
      включает создание первой feedback-фикстуры (триггер закрывается
      внутри задачи). Spec — specs/T153-phase-margin/spec.md (Draft,

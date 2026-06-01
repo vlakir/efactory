@@ -1,0 +1,27 @@
+* OPT_PP_6K6_8 — Push-Pull output transformer, primary 6.6kΩ : secondary 8Ω,
+* center-tapped primary.
+*
+* Generic typical-class (Hammond 1650F-class, ~50 W):
+*   Suitable for EL34 PP, KT88 PP, 6L6 PP топологий.
+*
+* subcategory: opt
+* Pins:
+*   P1, P2 — primary halves (anodes of two output tubes).
+*   PC    — primary center-tap (B+ supply).
+*   S1, S2 — secondary (to load).
+.SUBCKT OPT_PP_6K6_8 P1 PC P2 S1 S2
+* Half-primary inductance ≈ 30 H each.
+Lp1 P1 PC 30
+Lp2 PC P2 30
+Ls  S1 S2 0.073
+* Coupling: оба полупервичных к secondary.
+K1 Lp1 Ls 0.999
+K2 Lp2 Ls 0.999
+K3 Lp1 Lp2 0.999
+* DCR per half-primary.
+Rp1_dcr P1 PC1 120
+Rp2_dcr P2 PC2 120
+Rs_dcr  S1 S3  0.3
+Cps P1 S1 150p
+Cps2 P2 S1 150p
+.ENDS OPT_PP_6K6_8

@@ -92,6 +92,14 @@ _BJT_CE_NFB_BUILDER_PATH = (
     / 'schematic_kicad'
     / 'test_bjt_ce_nfb_facade.py'
 )
+_TUBE_PP_AMP_BUILDER_PATH = (
+    _REPO_ROOT
+    / 'tests'
+    / 'integration'
+    / 'adapters'
+    / 'schematic_kicad'
+    / 'test_tube_pp_amp_facade.py'
+)
 
 
 def _import_builder(builder_path: Path, attr: str) -> object:
@@ -124,6 +132,13 @@ def _import_bjt_ce_nfb_builder() -> object:
     return _import_builder(
         _BJT_CE_NFB_BUILDER_PATH,
         '_build_bjt_ce_nfb',
+    )
+
+
+def _import_tube_pp_amp_builder() -> object:
+    return _import_builder(
+        _TUBE_PP_AMP_BUILDER_PATH,
+        '_build_tube_pp_amp',
     )
 
 
@@ -476,11 +491,158 @@ def _bake_bjt_ce_nfb(target_dir: Path) -> None:
     )
 
 
+def _bake_tube_pp_amp(target_dir: Path) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    sch_path = target_dir / f'{PROJECT_NAME_PLACEHOLDER}.kicad_sch'
+    build = _import_tube_pp_amp_builder()
+    build(sch_path)  # type: ignore[operator]
+
+    # Replace absolute model paths → relative `models/...` (тот же
+    # post-process pattern что в _bake_se_amp / _bake_nfb_se_amp).
+    sch_text = sch_path.read_text(encoding='utf-8')
+    sch_text = sch_text.replace(
+        str(_MODELS_DIR / 'tubes' / 'custom' / '6N2P.lib'),
+        'models/6N2P.lib',
+    )
+    sch_text = sch_text.replace(
+        str(_MODELS_DIR / 'tubes' / 'custom' / '6P14P.lib'),
+        'models/6P14P.lib',
+    )
+    sch_text = sch_text.replace(
+        str(_MODELS_DIR / 'transformers' / 'generic' / 'OPT_PP_6K6_8.lib'),
+        'models/OPT_PP_6K6_8.lib',
+    )
+    sch_path.write_text(sch_text, encoding='utf-8')
+
+    pro_name = f'{PROJECT_NAME_PLACEHOLDER}.kicad_pro'
+    pro_path = target_dir / pro_name
+    pro_path.write_text(
+        json.dumps(
+            {
+                'board': {'design_settings': {}},
+                'meta': {'filename': pro_name, 'version': 3},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+
+    models_target = target_dir / 'models'
+    models_target.mkdir(exist_ok=True)
+    shutil.copy(
+        _MODELS_DIR / 'tubes' / 'custom' / '6N2P.lib',
+        models_target / '6N2P.lib',
+    )
+    shutil.copy(
+        _MODELS_DIR / 'tubes' / 'custom' / '6P14P.lib',
+        models_target / '6P14P.lib',
+    )
+    shutil.copy(
+        _MODELS_DIR / 'transformers' / 'generic' / 'OPT_PP_6K6_8.lib',
+        models_target / 'OPT_PP_6K6_8.lib',
+    )
+
+    (target_dir / 'template.yaml').write_text(
+        'name: tube-pp-amp\n'
+        'description: |\n'
+        '  Tube push-pull power amp на 6Н2П (long-tail-pair splitter,\n'
+        '  обе половины ECC83) + пара 6П14П (Valve:EL84) в push-pull с\n'
+        '  per-tube auto-bias (R_k=270Ω ‖ C_k=220µF) + OPT_PP_6K6_8\n'
+        '  (6.6kΩ:8Ω, center-tapped primary) + 8 Ω load. Open-loop\n'
+        '  (без global NFB). Mid-band Av ≈ 16.5 V/V (≈24 dB).\n'
+        'summary: Push-pull 6П14П PP + LTP 6Н2П splitter — open-loop tube power amp.\n',
+        encoding='utf-8',
+    )
+
+    (target_dir / 'README.md').write_text(
+        f'# tube-pp-amp template\n\n'
+        f'Двухкаскадный push-pull power amp с **long-tail-pair (LTP)**\n'
+        f'phase splitter: обе половины 6Н2П (Valve:ECC83 unit 1 + unit 2),\n'
+        f'shared cathode через R_tail=4.7 kΩ → пара 6П14П (Valve:EL84) в\n'
+        f'push-pull с per-tube auto-bias (R_k=270 Ω ‖ C_k=220 µF) → выходной\n'
+        f'трансформатор OPT_PP_6K6_8 (6.6 kΩ p-p : 8 Ω, center-tapped primary)\n'
+        f'→ 8 Ω load. **Open-loop** (без global NFB) — NFB вариант остаётся\n'
+        f'в BACKLOG отдельной задачей по аналогии с `se-amp` → `nfb-se-amp`.\n\n'
+        f'**Phase splitter choice (ADR-T027a).** Изначальный план Round 2 был\n'
+        f'concertina (split-load) на одной половине 6Н2П, но empirical-\n'
+        f'валидация на Koren-style 6N2P model показала, что equal-resistance\n'
+        f'concertina (Ra=Rk=47kΩ) biases tube near cutoff (I_a≈0.15 mA), и\n'
+        f'plate-output gain атрофирует до 0.05 V/V. LTP — textbook-standard\n'
+        f'для PP (Williamson 1947), robust к model parameter drift.\n\n'
+        f'## Топология\n\n'
+        f'```\n'
+        f'                       ┌─[R_p1A 47k]─ B+ ─[R_p1B 47k]─┐\n'
+        f'                       │                                │\n'
+        f'  Vin ─[C_in]─[R_g 1M]─G                                G─[R_g 1M]─ GND\n'
+        f'                       │  V1A         V1B  │\n'
+        f'                       │ (6Н2П unit 1) (unit 2) │\n'
+        f'                       K                       K\n'
+        f'                        └──────┬────────┘ (common cathode rail)\n'
+        f'                               R_tail 4.7k → GND\n'
+        f'                       │                       │\n'
+        f'                       P                       P (anti-phase outputs)\n'
+        f'                       │                       │\n'
+        f'              [C_couple_a 47n]            [C_couple_b 47n]\n'
+        f'                       │                       │\n'
+        f'                  G (V2a 6П14П)         G (V2b 6П14П)\n'
+        f'                       G2 → B+                 G2 → B+\n'
+        f'                       K ‖ R_k_C_k → GND       K ‖ R_k_C_k → GND\n'
+        f'                       P                       P\n'
+        f'                       │ ┌── PC center-tap → B+ ──┐ │\n'
+        f'                       ├─[OPT.P1]               [OPT.P2]─┤\n'
+        f'                       │                                  │\n'
+        f'                     OPT.S1 ── [R_load 8Ω] ── OPT.S2 ── GND\n'
+        f'```\n\n'
+        f'## Q-point (DC operating, validated в op-point regression test)\n\n'
+        f'* V_BB = 300 V; OPT.PC → B+ rail (DC primary impedance ≈ 0).\n'
+        f'* V_plate_q (V2a, V2b) ≈ B+ (≈ 300 V — OPT primary DCR не critical).\n'
+        f'* V_cathode_q (V2a, V2b) ≈ 10 V (auto-bias I_a · R_k = 37 mA · 270 Ω).\n'
+        f'* I_a_q per output tube ≈ 37 mA (близко к 6П14П PP 12 W class A diss).\n'
+        f'* LTP cathode tail ≈ 1-3 V (R_tail · 2·I_a_v1).\n'
+        f'* Plate balance |V_plate_a − V_plate_b| / mean < 10% (PP symmetry).\n\n'
+        f'## Mid-band gain (analytical hand-calc + ngspice empirical)\n\n'
+        f'**Analytical estimate per stage:**\n\n'
+        f'* LTP per-output: |A_v1| ≈ μ·R_p/(R_p+r_a) ≈ 100·47/(47+80) ≈ 37 V/V.\n'
+        f'  Реально ~12 V/V — model parameter drift + downstream loading через\n'
+        f'  C_couple + R_g2 (470k grid leak).\n'
+        f'* 6П14П per-tube pentode gain: |A_v2| ≈ g_m·Z_a_per = 11mA/V · 1.65k\n'
+        f'  ≈ 18 V/V. Реально ~28 V/V (g_m выше при V_a=300V, I_a=30mA).\n'
+        f'* OPT step-down: V_sec/V_diff_prim = 1/N, N = √(R_aa/R_load) =\n'
+        f'  √(6600/8) = 28.7 → 1/N = 0.035.\n'
+        f'* Total: |A_v_open-loop| ≈ 12 · 28 · 0.035 ≈ 12 V/V (нижняя граница).\n\n'
+        f'**Ngspice empirical (baseline):** |A_v| @ 1 kHz ≈ **16.5 V/V (24.4 dB)**.\n'
+        f'Calibration regression test fails если drift > ±15%.\n\n'
+        f'## Файлы\n\n'
+        f'- `{PROJECT_NAME_PLACEHOLDER}.kicad_sch` — KiCad-схема\n'
+        f'  (после материализации: `<имя_проекта>.kicad_sch`).\n'
+        f'- `{PROJECT_NAME_PLACEHOLDER}.kicad_pro` — KiCad project (для GUI Simulator).\n'
+        f'- `models/6N2P.lib` — splitter tubes (LTP pair, same SUBCKT).\n'
+        f'- `models/6P14P.lib` — PP output tubes (pair, same model).\n'
+        f'- `models/OPT_PP_6K6_8.lib` — center-tap PP output transformer.\n\n'
+        f'## Запуск симуляции\n\n'
+        f'    /sim-run\n'
+        f'    # или напрямую:\n'
+        f'    efactory bridge sim-run --schematic <имя_проекта>.kicad_sch\n\n'
+        f'## Рекомендованные measurements\n\n'
+        f'    # Mid-band voltage gain (open-loop, target ≈ 16.5 V/V):\n'
+        f'    efactory bridge measure gain <PROJECT> \\\n'
+        f'        --schematic <PROJECT>.kicad_sch --frequency 1000 --mode small\n\n'
+        f'    # THD spectrum (PP топология cancels even-order distortion):\n'
+        f'    efactory bridge measure thd <PROJECT> \\\n'
+        f'        --schematic <PROJECT>.kicad_sch\n',
+        encoding='utf-8',
+    )
+
+
 _BAKERS: dict[str, object] = {
     'se-amp': _bake_se_amp,
     'nfb-se-amp': _bake_nfb_se_amp,
     'op-amp-inverting': _bake_op_amp_inverting,
     'bjt-ce-nfb': _bake_bjt_ce_nfb,
+    'tube-pp-amp': _bake_tube_pp_amp,
 }
 
 

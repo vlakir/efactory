@@ -25,6 +25,129 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-02 — T027 Phase A ADR-T027a: tube-pp-amp phase splitter — LTP, не concertina
+
+- **Контекст.** T027 Phase A: расширение каталога project templates,
+  первая фаза — `tube-pp-amp` (push-pull power amp). Spec Round 2 Q3
+  (одобрено Vladimir 2026-06-02) выбрал **concertina (split-load)
+  splitter** на одной половине 6Н2П (Ra=Rk=47 kΩ, без катодного
+  bypass) с обоснованием «единственная лампа, perfect AC balance,
+  минимальный component count». Empirical-валидация на Koren-style
+  `data/models/tubes/custom/6N2P.lib` model вскрыла несостоятельность
+  Q-point этой схемы.
+
+- **Empirical-найденная проблема.** Concertina с equal-resistance
+  Ra=Rk=47 kΩ + grounded grid даёт:
+  - I_a quiescent ≈ **0.15 mA** (через ngspice OP);
+  - V_GK ≈ −3.3 V (V_K = 6.6 V auto-bias drop);
+  - **plate-output gain ≈ 0.05 V/V** (вместо ожидаемого ≈ 1 для
+    classical concertina);
+  - cathode-output gain ≈ 0.92 V/V (cathode-follower часть работает);
+  - PP transformer драйвится single-ended (от cathode-output только),
+    итоговый mid-band gain **0.77 V/V** (=24 dB **затухания**, не
+    усиления).
+
+  Concertina expects μ ≈ 100, I_a ≈ 0.5-1.5 mA для proper operation —
+  при equal-R 47 kΩ с grounded grid лампа практически в cutoff.
+
+- **Решение.** Заменить concertina на **long-tail-pair (LTP) splitter**
+  на обеих половинах 6Н2П (Valve:ECC83 unit 1 + unit 2 = ECC83B,
+  shared cathode через R_tail = 4.7 kΩ к GND). Обновлённые компоненты:
+  - V1A, V1B (две triode halves) с R_p1A = R_p1B = 47 kΩ;
+  - R_tail = 4.7 kΩ (compromise — small для proper Q-point bias,
+    differential gain не страдает в diff mode);
+  - V1A.G — AC input via C_in + R_g1A=1MΩ grid leak к GND;
+  - V1B.G — AC reference, R_g1B=1MΩ grid leak к GND.
+
+  Ngspice empirical: |A_v| @ 1 kHz mid-band = **16.5 V/V (24.4 dB)**,
+  LTP plate balance 12.06/8.92 ≈ 30% imbalance (acceptable open-loop),
+  Q-point обеих 6П14П в active region (V_a≈B+=300V, I_a≈37mA, V_K≈10V).
+
+- **Альтернативы (rejected).**
+  - (a) **Concertina с grid voltage divider.** Pull-up grid bias от
+    B+ через R_top/R_bot → V_grid_DC ≈ 50V → tube proper Q-point.
+    Сохраняет Vladimir's Round 2 Q3 choice, но добавляет 3 компонента
+    + parameter sensitivity (V_grid_bias drift при tolerance R_top/
+    R_bot). Тестировался mentally, не реализовывался.
+  - (b) **Concertina с lower R_p=R_k=10 kΩ.** Уменьшить equal-R чтобы
+    поднять I_a. Но дрейфает дальше от standard concertina design
+    point (47-100 kΩ classic). Отвергли — band-aid fix.
+  - (c) **Accept current behavior, документировать gain ≈ 0.77 V/V.**
+    «Open-loop amp с затуханием» — нонсенс для аудио template,
+    дискредитирует starter catalog.
+
+- **Последствия.**
+  - **+2 компонента:** vs concertina (2 R: R_p1+R_k1) теперь 3 R
+    (R_p1A + R_p1B + R_tail) + R_g1B grid leak для второй половины.
+    Acceptable для starter template.
+  - **Textbook-standard topology** (Williamson 1947, Marshall Plexi PI,
+    Hammond DAW). Future T029+ PP fixtures (KT88/EL34/6L6) могут
+    переиспользовать тот же LTP pattern.
+  - **Robust к 6Н2П model parameter drift** — bias регулируется
+    R_tail, не sensitivity-prone grid voltage divider.
+  - **Calibration baseline 16.5 V/V ±15%** (=[14.0, 19.0] V/V) — strict
+    regression test ловит drift при future model updates.
+  - **Subtle layout pitfall** (выявлен в T027 Phase A iteration 2):
+    GND symbols для grid-leak resistors **не должны лежать на cathode
+    rail Y** (Y=101.6 для V1A.K + V1B.K + R_tail.pin_b common point).
+    Документировано в `spice.tube-push-pull` KB topic.
+
+- **Связано:** `tests/integration/adapters/schematic_kicad/test_tube_pp_amp_facade.py`
+  (builder + 3 acceptance tests), `tests/integration/application/test_measure_gain_calibration_tube_pp_amp.py`
+  (calibration regression), `data/templates/tube-pp-amp/`, KB topic
+  `docker/runtime-agent-knowledge-base/spice.tube-push-pull.md`.
+
+### 2026-06-02 — T027 Phase A: custom symbol `Device:Transformer_2P_1S` для PP-OPT
+
+- **Контекст.** Для tube-pp-amp нужен 5-pin transformer symbol
+  (split primary + center-tap + single secondary), соответствующий
+  SUBCKT `OPT_PP_6K6_8 P1 PC P2 S1 S2`. Стандартный KiCad library
+  Device.kicad_sym содержит:
+  - `Transformer_1P_1S` (4 pins, 1 primary + 1 secondary) — мало pins,
+    нет center-tap.
+  - `Transformer_1P_SS` (5 pins, 1 primary + split secondary с
+    center-tap **на secondary**) — center-tap не на той стороне.
+  - `Transformer_1P_2S` (6 pins, 1 primary + 2 secondaries) —
+    лишние pins, нет center-tap.
+
+  Symbol `Transformer_2P_1S` (split primary с center-tap + single
+  secondary) **отсутствует** в стандартной KiCad library.
+
+- **Решение.** Создать **custom symbol** `Device:Transformer_2P_1S`:
+  - `.sexp` файл в `src/adapters/outbound/schematic_kicad/lib_symbols/`
+    (graphics-body — копия `Transformer_1P_SS` coils);
+  - registry entry `_TRANSFORMER_2P_1S` в `facade.py` (pins 1..5 →
+    P1, PC, P2, S1, S2).
+
+  Embedded snippet auto-подхватывается writer'ом по lib_id slug,
+  прецедент `Tubes_Soviet:6N6P` (T107) подтверждает feasibility —
+  без sym-lib-table extension.
+
+- **Альтернативы (rejected).**
+  - (a) **Reuse `Transformer_1P_SS` с rotation=180.** Symbol-graphics
+    симметричен, после поворота split-секция оказывается слева.
+    Pro: ничего не создавать. Con: имя «1P_SS» (1 Primary + Split
+    Secondary) **семантически неверно** для PP-OPT — путает читателя
+    схемы и debug-flow `Sim.Pins`. Долгосрочный confusion debt.
+  - (b) **Заменить SUBCKT OPT_PP_6K6_8** на два отдельных primary
+    halves (Transformer_1P_1S × 2 + wire-join center-tap externally).
+    Con: ломает SUBCKT-encapsulated mutual inductance (K1, K2, K3
+    coupling между плечами), single-half SUBCKT не дают правильной
+    cross-coupling.
+
+- **Последствия.**
+  - Чистая семантика symbol для PP-OPT, future-proof для других PP
+    topologies (T029+ KT88/EL34/6L6 PP).
+  - **+1 .sexp файл** (~340 строк s-expression copy-rename).
+  - **+1 registry entry** в `_SYMBOL_REGISTRY` (~10 строк).
+  - Visualization graphics — split-coil pattern from 1P_SS reused
+    (одинаково красиво для PP). Minor cosmetic note: graphics
+    показывает «split secondary» вместо «split primary» — это
+    minor cosmetic mismatch, не функциональный.
+
+- **Связано:** `src/adapters/outbound/schematic_kicad/lib_symbols/Device.Transformer_2P_1S.sexp`,
+  `src/adapters/outbound/schematic_kicad/facade.py:_TRANSFORMER_2P_1S`.
+
 ### 2026-06-01 — T163 ADR-T163: BJT CE shunt-shunt NFB row в per-topology matrix (ADR-T153g closure)
 
 - **Контекст.** ADR-T153g per-topology matrix оставил BJT CE row
