@@ -110,6 +110,22 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Fixed
 
+- **T167 — Patch 8 Ayumi tube models к ngspice syntax** (`211`, `2A3`,
+  `300B`, `6080`, `6C33C`, `6V6_AYUMI`, `845`, `GENERIC_PENTODE`).
+  Closes BACKLOG follow-up из T166: остальные Ayumi-source `.inc`
+  файлы содержали HSPICE `^` оператор степени и `PWRS(x,y)` signed-
+  power — dormant-broken для `.include` workflow на ngspice 44/45.
+  Patched через существующие efactory converters
+  `convert_ayumi_to_ngspice` + `convert_pwrs_to_ngspice` (тот же
+  pattern что T166 6DJ8 / 6922). За-одно унифицирован ngspice-syntax
+  marker в docstrings всех 10 ayumi/*.inc файлов (idempotent — старый
+  T166 marker содержал `^` в комментарии что сам же ломал re-application
+  конвертера). Regression test (20 cases × 10 files):
+  pre-conversion check + idempotency. Sanity `ngspice -b` на 2A3 SE-amp
+  (V_BB=300, R_p=5k, R_k=800, V_g=-60): V_plate=274V, V_K=4V,
+  I_a=5mA — physical, PWRS errors отсутствуют. Pre-push 5/5 ✓ (1742
+  passed @ 86.15%, +20 vs T027 baseline).
+
 - **T027 Phase C — Koren tube models PWRS → ngspice syntax patch (15
   files, ADR-T027c).** Все 15 Koren tube models в
   `data/models/tubes/koren/` (`12AX7`, `12AU7`, `12AT7`, `12BH7`,
