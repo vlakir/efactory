@@ -187,6 +187,27 @@ async def test_read_subckt_koren_is_not_converted(tmp_path: Path) -> None:
     assert '**2' in block  # без изменений
 
 
+async def test_read_subckt_pwrs_converted_universally(tmp_path: Path) -> None:
+    """T168: PWRS(x,y) конвертируется в любом source (не только AYUMI).
+
+    Defense-in-depth для 3rd-party tube models с HSPICE-syntax: загружаются
+    через read_subckt без manual patch файлов в data/.
+    """
+    pwrs_model = (
+        '.SUBCKT THIRD_PARTY_TRIODE P G K\n'
+        'G1 P K VALUE={PWRS(V(P,K),1.5)/100}\n'
+        '.ENDS\n'
+    )
+    _seed(tmp_path, ModelSource.CUSTOM, 'THIRD_PARTY_TRIODE.lib', pwrs_model)
+    repo = FilesystemSpiceModelLibrary(tmp_path)
+
+    block = await repo.read_subckt('THIRD_PARTY_TRIODE')
+
+    assert 'PWRS(' not in block.upper()
+    assert 'sgn(' in block
+    assert 'pwr(abs(' in block
+
+
 def test_convert_ayumi_replaces_caret_globally() -> None:
     from adapters.outbound.spice_models.conversion import convert_ayumi_to_ngspice
 

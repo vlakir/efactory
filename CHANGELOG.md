@@ -110,6 +110,17 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Fixed
 
+- **T168 — Wire `convert_pwrs_to_ngspice` в production pipeline
+  `spice_library.read_subckt`.** Defense-in-depth для transparent loading
+  3rd-party tube models с HSPICE PWRS-syntax без manual data file patches.
+  Конвертер применяется универсально (для любого `source`), idempotent —
+  для уже-patched T166/T167 ayumi-моделей no-op. AYUMI `^ → **` остаётся
+  conditional (только AYUMI source). Module docstring обновлён.
+  Не replaces T166/T167 data file patches (`.include` workflow still
+  bypasses `read_subckt`), но adds safety-net для production API. +1 unit
+  test (CUSTOM source с PWRS — asserts `PWRS(` absent, `sgn(`/`pwr(abs(`
+  present). Pre-push 5/5 ✓ (1743 passed @ 86.19%, +1 vs T167 baseline).
+
 - **T167 — Patch 8 Ayumi tube models к ngspice syntax** (`211`, `2A3`,
   `300B`, `6080`, `6C33C`, `6V6_AYUMI`, `845`, `GENERIC_PENTODE`).
   Closes BACKLOG follow-up из T166: остальные Ayumi-source `.inc`
