@@ -28,9 +28,11 @@ allowed-tools: Bash
    `schematic-render: <abs path to PNG>` (по одной на лист схемы
    созданного проекта). Для каждой выполни **обе** операции в этом
    порядке:
-   - **`chafa --size=80x40 <abs path>`** через Bash — печатает
-     ANSI-block render в terminal, пользователь видит силуэт схемы
-     прямо в чате (xterm-256color поддерживается из коробки).
+   - **`chafa <abs path>`** через Bash — печатает ANSI-block
+     render в terminal, пользователь видит силуэт схемы прямо в
+     чате. Размер chafa определяет по `$COLUMNS`/`$LINES` автоматом;
+     если terminal очень широкий и render узковат — можно явно
+     задать `--size=200x` (200 col wide, высота по aspect ratio).
    - **`Read <abs path>`** — multimodal LLM «видит» PNG, ты можешь
      описать топологию (схему, компоненты, связи) пользователю.
 
