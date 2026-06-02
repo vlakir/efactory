@@ -24,7 +24,15 @@ allowed-tools: Bash
    `/project-use <NAME>` для просмотра контекста или работай с
    `/workspace/<NAME>/*` через абсолютные пути.»
 
-5. **Если упало (non-zero rc)** — покажи сообщение об ошибке. Если
+5. **T025 auto-show схемы.** Просканируй stdout на строки вида
+   `schematic-render: <abs path to PNG>` (по одной на лист схемы
+   созданного проекта). Для каждой — **покажи PNG inline через Read
+   tool по absolute path**. Это даёт пользователю немедленный визуал
+   того, что materialize template построил. При
+   `Warning: schematic render failed: ...` в stderr — упомяни warning,
+   но проект всё равно создан (fail-soft).
+
+6. **Если упало (non-zero rc)** — покажи сообщение об ошибке. Если
    ошибка `Template '<name>' not found` — предложи
    `efactory project list-templates` для просмотра доступных шаблонов.
 

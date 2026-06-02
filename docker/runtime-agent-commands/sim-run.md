@@ -32,3 +32,12 @@ Args от пользователя: `$ARGUMENTS` (может быть пусто
 4. Если sim успешен, упомяни что результат записан в
    `.efactory/sim-results/<TS>-<analysis>.json` (если writer
    настроен — следующая сессия увидит запись через SessionStart hook).
+
+5. **T025 auto-show схемы.** Просканируй stdout на строки вида
+   `schematic-render: <abs path to PNG>` (по одной на лист схемы).
+   Для каждой такой строки — **покажи PNG inline через Read tool по
+   absolute path** перед обсуждением sim-результатов. Это даёт
+   пользователю немедленный context — «вот что симулировали».
+   Если в stderr вместо этого `Warning: schematic render failed: ...` —
+   упомяни warning одной строкой и продолжай с sim-результатами
+   (render fail-soft не блокирует симуляцию).

@@ -203,6 +203,12 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         'active-lpf-sallen-key',
     ),
+    # T025 Phase C — L2 regression для schematic visualization routing.
+    (
+        'покажи схему отрисуй проект как выглядит render schematic',
+        'agent.command-routing',
+        'schematic-render',
+    ),
 ]
 
 

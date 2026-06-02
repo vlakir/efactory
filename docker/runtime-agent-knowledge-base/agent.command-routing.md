@@ -32,6 +32,7 @@ tags: [agent, slash-commands, routing, scope]
 | «phono preamp», «RIAA preamp», «винил preamp», «MM cartridge amp», «12AX7 phono» | `/project-create <NAME>` + материализуй template `tube-phono-riaa` (см. KB `spice.tube-phono-riaa`); Phase E добавит `[TEMPLATE]` аргумент |
 | «active filter», «Sallen-Key», «LPF», «low-pass filter», «op-amp filter», «Butterworth filter» | `/project-create <NAME>` + материализуй template `active-lpf-sallen-key` (см. KB `spice.active-filter-sallen-key`); Phase E добавит `[TEMPLATE]` аргумент |
 | «запусти симуляцию», «.op / .tran / .ac», «прогони netlist» | `/sim-run` |
+| «покажи схему», «отрисуй проект», «как выглядит схема», «render schematic», «отобрази .kicad_sch» | auto-показывается после `/sim-run` / `/project-create` (T025) — следи за строками `schematic-render: <abs path>` в stdout, открой каждый PNG inline через Read tool |
 | «переключись на проект <NAME>» | `/project-use <NAME>` (display-only) |
 | «как обойти X», «уже было / похоже на pitfall» | `/kb-search <query>` ПЕРЕД исследованием |
 | «сохрани lesson», «потом не забыть» | `/kb-add <topic>` |
