@@ -110,6 +110,20 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Fixed
 
+- **T169 — Env-sanitize git subprocess в `test_git_repository`** —
+  helper `_git_capture` в `tests/integration/adapters/git_subprocess/
+  test_git_repository.py` pop'ит `GIT_DIR` / `GIT_WORK_TREE` /
+  `GIT_INDEX_FILE` из env перед `subprocess.run(['git', '-C', cwd,
+  ...])`. Соответствует production `_build_env()` в
+  `SubprocessGitRepository` (там уже было). Иначе при `git push` из
+  worktree (Claude Code worktree-isolated subagent) git инжектит
+  `GIT_DIR=<worktree-gitdir>` в pre-push hook subprocess (pytest), и
+  raw subprocess.run в тестах читает parent repo вместо tmp_path
+  init → assertion-ы фейлят. 3 verification вызова в `test_init_*`
+  переведены на helper + регрессионный тест
+  `test_init_works_when_caller_has_git_dir_set` симулирует leakage.
+  Обнаружено T168 subagent (workaround push из main repo).
+
 - **T168 — Wire `convert_pwrs_to_ngspice` в production pipeline
   `spice_library.read_subckt`.** Defense-in-depth для transparent loading
   3rd-party tube models с HSPICE PWRS-syntax без manual data file patches.
