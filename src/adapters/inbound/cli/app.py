@@ -20,8 +20,10 @@ from adapters.inbound.cli.edit_and_resim_renderer import (
 )
 from adapters.inbound.cli.plot_renderer import (
     render_ac_sweep,
+    render_ac_sweep_png,
     render_sweep_plot,
     render_time_series,
+    render_time_series_png,
 )
 from adapters.inbound.cli.spice_units import (
     SpiceNumberFormatError,
@@ -141,6 +143,7 @@ from ports.outbound.app_manager import (
 from ports.outbound.decision_repository import DecisionNotFoundError
 from ports.outbound.git_repository import GitOperationError
 from ports.outbound.schematic_exporter import SchematicExportError
+from ports.outbound.schematic_renderer import SchematicRenderError
 from ports.outbound.session_logger import SessionEventStatus
 from ports.outbound.simulator import (
     SimulationFailedError,
@@ -177,6 +180,7 @@ if TYPE_CHECKING:
         ProjectManifestRepository,
     )
     from ports.outbound.schematic_exporter import SchematicExporter
+    from ports.outbound.schematic_renderer import SchematicRender, SchematicRenderer
     from ports.outbound.session_logger import SessionLogger
     from ports.outbound.sim_results import SimResultsRepository
     from ports.outbound.simulator import Simulator
@@ -375,6 +379,31 @@ def _make_confirmation_callback(
     return callback
 
 
+async def render_and_announce_schematic(
+    renderer: SchematicRenderer,
+    schematic: Path,
+    project_root: Path,
+) -> SchematicRender | None:
+    """
+    T025: render `<schematic>` → PNG/SVG в `<project>/.efactory/renders/<TS>/`.
+
+    Печатает строку `schematic-render: <abs path>` в stdout по одной на
+    каждый PNG (multi-sheet → несколько строк). Fail-soft: при
+    `SchematicRenderError` пишет warning в stderr и возвращает None —
+    основной pipeline (`project create` / `bridge design-to-sim`)
+    продолжается.
+    """
+    out_root = project_root / '.efactory' / 'renders'
+    try:
+        render = await renderer.render(schematic, out_root)
+    except SchematicRenderError as exc:
+        typer.echo(f'Warning: schematic render failed: {exc}', err=True)
+        return None
+    for png in render.png_paths:
+        typer.echo(f'schematic-render: {png}')
+    return render
+
+
 def build_app(
     *,
     projects_root: Path,
@@ -386,6 +415,7 @@ def build_app(
     spice_library: SpiceModelLibrary,
     app_manager: AppManager,
     schematic_exporter: SchematicExporter,
+    schematic_renderer: SchematicRenderer,
     simulator: Simulator,
     netlist_editor: NetlistEditor,
     injection_patcher: InjectionNetlistPatcher,
@@ -395,6 +425,16 @@ def build_app(
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
     app.add_typer(project_app, name='project')
+
+    async def _render_and_announce_schematic(
+        schematic: Path,
+        project_root: Path,
+    ) -> SchematicRender | None:
+        return await render_and_announce_schematic(
+            schematic_renderer,
+            schematic,
+            project_root,
+        )
 
     @project_app.command('create')
     def create(
@@ -477,6 +517,15 @@ def build_app(
             f'Created project {project.name} at {project.path} '
             f'(id={project.id}){suffix}',
         )
+        if template is not None:
+            schematic_files = sorted(project.path.glob('*.kicad_sch'))
+            if schematic_files:
+                asyncio.run(
+                    _render_and_announce_schematic(
+                        schematic_files[0],
+                        project.path,
+                    ),
+                )
 
     @project_app.command('list-templates')
     def list_templates_command(
@@ -1669,6 +1718,13 @@ def build_app(
         timeout_seconds: float,
         event: str,
     ) -> Simulation:
+        project_root = projects_root / project
+        schematic_path = Path(schematic)
+        if not schematic_path.is_absolute():
+            schematic_path = (project_root / schematic_path).resolve()
+        if schematic_path.is_file():
+            await _render_and_announce_schematic(schematic_path, project_root)
+
         async def _run() -> Simulation:
             return await design_to_sim_use_case(
                 project_name=project,
@@ -3265,6 +3321,13 @@ def build_app(
             int,
             typer.Option('--height', help='Высота графика в строках'),
         ] = 20,
+        output: Annotated[
+            str | None,
+            typer.Option(
+                '--output',
+                help='Сохранить график как PNG (T025; abs path; agent открывает eog).',
+            ),
+        ] = None,
         timeout: Annotated[
             float,
             typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
@@ -3331,6 +3394,17 @@ def build_app(
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=2) from exc
         typer.echo(chart)
+        if output is not None:
+            try:
+                png_path = render_ac_sweep_png(
+                    result.ac_sweep,
+                    signal=signal,
+                    output=Path(output),
+                )
+            except ValueError as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(code=2) from exc
+            typer.echo(f'plot-render: {png_path}')
 
     @plot_app.command('tran')
     def plot_tran_cmd(
@@ -3364,6 +3438,13 @@ def build_app(
             int,
             typer.Option('--height', help='Высота графика в строках'),
         ] = 20,
+        output: Annotated[
+            str | None,
+            typer.Option(
+                '--output',
+                help='Сохранить график как PNG (T025; abs path; agent открывает eog).',
+            ),
+        ] = None,
         timeout: Annotated[
             float,
             typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
@@ -3415,5 +3496,16 @@ def build_app(
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=2) from exc
         typer.echo(chart)
+        if output is not None:
+            try:
+                png_path = render_time_series_png(
+                    result.time_series,
+                    signal=signal,
+                    output=Path(output),
+                )
+            except ValueError as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(code=2) from exc
+            typer.echo(f'plot-render: {png_path}')
 
     return app

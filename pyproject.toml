@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "matplotlib>=3.10.9",
     "plotext>=5.3.2",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.1",

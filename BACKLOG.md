@@ -841,10 +841,14 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      ordering Фазы 2, шаг 2 после T023). Реализован напрямую без
      spec'и: ≤1 день, plotext + 2 CLI sub-команды + 2 slash-команды. -->
 
-- **T025** — [2026-05-15] Визуализация схем: Sixel/Kitty protocol
-  + fallback на `xdg-open` (Linux) / `start` (Windows).
-  Acceptance: при поддержке терминала схема рендерится прямо в чат;
-  иначе открывается во внешнем просмотрщике.
+<!-- T025 переехала в BOARD.md → Doing 2026-06-02 после Round 1
+     clarify (6 ответов). Исходный acceptance (Sixel/Kitty + xdg-open
+     + Windows `start`) переформулирован в свете Phase 0.9
+     containerization: UX = Claude Code chat inline по absolute path к
+     PNG; Sixel/xdg-open/Windows откладываются в follow-up / Phase 8.
+     Spec — specs/T025-schematic-visualization/spec.md (Draft, Round 2
+     открыт). -->
+
 - **T026** — [2026-05-15] Конкурентный доступ к файлам: staged-
   модификации при открытом KiCad (`.kicad_sch.staged` → diff →
   apply через IPC reload).

@@ -203,6 +203,24 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         'active-lpf-sallen-key',
     ),
+    # T025 Phase C — L2 regression для schematic visualization routing.
+    (
+        'покажи схему отрисуй проект как выглядит render schematic',
+        'agent.command-routing',
+        'schematic-render',
+    ),
+    # T025 Q1 v2 — L2 regression для plot graphical output routing.
+    (
+        'покажи график в окне графически show plot',
+        'agent.command-routing',
+        'plot-render',
+    ),
+    # T025 Q1 v2 — L2 anti-pattern: ad-hoc matplotlib запрещён.
+    (
+        'matplotlib python script ad-hoc plot waveform',
+        'agent.command-routing',
+        'ad-hoc',
+    ),
 ]
 
 

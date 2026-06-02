@@ -84,14 +84,18 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       getdp \
       gmsh \
       elmerfem-csc \
+      chafa \
       dbus-x11 \
+      eog \
       libcanberra-gtk3-module \
       libgl1 \
+      librsvg2-bin \
       locales \
       mesa-utils \
       x11-apps \
       x11-utils \
       xauth \
+      xdg-utils \
       libasound2t64 \
       libegl1 \
       libnss3 \

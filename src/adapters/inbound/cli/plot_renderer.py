@@ -21,11 +21,18 @@ import math
 import statistics
 from typing import TYPE_CHECKING, Literal
 
-import plotext as plt
+import matplotlib as mpl
+import plotext as pltx
+from matplotlib import pyplot as plt
 
 from adapters.inbound.cli.spice_units import parse_spice_number
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
+
     from application.bridge_sweep import SweepRun
     from domain.simulation import AcSweep, TimeSeries
 
@@ -64,14 +71,14 @@ def render_ac_sweep(
     magnitudes_db = [_db(math.hypot(r, i)) for r, i in zip(real, imag, strict=True)]
     freqs = list(sweep.frequency)
 
-    plt.clear_figure()
-    plt.plotsize(width, height)
-    plt.title(title if title is not None else f'|H(f)|: {signal}')
-    plt.xlabel('frequency, Hz (log)')
-    plt.ylabel('magnitude, dB')
-    plt.xscale('log')
-    plt.plot(freqs, magnitudes_db)
-    return plt.build()
+    pltx.clear_figure()
+    pltx.plotsize(width, height)
+    pltx.title(title if title is not None else f'|H(f)|: {signal}')
+    pltx.xlabel('frequency, Hz (log)')
+    pltx.ylabel('magnitude, dB')
+    pltx.xscale('log')
+    pltx.plot(freqs, magnitudes_db)
+    return pltx.build()
 
 
 def render_time_series(
@@ -102,13 +109,81 @@ def render_time_series(
     trace = _trace_or_raise(series.traces, signal)
     time = list(series.time)
 
-    plt.clear_figure()
-    plt.plotsize(width, height)
-    plt.title(title if title is not None else f'{signal} vs time')
-    plt.xlabel('time, s')
-    plt.ylabel(signal)
-    plt.plot(time, list(trace))
-    return plt.build()
+    pltx.clear_figure()
+    pltx.plotsize(width, height)
+    pltx.title(title if title is not None else f'{signal} vs time')
+    pltx.xlabel('time, s')
+    pltx.ylabel(signal)
+    pltx.plot(time, list(trace))
+    return pltx.build()
+
+
+def render_ac_sweep_png(
+    sweep: AcSweep,
+    *,
+    signal: str,
+    output: Path,
+    title: str | None = None,
+) -> Path:
+    """
+    Render AC sweep как АЧХ → PNG через matplotlib (T025).
+
+    Параллельный path к `render_ac_sweep` для terminal-неинтерактивного
+    UX (host viewer через X11 forwarding). Returns absolute path к
+    созданному PNG (для каскадного echo `plot-render: <path>`).
+    """
+    real = _trace_or_raise(sweep.traces_real, signal)
+    imag = _trace_or_raise(sweep.traces_imag, signal)
+    magnitudes_db = [_db(math.hypot(r, i)) for r, i in zip(real, imag, strict=True)]
+    freqs = list(sweep.frequency)
+
+    fig, ax = _new_figure()
+    ax.set_xscale('log')
+    ax.plot(freqs, magnitudes_db)
+    ax.set_xlabel('frequency, Hz (log)')
+    ax.set_ylabel('magnitude, dB')
+    ax.set_title(title if title is not None else f'|H(f)|: {signal}')
+    ax.grid(visible=True, which='both', linestyle=':', alpha=0.4)
+    return _save_and_close(fig, output)
+
+
+def render_time_series_png(
+    series: TimeSeries,
+    *,
+    signal: str,
+    output: Path,
+    title: str | None = None,
+) -> Path:
+    """
+    Render TRAN waveform → PNG через matplotlib (T025).
+
+    Параллельный path к `render_time_series` для host viewer (X11).
+    """
+    trace = _trace_or_raise(series.traces, signal)
+    time = list(series.time)
+
+    fig, ax = _new_figure()
+    ax.plot(time, list(trace))
+    ax.set_xlabel('time, s')
+    ax.set_ylabel(signal)
+    ax.set_title(title if title is not None else f'{signal} vs time')
+    ax.grid(visible=True, linestyle=':', alpha=0.4)
+    return _save_and_close(fig, output)
+
+
+def _new_figure() -> tuple[Figure, Axes]:
+    """Matplotlib figure + axes для PNG-render-функций (Agg backend)."""
+    mpl.use('Agg', force=True)
+    fig, ax = plt.subplots(figsize=(10, 6), dpi=120)
+    return fig, ax
+
+
+def _save_and_close(fig: Figure, output: Path) -> Path:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(output, format='png')
+    plt.close(fig)
+    return output.resolve()
 
 
 def _trace_or_raise(
@@ -256,27 +331,27 @@ def render_sweep_plot(
     all_xs = [x for trace in traces.values() for (x, _) in trace]
     effective_scale = _detect_x_scale(all_xs) if x_scale == 'auto' else x_scale
 
-    plt.clear_figure()
-    plt.plotsize(width, height)
-    plt.title(
+    pltx.clear_figure()
+    pltx.plotsize(width, height)
+    pltx.title(
         title
         if title is not None
         else f'{y_field} vs {x_param}'
         + (f' (grouped by {group_by})' if group_by else '')
     )
-    plt.xlabel(x_param)
-    plt.ylabel(y_field)
+    pltx.xlabel(x_param)
+    pltx.ylabel(y_field)
     if effective_scale == 'log':
-        plt.xscale('log')
+        pltx.xscale('log')
     for label, points in sorted(traces.items()):
         points.sort(key=lambda p: p[0])
         xs = [p[0] for p in points]
         ys = [p[1] for p in points]
         if group_by is not None:
-            plt.plot(xs, ys, label=f'{group_by}={label}')
+            pltx.plot(xs, ys, label=f'{group_by}={label}')
         else:
-            plt.plot(xs, ys)
-    return plt.build()
+            pltx.plot(xs, ys)
+    return pltx.build()
 
 
 __all__ = [

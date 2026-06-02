@@ -65,6 +65,24 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T025** — [closed 2026-06-02, PR #111] **Визуализация схемы в чате
+  после `/sim-run` + `/project-create`.** `SchematicRenderer` outbound
+  port + `KicadCliSchematicRenderer` adapter (`kicad-cli sch export svg`
+  → `rsvg-convert` PNG-per-sheet, Q10 multi-sheet). `librsvg2-bin` в
+  `Dockerfile` Stage 1, contained `efactory:linux` пересобран (rsvg-
+  convert 2.58.0). `render_and_announce_schematic` CLI helper печатает
+  `schematic-render: <abs>` строки в stdout (fail-soft на
+  `SchematicRenderError`). Adapter-level wiring в `project create` (после
+  template materialize) + `_execute_design_to_sim` (до ngspice); domain
+  DTO **не** модифицированы — hexagonal соблюдена (Q7 corrected).
+  Slash `/sim-run` + `/project-create` дополнены шагом auto-show через
+  Read tool. KB `agent.command-routing` +1 row («покажи схему» / «отрисуй
+  проект» / «render schematic») + L2 parametrized regression test.
+  Spec — `specs/T025-schematic-visualization/spec.md` (Analyzed; 3 🔴
+  resolved). Single-day sprint 2026-06-02, 3 phases в одном PR
+  (4-commit squash). Pre-push 4/4 ✓ (1762 passed @ 86.31% coverage,
+  +18 tests vs T169 baseline).
+
 - **T169** — [closed 2026-06-02, PR #110] **Env-sanitize git
   subprocess в тестах** (`tests/integration/adapters/git_subprocess/
   test_git_repository.py`). Helper `_git_capture` pop'ит

@@ -502,6 +502,28 @@ if (( AGENT_MODE )); then
     fi
     log "agent cwd = $AGENT_CWD"
 
+    # T025: X11 forwarding для schematic auto-show через eog.
+    # Без X11 eog падает с `cannot open display:`, и /sim-run +
+    # /project-create auto-show не работает. Если DISPLAY на host
+    # пустой (e.g., headless ssh) — пропускаем X11 без fatal; agent
+    # fallback'нется на Read tool для multimodal LLM описания.
+    AGENT_X11_ARGS=()
+    AGENT_XAUTH_HOST="${XAUTHORITY:-$HOME/.Xauthority}"
+    if [[ -n "${DISPLAY:-}" ]] && [[ -r "$AGENT_XAUTH_HOST" ]] \
+       && command -v xhost >/dev/null; then
+        AGENT_X11_ARGS=(
+            -e DISPLAY
+            -v /tmp/.X11-unix:/tmp/.X11-unix:rw
+            -v "$AGENT_XAUTH_HOST:/efactory/.Xauthority:ro"
+        )
+        AGENT_HOST_UID="$(id -u)"
+        xhost "+SI:localuser:#${AGENT_HOST_UID}" >/dev/null
+        trap 'xhost "-SI:localuser:#${AGENT_HOST_UID}" >/dev/null || true' EXIT
+        log "X11 forwarding включён (T025 schematic auto-show через eog)"
+    else
+        log "X11 не доступен — T025 schematic auto-show через eog не сработает; fallback на Read tool (описание словами)"
+    fi
+
     # `--append-system-prompt "$(cat /CLAUDE.md)"` — явная подгрузка
     # runtime-агентского system prompt. Claude Code 2.1.150 auto-discovery
     # CLAUDE.md из parent-trail CWD=/workspace до / в нашем layout не
@@ -511,6 +533,7 @@ if (( AGENT_MODE )); then
     docker run --rm -it \
         "${MEMORY_ARGS[@]}" \
         "${AGENT_ENV_ARGS[@]}" \
+        "${AGENT_X11_ARGS[@]}" \
         -v "$STATE_DIR/claude:/efactory/.claude:rw" \
         -v "$STATE_DIR/knowledge-base:/efactory/knowledge-base/host-mutated:rw" \
         -v "$PROJECTS_DIR:/workspace:rw" \

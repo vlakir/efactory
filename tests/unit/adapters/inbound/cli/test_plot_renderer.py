@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -16,9 +17,14 @@ def _strip_ansi(s: str) -> str:
 
 from adapters.inbound.cli.plot_renderer import (
     render_ac_sweep,
+    render_ac_sweep_png,
     render_time_series,
+    render_time_series_png,
 )
 from domain.simulation import AcSweep, TimeSeries
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _flat_ac_sweep(
@@ -289,3 +295,76 @@ def test_render_sweep_plot_raises_on_missing_y_field() -> None:
     ]
     with pytest.raises(ValueError, match='y_field'):
         render_sweep_plot(rows, x_param='R1', y_field='missing_field')
+
+
+# ────────── T025: PNG-renderers (matplotlib backend) ──────────
+
+
+_PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
+
+
+def test_render_ac_sweep_png_creates_valid_file(tmp_path: Path) -> None:
+    sweep = _flat_ac_sweep(magnitude_db=-3.0)
+    output = tmp_path / 'ac.png'
+
+    result = render_ac_sweep_png(sweep, signal='v(load)', output=output)
+
+    assert result == output.resolve()
+    assert output.is_file()
+    assert output.stat().st_size > 1000
+    with output.open('rb') as fh:
+        assert fh.read(8) == _PNG_SIGNATURE
+
+
+def test_render_time_series_png_creates_valid_file(tmp_path: Path) -> None:
+    series = _sine_time_series()
+    output = tmp_path / 'tran.png'
+
+    result = render_time_series_png(series, signal='v(load)', output=output)
+
+    assert result == output.resolve()
+    assert output.is_file()
+    assert output.stat().st_size > 1000
+    with output.open('rb') as fh:
+        assert fh.read(8) == _PNG_SIGNATURE
+
+
+def test_render_ac_sweep_png_creates_parent_dirs(tmp_path: Path) -> None:
+    sweep = _flat_ac_sweep()
+    output = tmp_path / 'nested' / 'subdir' / 'ac.png'
+
+    render_ac_sweep_png(sweep, signal='v(load)', output=output)
+
+    assert output.is_file()
+
+
+def test_render_ac_sweep_png_raises_on_missing_signal(tmp_path: Path) -> None:
+    sweep = _flat_ac_sweep()
+
+    with pytest.raises(ValueError, match='not found'):
+        render_ac_sweep_png(
+            sweep, signal='v(missing)', output=tmp_path / 'x.png',
+        )
+
+
+def test_render_time_series_png_raises_on_missing_signal(
+    tmp_path: Path,
+) -> None:
+    series = _sine_time_series()
+
+    with pytest.raises(ValueError, match='not found'):
+        render_time_series_png(
+            series, signal='v(missing)', output=tmp_path / 'x.png',
+        )
+
+
+def test_render_ac_sweep_png_custom_title(tmp_path: Path) -> None:
+    """PNG-render не падает на explicit title (smoke; matplotlib renders text)."""
+    sweep = _flat_ac_sweep()
+    output = tmp_path / 'ac.png'
+
+    render_ac_sweep_png(
+        sweep, signal='v(load)', output=output, title='Custom AC',
+    )
+
+    assert output.is_file()
