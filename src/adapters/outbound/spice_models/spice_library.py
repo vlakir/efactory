@@ -25,7 +25,9 @@ source dir внутри одной category — `SpiceModelLibraryDuplicateError
 **User overlay (T006 fix-up Q3):** `<user_library_root>/` сканируется
 после built-in; user-id'ы перезаписывают built-in.
 
-`read_subckt` для source=AYUMI применяет `^ → **` ngspice конверсию.
+`read_subckt` универсально применяет `PWRS(x,y) → sgn(x)*pwr(abs(x),y)`
+конверсию (idempotent, defense-in-depth для HSPICE 3rd-party моделей).
+Для source=AYUMI дополнительно применяет `^ → **` ngspice конверсию.
 
 Known limitations:
 - `.SUBCKT NAME P1 P2 ... [PARAMS:...]` на одной строке (uppercase
@@ -40,7 +42,10 @@ import asyncio
 import re
 from typing import TYPE_CHECKING, Final
 
-from adapters.outbound.spice_models.conversion import convert_ayumi_to_ngspice
+from adapters.outbound.spice_models.conversion import (
+    convert_ayumi_to_ngspice,
+    convert_pwrs_to_ngspice,
+)
 from domain.spice_model import (
     ComponentCategory,
     ModelSource,
@@ -276,8 +281,12 @@ class FilesystemSpiceModelLibrary:
         def _read() -> str:
             raw = model.file_path.read_text(encoding='utf-8')
             block = _extract_subckt_block(raw)
+            # T168: PWRS-конвертер применяем универсально (idempotent) для
+            # defense-in-depth — 3rd-party tube models с HSPICE PWRS-syntax
+            # подгружаются без manual data file patch.
+            block = convert_pwrs_to_ngspice(block)
             if model.source is ModelSource.AYUMI:
-                return convert_ayumi_to_ngspice(block)
+                block = convert_ayumi_to_ngspice(block)
             return block
 
         return await asyncio.to_thread(_read)
