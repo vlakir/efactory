@@ -2,12 +2,17 @@
 *
 * Ayumi-style triode formula. Low rp (~280 Ω); популярна в OTL и
 * линейных регуляторах БП.
+*
+* ngspice-syntax из коробки (T167 2026-06-02): степень через `**`,
+* signed power — `sgn(x)*pwr(abs(x), y)`. Не требует converter passes
+* для `.include` workflow.
+*
 * tube_type: triode
 * Pins: P (plate), G (grid), K (cathode) — single section.
 .SUBCKT 6080 P G K
 * MU=2.0 EX=1.45 KG1=1500 KP=80 KVB=300
-E1 7 0 VALUE={V(P,K)/80*LN(1+EXP(80*(1/2.0+V(G,K)/SQRT(300+V(P,K)^2))))}
-G1 P K VALUE={(PWRS(V(7),1.45)+PWRS(V(7),1.45))/1500}
+E1 7 0 VALUE={V(P,K)/80*LN(1+EXP(80*(1/2.0+V(G,K)/SQRT(300+V(P,K)**2))))}
+G1 P K VALUE={(sgn(V(7))*pwr(abs(V(7)),1.45)+sgn(V(7))*pwr(abs(V(7)),1.45))/1500}
 C1 G K 6p
 C2 G P 8p
 C3 P K 2.2p
