@@ -1,7 +1,8 @@
 # Spec: Staged-модификации `.kicad_sch` при открытом KiCad
 
-**Статус:** Analyzed
+**Статус:** Done
 **Дата создания:** 2026-06-03
+**Дата закрытия:** 2026-06-03 (single-day sprint, 4 phases)
 **Связанные документы:**
 - `DECISIONS.md` — ADR от 2026-05-18 (kicad-python 0.7.1 покрывает только PCB; Schematic API горизонт KiCad 11/12).
 - `specs/T025-schematic-visualization/spec.md` — паттерн `schematic-render: <abs>` stdout-уведомлений; container path валиден host-side через bind-mount `/efactory/projects/<project>`.
@@ -477,12 +478,86 @@ per project rule).
 
 ---
 
-### Действия перед началом Implement
+### Действия перед началом Implement (status)
 
-1. **W1 (force-split semantic) — Vladimir выбирает (a/b/c).**
-2. **W2 (current project helper) — Phase 1 verify; если нет — degrade.**
-3. **W5 (project show existence) — Phase 1 grep verify.**
-4. **C1 — Phase 0 separate commit, gate-условие зафиксировано.**
+1. **W1 (force-split semantic) — RESOLVED (c).** `--force` для lock,
+   `--accept-overwrite` для parent-hash. Зашито в §3, §4 AC-7/AC-8.
+2. **W2 (current project helper) — RESOLVED degrade.** Phase 1 verify
+   показала отсутствие `current_project_context()` — `/schematic-apply`
+   требует `<project>` arg всегда.
+3. **W5 (project show existence) — RESOLVED.** `efactory project show`
+   существует (`@project_app.command('show')` в app.py).
+4. **C1 — RESOLVED.** Phase 0 — отдельный commit, AC-0 PASSED, KiCad 10
+   lock-pattern verified.
 
-После этих ответов — переносим T026 из BACKLOG → BOARD `Doing`, создаём
-ветку `T026-staged-modifications`, начинаем Phase 0 probe.
+---
+
+## Implementation summary (заполняется по факту)
+
+**4 phases в single-day sprint 2026-06-03 (3 commits на feature
+branch, squash в один при merge per project rule).**
+
+**Phase 0 (probe).** Empirical KiCad 10.0.3 lock-file probe: pattern
+`<dir>/~<filename>.lck` зафиксирован. Stale-lock после SIGTERM/SIGKILL
+выяснено как штатная норма (не edge case). AC-0 PASSED. Commit:
+`T026 Phase 0 — empirical KiCad 10 lock-file probe`.
+
+**Phase 1 (writer + detector + sidecar).** 4 новых helper-модуля в
+`adapters/outbound/schematic_kicad/`: `staged_paths.py`,
+`lock_detector.py`, `staged_metadata.py` (pydantic), `notifier.py`
+(Protocol + Null/Recording impls). `KicadSchematicWriter` модифицирован:
+DI constructor (notifier + lock_detector), branch direct vs staged в
+`.write()`, sidecar `.meta.json` записывается с `parent_hash` (sha256
+active content на момент write). Protocol signature unchanged
+(`write(spec, path) -> Path`) — staged режим transparent. 33 new unit
+tests. Commit: `T026 Phase 1 — KiCad lock-detector + staged writer +
+sidecar`.
+
+**Phase 2 (apply-staged use case + CLI + slash + KB).**
+- `application/apply_staged_schematic.py`: `ApplyStagedSchematic`
+  use case + `SkippedStagedEntry` + `ApplyStagedOutcome` dataclasses.
+- `adapters/outbound/schematic_kicad/scanner.py`: `PendingStagedEntry` +
+  `scan_pending_staged()` recursive rglob.
+- CLI: `efactory schematic apply-staged <project> [--force]
+  [--accept-overwrite]` (новый `schematic_app` Typer sub-app). Output
+  markers: `schematic-applied:`, `schematic-apply-skipped:`,
+  `schematic-apply-staged: no pending`.
+- Slash: `/schematic-apply [<project>]` (без current-project context
+  fallback — degrade per W2).
+- KB: новый namespace `schematic.*`, topic `schematic.staged-modifications`
+  + 1 row в `agent.command-routing`.
+- Tests: 6 scanner unit + 12 use case unit + 7 CLI e2e + 2 L2 KB
+  regression. Commit: `T026 Phase 2 — apply-staged use case + CLI +
+  slash + KB`.
+
+**Phase 3 (entry-point warnings).** Helpers
+`_emit_pending_staged_warning` + `_count_pending_staged` в app.py.
+Wire в `project show`, `project list` (с per-project маркером
+`[N pending staged]`), `bridge design-to-sim` (op/tran/ac). Warning
+in stderr, не блокирует операцию (exit 0). 5 e2e tests. Commit:
+`T026 Phase 3 — entry-point warnings о pending staged`.
+
+**Acceptance criteria status:**
+- AC-0: PASSED (Phase 0 probe verified).
+- AC-1..AC-10: covered via unit + e2e + L2 regression tests
+  (1829 passed total, +67 vs T025 baseline 1762).
+- L1 KB sync: ✓ command-routing row + new topic.
+- L2 regression: ✓ parametrized test_control_examples.
+- L3 smoke: deferred manual (acceptance reporting).
+- Pre-push 4/4: ✓ (ruff, format, mypy, pytest @ 86.51% coverage,
+  выше T025 baseline 86.31%).
+
+**W4 honored:** Protocol `SchematicWriter.write(spec, path) -> Path`
+signature unchanged. Existing call sites (facade.Schematic.write,
+tests) работают без изменений.
+
+**Что не вошло (BACKLOG candidates):**
+- `.gitignore` template update — проверка показала, что новые проекты
+  не имеют `.gitignore` вовсе; добавление staged-pattern откладывается
+  до момента когда `project create` будет генерировать `.gitignore`.
+- `clear-staged` cleanup command — спека помечена МОЖЕТ, follow-up.
+- Current-project context для `/schematic-apply` без args — W2 degrade,
+  follow-up.
+- `bridge sim-run` warning (берёт netlist напрямую, не project) —
+  пропущен; slash `/sim-run` через `design-to-sim` тип реализации,
+  поэтому в practice warning достигает.
