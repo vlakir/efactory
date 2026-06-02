@@ -86,6 +86,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       elmerfem-csc \
       chafa \
       dbus-x11 \
+      eog \
       libcanberra-gtk3-module \
       libgl1 \
       librsvg2-bin \
@@ -94,6 +95,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       x11-apps \
       x11-utils \
       xauth \
+      xdg-utils \
       libasound2t64 \
       libegl1 \
       libnss3 \

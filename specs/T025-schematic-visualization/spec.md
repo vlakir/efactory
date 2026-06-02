@@ -207,18 +207,34 @@ efactory — без явных end-user'ов; работа идёт через r
 - **(Q1) Primary UX-канал** — Claude Code chat inline по absolute path
   к PNG. Sixel/Kitty и xdg-open — не primary в T025.
 
-  **Q1 correction (2026-06-02 после live-теста с Vladimir).**
-  Claude Code CLI (terminal-based agent) **не отрисовывает PNG в
-  terminal** через Read tool; multimodal LLM «видит» картинку для
-  описания, но пользователь визуально ничего не видит. В Claude
-  Desktop / web inline-image работает корректно, в CLI — нет.
-  **Решение:** добавлен `chafa` (apt) в `Dockerfile` Stage 1.
-  Slash-инструкция выполняет **обе** операции для каждого
-  `schematic-render: <path>`: `chafa --size=80x40 <path>` через
-  Bash (ANSI-block render в xterm-256color → пользователь видит
-  силуэт схемы) **+** `Read <path>` (multimodal LLM видит детали →
-  описание словами). Dual-mode покрывает оба UX-канала; в Claude
-  Desktop chafa-output смотрится как ANSI-art, что приемлемо.
+  **Q1 correction v1 (chafa) — отвергнут 2026-06-02 после live-теста.**
+  Claude Code CLI не отрисовывает PNG inline через Read tool (multimodal
+  LLM «видит» для описания, пользователь — нет). Попытка chafa
+  ANSI-block render: терминал-зависимый, в широком xterm даёт узкую
+  полоску; Vladimir сформулировал как «тайнопись», не приемлемо как
+  primary UX.
+
+  **Q1 correction v2 (host viewer через X11) — принят 2026-06-02.**
+  efactory:linux уже использует X11 forwarding из контейнера на host
+  (KiCad GUI, T100 fixtures, T021 smoke). Добавлены apt `eog` +
+  `xdg-utils` в `Dockerfile` Stage 1 (eog ~25 пакетов GNOME deps;
+  один rebuild ~1.5 ч cold cache, последующие — minutes warm).
+  Slash-инструкция выполняет **`xdg-open <png> &`** через Bash для
+  каждого `schematic-render: <path>` — `eog` (Eye of GNOME)
+  открывается **отдельным окном** на host display, пользователь
+  видит реальную KiCad-style схему. Параллельно `Read <path>`
+  остаётся для multimodal LLM описания словами (fallback для ssh
+  без X11).
+
+  KB `agent.command-routing` дополнена фразами: «покажи схему» /
+  «открой схему» / «как выглядит» → `xdg-open <last schematic-render
+  path>`. «Покажи результат / график» → `/plot-ac` `/plot-tran` +
+  `xdg-open` на plot output. «Покажи всё» (ambiguous) → уточнить.
+  Agent понимает запросы на человеческом языке без жёсткого slash-
+  syntax.
+
+  `chafa` остаётся установленным в образе как minor backup
+  (для headless / ssh без X11), но из slash-инструкций удалён.
 - **(Q2) Container-side выполнение** — `efactory bridge sim-run`
   запускается внутри `efactory:linux`. Path translation через
   bind-mount — путь, видимый из контейнера, должен быть валиден
