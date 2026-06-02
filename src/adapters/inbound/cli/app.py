@@ -41,6 +41,7 @@ from adapters.inbound.cli.template_materializer import (
     list_templates,
     materialize_template,
 )
+from adapters.outbound.schematic_kicad.scanner import scan_pending_staged
 from application.add_decision import add_decision as add_decision_use_case
 from application.apply_staged_schematic import (
     ApplyStagedOutcome,
@@ -584,8 +585,11 @@ def build_app(
             typer.echo('No projects found.')
             return
         for project in projects:
+            pending = _count_pending_staged(project.path)
+            pending_marker = f'\t[{pending} pending staged]' if pending else ''
             typer.echo(
-                f'{project.name}\t{project.created_at.isoformat()}\t{project.path}',
+                f'{project.name}\t{project.created_at.isoformat()}'
+                f'\t{project.path}{pending_marker}',
             )
 
     @project_app.command('show')
@@ -627,6 +631,7 @@ def build_app(
             typer.echo(
                 f'  {phase.name.value}\t{phase.status.value}\t{started}\t{completed}',
             )
+        _emit_pending_staged_warning(project.path)
 
     @project_app.command('delete')
     def delete(
@@ -1728,6 +1733,7 @@ def build_app(
         event: str,
     ) -> Simulation:
         project_root = projects_root / project
+        _emit_pending_staged_warning(project_root)
         schematic_path = Path(schematic)
         if not schematic_path.is_absolute():
             schematic_path = (project_root / schematic_path).resolve()
@@ -3588,6 +3594,29 @@ def _emit_apply_staged_outcome(outcome: ApplyStagedOutcome) -> None:
         typer.echo(f'schematic-applied: {path}')
     for entry in outcome.skipped:
         typer.echo(_format_skipped(entry), err=True)
+
+
+def _emit_pending_staged_warning(project_root: Path) -> None:
+    """T026: предупредить о pending `.kicad_sch.staged` без блокировки."""
+    if not project_root.is_dir():
+        return
+    entries = scan_pending_staged(project_root)
+    if not entries:
+        return
+    typer.echo(
+        f'schematic-staged-pending: {len(entries)} file(s) in {project_root} — '
+        f'apply via `efactory schematic apply-staged <project>` or '
+        f'`/schematic-apply`.',
+        err=True,
+    )
+    for entry in entries:
+        typer.echo(f'  staged: {entry.staged_path}', err=True)
+
+
+def _count_pending_staged(project_root: Path) -> int:
+    if not project_root.is_dir():
+        return 0
+    return len(scan_pending_staged(project_root))
 
 
 def _format_skipped(entry: SkippedStagedEntry) -> str:
