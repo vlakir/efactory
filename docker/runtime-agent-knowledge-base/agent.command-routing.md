@@ -33,11 +33,30 @@ tags: [agent, slash-commands, routing, scope]
 | «active filter», «Sallen-Key», «LPF», «low-pass filter», «op-amp filter», «Butterworth filter» | `/project-create <NAME>` + материализуй template `active-lpf-sallen-key` (см. KB `spice.active-filter-sallen-key`); Phase E добавит `[TEMPLATE]` аргумент |
 | «запусти симуляцию», «.op / .tran / .ac», «прогони netlist» | `/sim-run` |
 | «покажи схему», «открой схему», «отрисуй проект», «как выглядит схема», «render schematic», «отобрази .kicad_sch» | (T025) `eog <schematic-render path> &` через Bash — Eye of GNOME откроется на host через X11. Auto-show отрабатывает в `/sim-run` / `/project-create` (см. `schematic-render: <abs>` строки в stdout); если пользователь просит повторно — `eog` на сохранённом пути. Не `xdg-open` (MIME db не настроен) |
-| «покажи результат», «покажи график», «посмотреть симуляцию», «show sim result», «как выглядит результат» | для AC sweep — `/plot-ac`, для transient — `/plot-tran`. Если результат — plot PNG в stdout, открой через `eog <path> &` (как для схемы). Текстовые measure-результаты (`/measure-gain` и т.п.) описывай словами |
+| «покажи результат», «покажи график», «покажи в окне», «посмотреть симуляцию», «show sim result», «как выглядит результат» | (T025 dual-mode) для AC sweep — `/plot-ac`, для transient — `/plot-tran`. Обе slash-команды **уже** передают `--output /tmp/plot-*.png`; распарси `plot-render: <abs path>` строку и запусти `eog <abs path> &` для окна на host через X11. **НЕ пиши** ad-hoc matplotlib / Python скрипт — `bridge plot {ac,tran} --output` уже это делает. Текстовые measure-результаты (`/measure-gain` и т.п.) описывай словами |
+| «покажи в графическом окне», «открой график», «графически» | то же что выше — `/plot-ac` / `/plot-tran` уже передают `--output` + дают `plot-render: <path>` строку + eog; повторно или explicit — `bridge plot {ac,tran} --output <abs.png>` + `eog <abs.png> &` (НЕ matplotlib ad-hoc) |
 | «покажи всё», «открой проект», «дай посмотреть» (ambiguous) | уточни у пользователя что именно: схему, результат симуляции, plot, или текстовые measure-результаты. Не угадывай |
 | «переключись на проект <NAME>» | `/project-use <NAME>` (display-only) |
 | «как обойти X», «уже было / похоже на pitfall» | `/kb-search <query>` ПЕРЕД исследованием |
 | «сохрани lesson», «потом не забыть» | `/kb-add <topic>` |
+
+## Anti-patterns (NE делай)
+
+- **Ad-hoc matplotlib script для визуализации.** Когда нужна
+  графика waveform / АЧХ — у тебя уже есть `bridge plot {ac,tran}
+  --output <abs.png>` (T025). Не пиши Python в `/tmp`, не вызывай
+  `uv add matplotlib`. Если CLI surface действительно отсутствует
+  для запрошенного вида output (не plot, не schematic) — **сообщи
+  пользователю, что это feature gap** (зафиксируй в BACKLOG); не
+  изобретай ad-hoc решение без явного его согласия.
+
+- **`xdg-open`.** MIME database в `efactory:linux` не настроена,
+  `xdg-open` уходит в браузерный fallback. Используй прямо `eog
+  <png> &` (T025).
+
+- **Сканирование собственных исходников efactory.** Если задача
+  кажется не покрытой `efactory --help` — сначала `/kb-search`,
+  потом спроси пользователя, **затем** уже Grep по `/opt/efactory`.
 
 ## Special cases
 

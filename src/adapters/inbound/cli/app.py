@@ -20,8 +20,10 @@ from adapters.inbound.cli.edit_and_resim_renderer import (
 )
 from adapters.inbound.cli.plot_renderer import (
     render_ac_sweep,
+    render_ac_sweep_png,
     render_sweep_plot,
     render_time_series,
+    render_time_series_png,
 )
 from adapters.inbound.cli.spice_units import (
     SpiceNumberFormatError,
@@ -3319,6 +3321,13 @@ def build_app(
             int,
             typer.Option('--height', help='Высота графика в строках'),
         ] = 20,
+        output: Annotated[
+            str | None,
+            typer.Option(
+                '--output',
+                help='Сохранить график как PNG (T025; abs path; agent открывает eog).',
+            ),
+        ] = None,
         timeout: Annotated[
             float,
             typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
@@ -3385,6 +3394,17 @@ def build_app(
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=2) from exc
         typer.echo(chart)
+        if output is not None:
+            try:
+                png_path = render_ac_sweep_png(
+                    result.ac_sweep,
+                    signal=signal,
+                    output=Path(output),
+                )
+            except ValueError as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(code=2) from exc
+            typer.echo(f'plot-render: {png_path}')
 
     @plot_app.command('tran')
     def plot_tran_cmd(
@@ -3418,6 +3438,13 @@ def build_app(
             int,
             typer.Option('--height', help='Высота графика в строках'),
         ] = 20,
+        output: Annotated[
+            str | None,
+            typer.Option(
+                '--output',
+                help='Сохранить график как PNG (T025; abs path; agent открывает eog).',
+            ),
+        ] = None,
         timeout: Annotated[
             float,
             typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
@@ -3469,5 +3496,16 @@ def build_app(
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=2) from exc
         typer.echo(chart)
+        if output is not None:
+            try:
+                png_path = render_time_series_png(
+                    result.time_series,
+                    signal=signal,
+                    output=Path(output),
+                )
+            except ValueError as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(code=2) from exc
+            typer.echo(f'plot-render: {png_path}')
 
     return app
