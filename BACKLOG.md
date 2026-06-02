@@ -35,6 +35,48 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      и его обкаткой полным CRUD-набором (T086–T092). Источник —
      ретроспективы milestone'ов в `CHANGELOG.md`. -->
 
+- **T170** — [2026-06-02, discovered during T025 self-review]
+  **`/sim-run` slash вызывает несуществующую CLI-команду.**
+  `docker/runtime-agent-commands/sim-run.md` шаг 2 даёт agent'у
+  инструкцию выполнить `efactory bridge sim-run --schematic <SCH>
+  [--analysis TYPE]`, но реальная сигнатура `bridge sim-run` —
+  subapp с subcommands `op|tran|ac` без `--schematic` option (только
+  positional `<netlist>`). Существующий equivalent для full pipeline
+  «.kicad_sch → netlist → симуляция» — `efactory bridge design-to-sim
+  <op|tran|ac> <PROJECT> --schematic <SCH>`. То есть текущий slash
+  при попытке agent'а выполнить даст `Error: No such option:
+  --schematic` (или похожее), и T025 auto-show (`schematic-render:`
+  строки в stdout, зацеплено в `_execute_design_to_sim` adapter)
+  не сработает до фикса slash.
+
+  **Acceptance:**
+  - Slash инструкция исправлена так, чтобы agent выполнял реально
+    работающую команду (`bridge design-to-sim <analysis> <PROJECT>
+    --schematic ...`).
+  - Реализация требует: (a) parse `--analysis TYPE` из `$ARGUMENTS`
+    → subcommand `op`/`tran`/`ac` (default `op`), (b) auto-detect
+    `PROJECT` (project.yaml в cwd / parents; если нет — попросить
+    у пользователя).
+  - L2 deterministic regression test: invocation полученной
+    инструкции даёт exit 0 на acceptance fixture (e.g. созданный
+    `project create --template op-amp-inverting`).
+  - L3 smoke: agent выполняет `/sim-run` в `efactory:linux`
+    контейнере, видит результат симуляции **и** T025-rendered PNG
+    (auto-show отрабатывает через корректную команду).
+
+  **Контекст.** Обнаружено при self-review T025 (PR #111).
+  Существовавший gap, не введён T025 — но T025 auto-show опирался
+  на работающий slash, поэтому фикс становится первой задачей по
+  использованию T025 на end-user UX. T025 verified independently
+  через CLI `efactory bridge design-to-sim` (Phase B e2e tests),
+  но slash-level integration требует T170.
+
+  **Возможный scope-creep:** похожая проблема может быть в других
+  slash-командах (`/measure-gain`, `/measure-bandwidth`,
+  `/measure-thd`, `/measure-phase-margin`) — они тоже могут
+  указывать `--schematic` на subapp'ах без него. Перепроверить и
+  при необходимости расширить T170 или завести parallel T-IDs.
+
 <!-- T094 закрыт ADR от 2026-05-19 в DECISIONS.md (вариант "в":
      /ultrareview как primary external review, CodeRabbit best-effort). -->
 
