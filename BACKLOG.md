@@ -29,19 +29,6 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 выявилось при работе над фундаментом T085 / Walking Skeleton и не
 вписывается напрямую в фазы дорожной карты.
 
-### T-задачи, выявленные пост-Phase C
-
-- **T168** — [2026-06-02] **Wire `convert_pwrs_to_ngspice` into
-  `spice_library.read_subckt` production pipeline.** Currently
-  `convert_pwrs_to_ngspice` defined-but-unused — только
-  `convert_ayumi_to_ngspice` wired для Ayumi-source models в
-  `spice_library.py:279-281`. Apply converter universally
-  (idempotent) для transparent loading 3rd-party tube models с
-  HSPICE syntax без manual data file patches. Не replaces data file
-  patches (`.include` workflow still bypasses pipeline), но adds
-  defense-in-depth для `read_subckt` API. See KB topic
-  `spice.ngspice-syntax-compat`. Scope ~1 час.
-
 ### Архитектурные follow-up'ы Walking Skeleton
 
 <!-- Задачи, выявленные при работе над hexagonal-фундаментом (T085)

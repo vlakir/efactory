@@ -65,6 +65,16 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T168** — [closed 2026-06-02, PR #109] **Wire
+  `convert_pwrs_to_ngspice` в production pipeline
+  `spice_library.read_subckt`.** Универсальное применение PWRS-конвертера
+  (для любого source, idempotent) — defense-in-depth для transparent
+  loading 3rd-party tube models с HSPICE PWRS-syntax без manual data
+  file patches. AYUMI `^ → **` остаётся conditional. Module docstring
+  обновлён. +1 unit test (`test_read_subckt_pwrs_converted_universally`)
+  для CUSTOM-source модели с PWRS. Pre-push 5/5 ✓ (1743 passed @ 86.19%,
+  +1 vs T167 baseline).
+
 - **T167** — [closed 2026-06-02, PR #108] **Patch 8 Ayumi tube model
   files к ngspice syntax** (`211`, `2A3`, `300B`, `6080`, `6C33C`,
   `6V6_AYUMI`, `845`, `GENERIC_PENTODE`). Conversion `^` → `**` +
