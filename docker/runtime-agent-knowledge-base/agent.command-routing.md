@@ -37,6 +37,7 @@ tags: [agent, slash-commands, routing, scope]
 | «покажи в графическом окне», «открой график», «графически» | то же что выше — `/plot-ac` / `/plot-tran` уже передают `--output` + дают `plot-render: <path>` строку + eog; повторно или explicit — `bridge plot {ac,tran} --output <abs.png>` + `eog <abs.png> &` (НЕ matplotlib ad-hoc) |
 | «покажи всё», «открой проект», «дай посмотреть» (ambiguous) | уточни у пользователя что именно: схему, результат симуляции, plot, или текстовые measure-результаты. Не угадывай |
 | «переключись на проект <NAME>» | `/project-use <NAME>` (display-only) |
+| «применить отложенные изменения», «apply staged schematic», «принять staged», «накатить staged kicad_sch», «accept pending changes» | (T026) `/schematic-apply <project>` или `efactory schematic apply-staged <project> [--force] [--accept-overwrite]`. `--force` bypass'ит stale-lock (KiCad crash → `~<name>.lck` остаётся, норма); **отдельный** `--accept-overwrite` для parent-hash mismatch (active изменён в GUI после staged-write — real data loss). См. KB `schematic.staged-modifications` |
 | «как обойти X», «уже было / похоже на pitfall» | `/kb-search <query>` ПЕРЕД исследованием |
 | «сохрани lesson», «потом не забыть» | `/kb-add <topic>` |
 

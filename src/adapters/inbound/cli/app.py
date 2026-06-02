@@ -42,6 +42,13 @@ from adapters.inbound.cli.template_materializer import (
     materialize_template,
 )
 from application.add_decision import add_decision as add_decision_use_case
+from application.apply_staged_schematic import (
+    ApplyStagedOutcome,
+    SkippedStagedEntry,
+)
+from application.apply_staged_schematic import (
+    apply_staged_schematic as apply_staged_schematic_use_case,
+)
 from application.bridge_sweep import (
     MAX_COMBINATIONS_DEFAULT,
     SOFT_WARN_COMBINATIONS,
@@ -425,6 +432,8 @@ def build_app(
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
     app.add_typer(project_app, name='project')
+    schematic_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    app.add_typer(schematic_app, name='schematic')
 
     async def _render_and_announce_schematic(
         schematic: Path,
@@ -3508,4 +3517,89 @@ def build_app(
                 raise typer.Exit(code=2) from exc
             typer.echo(f'plot-render: {png_path}')
 
+    @schematic_app.command('apply-staged')
+    def schematic_apply_staged(
+        name: Annotated[
+            str,
+            typer.Argument(help='Имя проекта (директория в projects_root).'),
+        ],
+        *,
+        force: Annotated[
+            bool,
+            typer.Option(
+                '--force',
+                help=(
+                    'Bypass lock-check (KiCad GUI ещё держит файл, '
+                    'stale-lock после crash и т.п.). НЕ обходит '
+                    'parent-hash divergence — для этого --accept-overwrite.'
+                ),
+            ),
+        ] = False,
+        accept_overwrite: Annotated[
+            bool,
+            typer.Option(
+                '--accept-overwrite',
+                help=(
+                    'Bypass parent-hash check: согласиться потерять '
+                    'изменения, сделанные в KiCad GUI после staged-write.'
+                ),
+            ),
+        ] = False,
+    ) -> None:
+        """Apply pending `.kicad_sch.staged` → active для всех файлов проекта."""
+
+        async def _run() -> ApplyStagedOutcome:
+            return await apply_staged_schematic_use_case(
+                name=name,
+                projects_root=projects_root,
+                force=force,
+                accept_overwrite=accept_overwrite,
+            )
+
+        try:
+            outcome = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'schematic.apply-staged',
+                    project=name,
+                    payload={
+                        'name': name,
+                        'force': force,
+                        'accept_overwrite': accept_overwrite,
+                    },
+                    fn=_run,
+                ),
+            )
+        except ProjectNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        _emit_apply_staged_outcome(outcome)
+        if outcome.skipped:
+            raise typer.Exit(code=1)
+
     return app
+
+
+def _emit_apply_staged_outcome(outcome: ApplyStagedOutcome) -> None:
+    if not outcome.applied and not outcome.skipped:
+        typer.echo('schematic-apply-staged: no pending staged to apply')
+        return
+    for path in outcome.applied:
+        typer.echo(f'schematic-applied: {path}')
+    for entry in outcome.skipped:
+        typer.echo(_format_skipped(entry), err=True)
+
+
+def _format_skipped(entry: SkippedStagedEntry) -> str:
+    if entry.reason == 'lock':
+        return (
+            f'schematic-apply-skipped: {entry.active_path} '
+            f'reason=lock (KiCad держит файл; закрой GUI или используй --force)'
+        )
+    current = (entry.current_hash or 'absent')[:16]
+    expected = (entry.expected_hash or 'absent')[:16]
+    return (
+        f'schematic-apply-skipped: {entry.active_path} '
+        f'reason=parent-hash-mismatch current={current} expected={expected} '
+        f'(active изменён после staged-write; --accept-overwrite чтобы перезаписать)'
+    )
