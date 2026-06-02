@@ -65,6 +65,18 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T167** — [closed 2026-06-02, PR #108] **Patch 8 Ayumi tube model
+  files к ngspice syntax** (`211`, `2A3`, `300B`, `6080`, `6C33C`,
+  `6V6_AYUMI`, `845`, `GENERIC_PENTODE`). Conversion `^` → `**` +
+  `PWRS(x,y)` → `sgn(x)*pwr(abs(x), y)` через существующие
+  `convert_ayumi_to_ngspice` + `convert_pwrs_to_ngspice` (same pattern
+  что T166 для 6DJ8/6922). Unified ngspice-syntax marker в docstrings
+  всех 10 ayumi/*.inc файлов (idempotent — без `^` / `PWRS(` в
+  комментариях). Sanity `ngspice -b` на 2A3 SE-amp passed (V_plate
+  274V, I_a 5mA). Regression test `test_ayumi_models_patched.py` (20
+  cases × 10 files): pre-conversion + idempotency. Pre-push 5/5 ✓
+  (1742 passed @ 86.15%, +20 vs T027 baseline).
+
 - **T027** — [closed 2026-06-02, PRs #102/103/104/106/107] **Расширение
   каталога project templates: PP amp, line preamp, phono RIAA preamp,
   active LPF + slash+CLI extension.** 4 новых template (`tube-pp-amp`,

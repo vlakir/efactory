@@ -31,17 +31,6 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
 ### T-задачи, выявленные пост-Phase C
 
-- **T167** — [2026-06-02] **Patch remaining 8 Ayumi tube model files
-  для ngspice syntax compatibility.** Ayumi 6DJ8.inc patched в T166;
-  остальные 8 (`211, 2A3, 300B, 6080, 6C33C, 6V6_AYUMI, 845,
-  GENERIC_PENTODE`) содержат HSPICE `PWRS()` + `^` syntax — broken
-  при `.include` workflow в ngspice 44. Pattern идентичен — use
-  `convert_pwrs_to_ngspice` + `convert_ayumi_to_ngspice` from
-  `src/adapters/outbound/spice_models/conversion.py`. Не блокирует
-  current work (только Ayumi-source models, не Koren которые уже
-  patched в T027 Phase C). Acceptance: 8 files patched + verify
-  через sanity-check `ngspice -b` на каждой. Scope ~30 минут.
-
 - **T168** — [2026-06-02] **Wire `convert_pwrs_to_ngspice` into
   `spice_library.read_subckt` production pipeline.** Currently
   `convert_pwrs_to_ngspice` defined-but-unused — только
