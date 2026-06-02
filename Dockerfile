@@ -87,6 +87,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       dbus-x11 \
       libcanberra-gtk3-module \
       libgl1 \
+      librsvg2-bin \
       locales \
       mesa-utils \
       x11-apps \
