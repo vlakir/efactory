@@ -65,6 +65,22 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T169** — [closed 2026-06-02, PR #110] **Env-sanitize git
+  subprocess в тестах** (`tests/integration/adapters/git_subprocess/
+  test_git_repository.py`). Helper `_git_capture` pop'ит
+  `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` из env перед
+  verification `subprocess.run(['git', '-C', cwd, ...])` —
+  соответствует production `_build_env()` в
+  `SubprocessGitRepository`. Иначе под `git push` из worktree
+  (Claude Code worktree-isolated subagent) raw subprocess.run
+  наследует `GIT_DIR=<worktree-gitdir>` из pre-push hook и читает
+  parent repo вместо tmp_path init → assertion fail. 3 verification
+  вызова переведены на helper + regression test
+  `test_init_works_when_caller_has_git_dir_set` (simulate'нет
+  leakage через monkeypatch). Обнаружено T168 subagent (workaround
+  push из main repo). Pre-push 5/5 ✓ (1744 passed @ 86.19%, +1 vs
+  T168 baseline).
+
 - **T168** — [closed 2026-06-02, PR #109] **Wire
   `convert_pwrs_to_ngspice` в production pipeline
   `spice_library.read_subckt`.** Универсальное применение PWRS-конвертера
