@@ -84,6 +84,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       getdp \
       gmsh \
       elmerfem-csc \
+      chafa \
       dbus-x11 \
       libcanberra-gtk3-module \
       libgl1 \

@@ -26,11 +26,16 @@ allowed-tools: Bash
 
 5. **T025 auto-show схемы.** Просканируй stdout на строки вида
    `schematic-render: <abs path to PNG>` (по одной на лист схемы
-   созданного проекта). Для каждой — **покажи PNG inline через Read
-   tool по absolute path**. Это даёт пользователю немедленный визуал
-   того, что materialize template построил. При
-   `Warning: schematic render failed: ...` в stderr — упомяни warning,
-   но проект всё равно создан (fail-soft).
+   созданного проекта). Для каждой выполни **обе** операции в этом
+   порядке:
+   - **`chafa --size=80x40 <abs path>`** через Bash — печатает
+     ANSI-block render в terminal, пользователь видит силуэт схемы
+     прямо в чате (xterm-256color поддерживается из коробки).
+   - **`Read <abs path>`** — multimodal LLM «видит» PNG, ты можешь
+     описать топологию (схему, компоненты, связи) пользователю.
+
+   При `Warning: schematic render failed: ...` в stderr — упомяни
+   warning, но проект всё равно создан (fail-soft).
 
 6. **Если упало (non-zero rc)** — покажи сообщение об ошибке. Если
    ошибка `Template '<name>' not found` — предложи

@@ -164,6 +164,12 @@ efactory — без явных end-user'ов; работа идёт через r
   (per Analyze C-1 fix (b)) — ≈3 MB layer, минимальное delta для
   SVG→PNG. Команда: `rsvg-convert <svg.in> -o <png.out>` (опционально
   `--width=1920` для разрешения).
+- `chafa` (apt `chafa`) добавляется в `Dockerfile` Stage 1
+  (Q1 correction 2026-06-02 после live-теста) — ≈234 KB installed,
+  ANSI-block terminal-render PNG'ов для xterm-256color. Команда:
+  `chafa --size=80x40 <png>` (default symbol mode на xterm даёт
+  half-blocks; на kitty/iTerm — Sixel/Kitty graphics protocol
+  автоматом).
 - Claude Code agent умеет показывать локальные PNG inline по absolute
   path (предположение из Q1 Round 1; верифицируется L3 smoke).
 - Target host — Linux через `efactory:linux` контейнер; Windows
@@ -200,6 +206,19 @@ efactory — без явных end-user'ов; работа идёт через r
 
 - **(Q1) Primary UX-канал** — Claude Code chat inline по absolute path
   к PNG. Sixel/Kitty и xdg-open — не primary в T025.
+
+  **Q1 correction (2026-06-02 после live-теста с Vladimir).**
+  Claude Code CLI (terminal-based agent) **не отрисовывает PNG в
+  terminal** через Read tool; multimodal LLM «видит» картинку для
+  описания, но пользователь визуально ничего не видит. В Claude
+  Desktop / web inline-image работает корректно, в CLI — нет.
+  **Решение:** добавлен `chafa` (apt) в `Dockerfile` Stage 1.
+  Slash-инструкция выполняет **обе** операции для каждого
+  `schematic-render: <path>`: `chafa --size=80x40 <path>` через
+  Bash (ANSI-block render в xterm-256color → пользователь видит
+  силуэт схемы) **+** `Read <path>` (multimodal LLM видит детали →
+  описание словами). Dual-mode покрывает оба UX-канала; в Claude
+  Desktop chafa-output смотрится как ANSI-art, что приемлемо.
 - **(Q2) Container-side выполнение** — `efactory bridge sim-run`
   запускается внутри `efactory:linux`. Path translation через
   bind-mount — путь, видимый из контейнера, должен быть валиден

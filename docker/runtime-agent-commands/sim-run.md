@@ -35,9 +35,14 @@ Args от пользователя: `$ARGUMENTS` (может быть пусто
 
 5. **T025 auto-show схемы.** Просканируй stdout на строки вида
    `schematic-render: <abs path to PNG>` (по одной на лист схемы).
-   Для каждой такой строки — **покажи PNG inline через Read tool по
-   absolute path** перед обсуждением sim-результатов. Это даёт
-   пользователю немедленный context — «вот что симулировали».
+   Для каждой такой строки выполни **обе** операции в этом порядке:
+   - **`chafa --size=80x40 <abs path>`** через Bash — печатает
+     ANSI-block render в terminal, пользователь видит силуэт схемы
+     прямо в чате (xterm-256color поддерживается из коробки).
+   - **`Read <abs path>`** — multimodal LLM «видит» PNG, ты можешь
+     описать топологию своими словами (gain stage / feedback /
+     loading) перед обсуждением sim-результатов.
+
    Если в stderr вместо этого `Warning: schematic render failed: ...` —
    упомяни warning одной строкой и продолжай с sim-результатами
    (render fail-soft не блокирует симуляцию).
