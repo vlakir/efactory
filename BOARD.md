@@ -61,40 +61,27 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T025** — [2026-06-02] **Визуализация схемы в чате после `/sim-run`.**
-  Расширение `efactory bridge sim-run` пайплайном `kicad-cli sch export
-  svg` → `magick convert` PNG; abs path к PNG печатается в stdout,
-  Claude Code agent показывает inline. SVG-побочный артефакт остаётся
-  фундаментом для T032 (LLM-vision). Re-evaluated 2026-06-02 в свете
-  Phase 0.9 containerization: исходный acceptance (Sixel/Kitty +
-  xdg-open) переформулирован — UX = Claude Code inline; Sixel/xdg-open/
-  Windows откладываются в follow-up / Phase 8.
-
-  Acceptance:
-  - На фикстурах `op-amp-inverting`, `se-amp`, `tube-pp-amp` —
-    `efactory bridge sim-run` создаёт ≥1 PNG в
-    `<project>/.efactory/renders/<TS>/` (≥5 KB, ≥800×600, валидный
-    PNG signature) и печатает по строке `schematic-render: <abs
-    path>` на каждый лист.
-  - `efactory project create` рендерит схему сразу после
-    создания проекта (Q12-расширение).
-  - Render выполняется и при failure симуляции (диагностика
-    topology); double-failure render+sim — non-acceptance debug
-    path.
-  - Render-инфраструктура: `librsvg2-bin` в `Dockerfile` Stage 1;
-    pipeline `kicad-cli sch export svg → rsvg-convert → PNG`.
-  - Архитектура: `render_schematic` use case в `application/`;
-    вызов adapter-level в `_execute_sim_run` + `project create`,
-    domain DTO не модифицируются (hexagonal).
-  - Pre-push 5/5 ✓; 1744 existing tests not regress; coverage
-    ≥ 80%.
-  - L1 KB sync (`agent.command-routing`) + L2 deterministic test.
-
-  Spec — `specs/T025-schematic-visualization/spec.md` (Analyzed
-  2026-06-02; 3 🔴 resolved).
-  Ветка — `T025-schematic-visualization`.
+(пусто)
 
 ## Done
+
+- **T025** — [closed 2026-06-02, PR #111] **Визуализация схемы в чате
+  после `/sim-run` + `/project-create`.** `SchematicRenderer` outbound
+  port + `KicadCliSchematicRenderer` adapter (`kicad-cli sch export svg`
+  → `rsvg-convert` PNG-per-sheet, Q10 multi-sheet). `librsvg2-bin` в
+  `Dockerfile` Stage 1, contained `efactory:linux` пересобран (rsvg-
+  convert 2.58.0). `render_and_announce_schematic` CLI helper печатает
+  `schematic-render: <abs>` строки в stdout (fail-soft на
+  `SchematicRenderError`). Adapter-level wiring в `project create` (после
+  template materialize) + `_execute_design_to_sim` (до ngspice); domain
+  DTO **не** модифицированы — hexagonal соблюдена (Q7 corrected).
+  Slash `/sim-run` + `/project-create` дополнены шагом auto-show через
+  Read tool. KB `agent.command-routing` +1 row («покажи схему» / «отрисуй
+  проект» / «render schematic») + L2 parametrized regression test.
+  Spec — `specs/T025-schematic-visualization/spec.md` (Analyzed; 3 🔴
+  resolved). Single-day sprint 2026-06-02, 3 phases в одном PR
+  (4-commit squash). Pre-push 4/4 ✓ (1762 passed @ 86.31% coverage,
+  +18 tests vs T169 baseline).
 
 - **T169** — [closed 2026-06-02, PR #110] **Env-sanitize git
   subprocess в тестах** (`tests/integration/adapters/git_subprocess/
