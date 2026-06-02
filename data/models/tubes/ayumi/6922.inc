@@ -4,9 +4,9 @@
 * extended ratings (EH 6922 specifically Electro-Harmonix premium select).
 * SPICE parameters from Ayumi 6DJ8 dataset (same family).
 *
-* ngspice-syntax из коробки (T166 2026-06-02): `^` уже `**`, PWRS уже
-* `sgn(x)*pwr(abs(x), y)`. Не требует converter passes для `.include`
-* workflow.
+* ngspice-syntax из коробки (T166 2026-06-02): степень через `**`,
+* signed power — `sgn(x)*pwr(abs(x), y)`. Не требует converter passes
+* для `.include` workflow.
 *
 * tube_type: triode
 * Pins: P (plate), G (grid), K (cathode) — single section.
