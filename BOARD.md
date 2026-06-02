@@ -61,7 +61,27 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-(пусто)
+- **T026** — [2026-06-03, ветка `T026-staged-modifications`]
+  **Staged-модификации `.kicad_sch` при открытом KiCad.** Защита
+  workflow когда пользователь параллельно редактирует схему в KiCad
+  GUI и триггерит efactory ops (`/sim-run`, `/project-create`,
+  будущие LLM-edits). При детекте lock-файла рядом с `.kicad_sch` —
+  writer пишет `<orig>.kicad_sch.staged` + sidecar `.meta.json` с
+  `parent_hash` вместо overwrite + emit `schematic-staged: <abs>`.
+  Apply staged → active через `efactory schematic apply-staged
+  <project> [--force] [--accept-overwrite]` или
+  `/schematic-apply`; `--force` bypass'ит stale-lock, отдельный
+  `--accept-overwrite` нужен для parent-hash mismatch (защита от
+  silent data loss). Warning о pending staged на entry-points
+  (`/sim-run`, `project show`, `project list`) без auto-apply.
+  Universal в `KicadSchematicWriter` adapter (defense-in-depth,
+  T168 pattern). Spec — `specs/T026-staged-modifications/spec.md`
+  (Analyzed, W1 resolved).
+  Acceptance: AC-0..AC-10 в спеке + pre-push 4/4 ✓ + L1 KB sync
+  (agent.command-routing row + topic `schematic.staged-modifications`)
+  + L2 regression test + L3 manual smoke.
+  Phase 0 = empirical lock-file probe (gate-условие AC-0); без
+  чистого результата Phase 1 не начинаем.
 
 ## Done
 
