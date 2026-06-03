@@ -1,0 +1,7 @@
+name: 6p13s-se-resistive
+description: |
+  6П13С (Soviet beam tetrode, 14W Pa, TV line scan output) — SE-amp
+  с резистивной нагрузкой 5kΩ вместо OPT (per T031 spec A-W3).
+  Vbb=250V, Vg2=200V fixed, Rk=200Ω+bypass, Vg≈-19V self-bias.
+  Typical op-point: Ia ≈ 19 mA, Vp ≈ 156V, anode dissipation 3W.
+summary: 6П13С SE-amp с резистивной нагрузкой (no OPT).

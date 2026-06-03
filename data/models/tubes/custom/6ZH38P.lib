@@ -1,0 +1,22 @@
+* 6Ж38П (6BH6 equivalent — frame-grid sharp-cutoff pentode) — fitted by `efactory tube fit-from-points` (T031).
+*
+* Source: datasheet: 6BH6 (General Electric ET-T525B, 4-57). Western equivalent of 6Ж38П / 6J38P / EF190. Page 3 lower graph: AVERAGE PLATE CHARACTERISTICS, Vg2=150V, Vg3=0.
+* IV points extracted: 2026-06-03
+* Fitted:              2026-06-03
+* RMS residual: 0.283 mA over 26 points
+*
+* tube_type: pentode
+* Pins: P (plate), G2 (screen), G (grid 1), K (cathode).
+.SUBCKT 6ZH38P P G2 G K
+* Koren-pentode parameters (calibrated on Ayumi baseline):
+* MU=334.0670 EX=1.0500 KG1=284.9400 KG2=1424.6998 KP=109.5224 KVB=11.7571
+E1 7 0 VALUE={V(G2,K)/109.5224*LN(1+EXP(109.5224*(1/334.0670+V(G,K)/V(G2,K))))}
+G1 P K VALUE={(sgn(V(7))*pwr(abs(V(7)),1.0500)+sgn(V(7))*pwr(abs(V(7)),1.0500))/284.9400 * ATAN(V(P,K)/11.7571)}
+G2 G2 K VALUE={(sgn(V(7))*pwr(abs(V(7)),1.0500)+sgn(V(7))*pwr(abs(V(7)),1.0500))/1424.6998}
+* Inter-electrode capacitances — typical pentode defaults
+* (см. spec T031 §7 Out of Scope: per-tube extraction).
+C1 G K 10.0p
+C2 G P 1.0p
+C3 P K 10.0p
+RGI G K 1MEG
+.ENDS 6ZH38P

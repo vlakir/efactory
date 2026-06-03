@@ -1,0 +1,22 @@
+* 6П13С (output beam tetrode for TV line scan, ~14W Pa) — fitted by `efactory tube fit-from-points` (T031).
+*
+* Source: datasheet: 6П13С (USSR official handbook, Vol. ?). Page 3 left graph: Ia, Ig2 = f(Ua), Uh=6.3V, Ug2=150V. Vg1 = 0..-16V curves.
+* IV points extracted: 2026-06-03
+* Fitted:              2026-06-03
+* RMS residual: 21.462 mA over 19 points
+*
+* tube_type: tetrode
+* Pins: P (plate), G2 (screen), G (grid 1), K (cathode).
+.SUBCKT 6P13S P G2 G K
+* Koren-pentode parameters (calibrated on Ayumi baseline):
+* MU=6.0095 EX=2.6729 KG1=50965.1944 KG2=254825.9718 KP=247.1916 KVB=48.9514
+E1 7 0 VALUE={V(G2,K)/247.1916*LN(1+EXP(247.1916*(1/6.0095+V(G,K)/V(G2,K))))}
+G1 P K VALUE={(sgn(V(7))*pwr(abs(V(7)),2.6729)+sgn(V(7))*pwr(abs(V(7)),2.6729))/50965.1944 * ATAN(V(P,K)/48.9514)}
+G2 G2 K VALUE={(sgn(V(7))*pwr(abs(V(7)),2.6729)+sgn(V(7))*pwr(abs(V(7)),2.6729))/254825.9718}
+* Inter-electrode capacitances — typical pentode defaults
+* (см. spec T031 §7 Out of Scope: per-tube extraction).
+C1 G K 10.0p
+C2 G P 1.0p
+C3 P K 10.0p
+RGI G K 1MEG
+.ENDS 6P13S
