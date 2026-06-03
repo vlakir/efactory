@@ -246,6 +246,21 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         'efactory project list',
     ),
+    # T031 Phase 3 — L2 regression: routing «добавь модель лампы из datasheet»
+    # → /tube-add-from-datasheet (vision-extract pipeline).
+    (
+        'добавь модель лампы из datasheet PDF 6Ж38П extract',
+        'agent.command-routing',
+        '/tube-add-from-datasheet',
+    ),
+    # T031 Phase 3 — L2 regression: KB topic tubes.curve-fitting
+    # содержит ключевые директивы про KG2 fallback (Ia-only path) и
+    # canonical 2× множитель в Koren formula.
+    (
+        'KG2 typical ratio Ia-only pentode screen current fitting',
+        'tubes.curve-fitting',
+        'typical ratio',
+    ),
 ]
 
 
@@ -294,7 +309,14 @@ def test_all_ten_seed_entries_exist(store: FileSystemKbStore) -> None:
 
 
 def test_seed_entries_have_expected_namespaces(store: FileSystemKbStore) -> None:
-    """Namespace coverage: spice/magnetics/fem/agent/schematic (5 ns после T026)."""
+    """Namespace coverage: spice/magnetics/fem/agent/schematic/tubes (6 ns после T031)."""
     namespaces = {entry.namespace for entry in store.list_all()}
-    expected_namespaces = {'spice', 'magnetics', 'fem', 'agent', 'schematic'}
+    expected_namespaces = {
+        'spice',
+        'magnetics',
+        'fem',
+        'agent',
+        'schematic',
+        'tubes',
+    }
     assert expected_namespaces.issubset(namespaces)

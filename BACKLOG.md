@@ -35,6 +35,65 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      и его обкаткой полным CRUD-набором (T086–T092). Источник —
      ретроспективы milestone'ов в `CHANGELOG.md`. -->
 
+- **T171** — [2026-06-03, discovered during T031 Phase 0+4]
+  **Re-fit built-in tube models через T031 pipeline.** Phase 0
+  cross-check на Mullard EL34 datasheet показал: built-in
+  `koren/EL34.lib` имеет +13.4% error на published reference
+  op-point (Va=250, Vg2=250, Vg=-12.2 → 100 mA Mullard); vision-
+  extracted точки → fit улучшает до ~4%. Это означает что
+  существующий `data/models/tubes/koren/*.lib` — approximated
+  (.lib comment сам говорит «production-grade fitting requires
+  per-batch measurements»). Прогон T031 vision-extract + fit на
+  high-quality datasheet'ах (Mullard 1962, Philips, RCA HB-3,
+  GE ETR Series) для built-in типов даст лучшую baseline точность
+  для всей библиотеки.
+
+  **Acceptance:**
+  - Re-fit minimum 5 built-in моделей (12AX7 / EL34 / 6V6 / 6L6 /
+    KT88) через `/tube-add-from-datasheet`.
+  - Сравнение fit RMS vs существующая built-in: improved ≥30% на
+    plateau region (Va ≥ 150 V).
+  - Заменить built-in `.lib` где новый fit точнее, оставить
+    backup в `data/models/tubes/koren/_legacy/` для traceability.
+
+  **Контекст.** Phase 0 probe `specs/T031-tube-curve-fitting/
+  phase-0-probe.md` §5. Не блокер T031 (acceptance Phase 4 — на
+  советских 6Ж38П/6П13С, отдельный set).
+
+- **T172** — [2026-06-03, discovered during T031 Phase 1]
+  **Audit 2× множителя в built-in tube `.lib` файлах.** В
+  `data/models/tubes/{koren,ayumi}/*.lib` `G1`/`G2` source имеют
+  дублированный термин `(sgn*pwr + sgn*pwr)/KG` ≡ `2*E1^EX/KG`.
+  Phase 1 confirmed: это **часть оригинальной публикации Norman
+  Koren'а** (не ngspice syntax artefact). T031 fitter использует
+  ту же 2× форму для compatibility параметров KG1/KG2 с built-in
+  значениями.
+
+  Однако: каноническая Norman Koren published form содержит
+  `(1+sgn(E1))/2 * E1^EX / KG` — half-rectifier multiplier,
+  который при E1>0 даёт `E1^EX/KG` (без 2×). Built-in `.lib`
+  emits `2*E1^EX/KG` — это **другая нормировка**, эквивалент
+  scaling KG1 на 2×. Проверить: (a) поднять оригинальную
+  публикацию Koren'а, verify reference form; (b) если built-in
+  параметры рассчитывались под `2*E1^EX/KG`-norm — оставить
+  как есть и явно задокументировать в `data/models/tubes/
+  README.md`; (c) если ngspice spice3 simulator пишет
+  reference KG нормировку другой формы — переписать `.lib` под
+  каноническую single-term и пересчитать KG1/KG2 (delete 2×,
+  multiply KG by 2).
+
+  **Acceptance:**
+  - Документ verification (link на оригинальные Koren papers /
+    SPICE3 reference) приложен к `data/models/tubes/README.md`.
+  - Если переписываем `.lib` — round-trip Phase 1 fitter tests
+    обновлены под canonical-form params; all built-in
+    `.op`-симуляции in tests дают one-to-one match с pre-rewrite
+    snapshot'ом.
+
+  **Контекст.** T031 Phase 1 `_formulas.py` docstring +
+  `tubes.curve-fitting` KB topic. Не блокер: текущая 2× форма
+  работает в ngspice 44, тесты passing.
+
 - **T170** — [2026-06-02, discovered during T025 self-review]
   **`/sim-run` slash вызывает несуществующую CLI-команду.**
   `docker/runtime-agent-commands/sim-run.md` шаг 2 даёт agent'у
