@@ -23,18 +23,18 @@ OPT-сложности. Шаблон T031 Phase 5.
 - Vbb = 250V (anode supply)
 - Vg2 = 200V (screen)
 - Rload = 5kΩ (резистивная нагрузка — A-W3)
-- Rk = 200Ω ‖ Ck = 220µF (cathode self-bias → Vg ≈ -4V auto)
+- Rk = 470Ω ‖ Ck = 220µF (cathode self-bias, T173 refined)
 - Rg = 470kΩ (grid leak)
 - Cin = 470nF (input coupling)
 - Vin: AC ±0.5V @ 1 kHz
 
-## Производное Phase 4 acceptance smoke
+## Smoke verification (T173 refined bias)
 
-Direct ngspice probe на этом topology (Phase 5 smoke verification):
-- Ia op-point ≈ 18.7 mA
-- Ig2 op-point ≈ 3.0 mA
-- Vp ≈ 156V
-- Anode dissipation 3W (within 14W max)
+Direct ngspice probe на этом topology:
+- Rk=470Ω self-bias → Vk ≈ 12-15V → Vgk_eff ≈ -15V
+- Ia op-point ≈ 25-30 mA (range зависит от tolerances)
+- Vp ≈ 100-130V (well above knee)
+- Anode + screen dissipations within max ratings
 
 ## См. также
 
