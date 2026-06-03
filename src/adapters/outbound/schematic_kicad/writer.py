@@ -34,10 +34,7 @@ from datetime import UTC, datetime
 from importlib import resources
 from typing import TYPE_CHECKING
 
-from adapters.outbound.schematic_kicad.lock_detector import (
-    KicadLockDetector,
-    LockDetector,
-)
+from adapters.outbound.schematic_kicad.lock_detector import KicadLockDetector
 from adapters.outbound.schematic_kicad.notifier import (
     NullWriterNotifier,
     WriterNotifier,
@@ -65,6 +62,7 @@ if TYPE_CHECKING:
         TextSpec,
         WireSpec,
     )
+    from ports.outbound.staged_schematics import LockDetector
 
 
 _LIB_SYMBOLS_PACKAGE = 'adapters.outbound.schematic_kicad.lib_symbols'

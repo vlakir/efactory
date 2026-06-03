@@ -41,7 +41,6 @@ from adapters.inbound.cli.template_materializer import (
     list_templates,
     materialize_template,
 )
-from adapters.outbound.schematic_kicad.scanner import scan_pending_staged
 from application.add_decision import add_decision as add_decision_use_case
 from application.apply_staged_schematic import (
     ApplyStagedOutcome,
@@ -193,6 +192,10 @@ if TYPE_CHECKING:
     from ports.outbound.sim_results import SimResultsRepository
     from ports.outbound.simulator import Simulator
     from ports.outbound.spice_model_library import SpiceModelLibrary
+    from ports.outbound.staged_schematics import (
+        LockDetector,
+        PendingStagedScanner,
+    )
 
 
 # Per-metric Y-field default для --plot (sweep): какую колонку
@@ -429,6 +432,8 @@ def build_app(
     injection_patcher: InjectionNetlistPatcher,
     kb_store: KbStore,
     sim_results_repo: SimResultsRepository,
+    lock_detector: LockDetector,
+    staged_scanner: PendingStagedScanner,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -445,6 +450,27 @@ def build_app(
             schematic,
             project_root,
         )
+
+    def _emit_pending_staged_warning(project_root: Path) -> None:
+        """T026: предупредить о pending `.kicad_sch.staged` без блокировки."""
+        if not project_root.is_dir():
+            return
+        entries = staged_scanner.scan(project_root)
+        if not entries:
+            return
+        typer.echo(
+            f'schematic-staged-pending: {len(entries)} file(s) in '
+            f'{project_root} — apply via `efactory schematic apply-staged '
+            f'<project>` or `/schematic-apply`.',
+            err=True,
+        )
+        for entry in entries:
+            typer.echo(f'  staged: {entry.staged_path}', err=True)
+
+    def _count_pending_staged(project_root: Path) -> int:
+        if not project_root.is_dir():
+            return 0
+        return len(staged_scanner.scan(project_root))
 
     @project_app.command('create')
     def create(
@@ -3558,6 +3584,8 @@ def build_app(
             return await apply_staged_schematic_use_case(
                 name=name,
                 projects_root=projects_root,
+                lock_detector=lock_detector,
+                scanner=staged_scanner,
                 force=force,
                 accept_overwrite=accept_overwrite,
             )
@@ -3594,29 +3622,6 @@ def _emit_apply_staged_outcome(outcome: ApplyStagedOutcome) -> None:
         typer.echo(f'schematic-applied: {path}')
     for entry in outcome.skipped:
         typer.echo(_format_skipped(entry), err=True)
-
-
-def _emit_pending_staged_warning(project_root: Path) -> None:
-    """T026: предупредить о pending `.kicad_sch.staged` без блокировки."""
-    if not project_root.is_dir():
-        return
-    entries = scan_pending_staged(project_root)
-    if not entries:
-        return
-    typer.echo(
-        f'schematic-staged-pending: {len(entries)} file(s) in {project_root} — '
-        f'apply via `efactory schematic apply-staged <project>` or '
-        f'`/schematic-apply`.',
-        err=True,
-    )
-    for entry in entries:
-        typer.echo(f'  staged: {entry.staged_path}', err=True)
-
-
-def _count_pending_staged(project_root: Path) -> int:
-    if not project_root.is_dir():
-        return 0
-    return len(scan_pending_staged(project_root))
 
 
 def _format_skipped(entry: SkippedStagedEntry) -> str:

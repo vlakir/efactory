@@ -6,7 +6,7 @@ import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from adapters.outbound.schematic_kicad.lock_detector import LockDetector
+from ports.outbound.staged_schematics import LockDetector
 from adapters.outbound.schematic_kicad.notifier import RecordingWriterNotifier
 from adapters.outbound.schematic_kicad.staged_metadata import read_staged_metadata
 from adapters.outbound.schematic_kicad.staged_paths import (

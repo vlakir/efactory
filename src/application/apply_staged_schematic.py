@@ -21,14 +21,15 @@ import hashlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from adapters.outbound.schematic_kicad.lock_detector import KicadLockDetector
-from adapters.outbound.schematic_kicad.scanner import scan_pending_staged
 from application.get_project import ProjectNotFoundError
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from adapters.outbound.schematic_kicad.lock_detector import LockDetector
+    from ports.outbound.staged_schematics import (
+        LockDetector,
+        PendingStagedScanner,
+    )
 
 
 _SkipReason = Literal['lock', 'parent_hash_mismatch']
@@ -61,20 +62,20 @@ async def apply_staged_schematic(
     *,
     name: str,
     projects_root: Path,
+    lock_detector: LockDetector,
+    scanner: PendingStagedScanner,
     force: bool = False,
     accept_overwrite: bool = False,
-    lock_detector: LockDetector | None = None,
 ) -> ApplyStagedOutcome:
     """Применить pending staged → active для всех файлов проекта `name`."""
-    detector: LockDetector = lock_detector or KicadLockDetector()
     project_root = projects_root / name
     if not project_root.is_dir():
         raise ProjectNotFoundError(name)
-    entries = scan_pending_staged(project_root)
+    entries = scanner.scan(project_root)
     applied: list[Path] = []
     skipped: list[SkippedStagedEntry] = []
     for entry in entries:
-        if detector.is_held_by_kicad(entry.active_path) and not force:
+        if lock_detector.is_held_by_kicad(entry.active_path) and not force:
             skipped.append(
                 SkippedStagedEntry(
                     active_path=entry.active_path,

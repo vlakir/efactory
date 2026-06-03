@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from adapters.outbound.schematic_kicad.scanner import KicadPendingStagedScanner
 from adapters.outbound.schematic_kicad.staged_metadata import (
     StagedMetadata,
     write_staged_metadata,
@@ -63,6 +64,7 @@ async def test_missing_project_raises(tmp_path: Path) -> None:
             name='missing',
             projects_root=tmp_path,
             lock_detector=_NeverHeld(),
+            scanner=KicadPendingStagedScanner(),
         )
 
 
@@ -73,6 +75,7 @@ async def test_no_pending_returns_empty(tmp_path: Path) -> None:
         name='demo',
         projects_root=tmp_path,
         lock_detector=_NeverHeld(),
+        scanner=KicadPendingStagedScanner(),
     )
     assert out.applied == ()
     assert out.skipped == ()
@@ -87,6 +90,7 @@ async def test_happy_path_applies_and_removes_meta(tmp_path: Path) -> None:
         name='demo',
         projects_root=tmp_path,
         lock_detector=_NeverHeld(),
+        scanner=KicadPendingStagedScanner(),
     )
     assert out.applied == (active,)
     assert active.read_text(encoding='utf-8') == 'NEW'
@@ -103,6 +107,7 @@ async def test_lock_held_skips_without_force(tmp_path: Path) -> None:
         name='demo',
         projects_root=tmp_path,
         lock_detector=_AlwaysHeld(),
+        scanner=KicadPendingStagedScanner(),
     )
     assert out.applied == ()
     assert len(out.skipped) == 1
@@ -121,6 +126,7 @@ async def test_lock_held_applies_with_force(tmp_path: Path) -> None:
         projects_root=tmp_path,
         force=True,
         lock_detector=_AlwaysHeld(),
+        scanner=KicadPendingStagedScanner(),
     )
     assert out.applied == (active,)
     assert active.read_text() == 'NEW'
@@ -139,6 +145,7 @@ async def test_parent_hash_mismatch_skips_without_accept_overwrite(
         name='demo',
         projects_root=tmp_path,
         lock_detector=_NeverHeld(),
+        scanner=KicadPendingStagedScanner(),
     )
     assert out.applied == ()
     assert len(out.skipped) == 1
@@ -162,6 +169,7 @@ async def test_parent_hash_mismatch_overwrites_with_accept_overwrite(
         projects_root=tmp_path,
         accept_overwrite=True,
         lock_detector=_NeverHeld(),
+        scanner=KicadPendingStagedScanner(),
     )
     assert out.applied == (active,)
     assert active.read_text() == 'NEW'
@@ -181,6 +189,7 @@ async def test_force_alone_does_not_bypass_parent_hash_check(tmp_path: Path) -> 
         projects_root=tmp_path,
         force=True,  # bypass lock only
         lock_detector=_AlwaysHeld(),
+        scanner=KicadPendingStagedScanner(),
     )
     assert out.applied == ()
     assert len(out.skipped) == 1
@@ -199,6 +208,7 @@ async def test_both_flags_apply_through(tmp_path: Path) -> None:
         force=True,
         accept_overwrite=True,
         lock_detector=_AlwaysHeld(),
+        scanner=KicadPendingStagedScanner(),
     )
     assert out.applied == (active,)
     assert active.read_text() == 'NEW'
@@ -217,6 +227,7 @@ async def test_multi_sheet_partial(tmp_path: Path) -> None:
         name='demo',
         projects_root=tmp_path,
         lock_detector=_NeverHeld(),
+        scanner=KicadPendingStagedScanner(),
     )
     assert a1 in out.applied
     assert any(s.active_path == a2 for s in out.skipped)
@@ -243,6 +254,7 @@ async def test_fresh_active_none_parent_hash_applies_cleanly(tmp_path: Path) -> 
         name='demo',
         projects_root=tmp_path,
         lock_detector=_NeverHeld(),
+        scanner=KicadPendingStagedScanner(),
     )
     assert out.applied == (active,)
     assert active.read_text() == 'FRESH'
@@ -263,6 +275,7 @@ async def test_orphan_staged_without_meta_requires_accept_overwrite(
         name='demo',
         projects_root=tmp_path,
         lock_detector=_NeverHeld(),
+        scanner=KicadPendingStagedScanner(),
     )
     assert out.applied == ()
     assert len(out.skipped) == 1

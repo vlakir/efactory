@@ -10,11 +10,11 @@ entry включается с `parent_hash=None`, apply use case это разр
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from adapters.outbound.schematic_kicad.staged_metadata import read_staged_metadata
 from adapters.outbound.schematic_kicad.staged_paths import meta_path
+from ports.outbound.staged_schematics import PendingStagedEntry
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -22,16 +22,6 @@ if TYPE_CHECKING:
 
 _STAGED_GLOB = '*.kicad_sch.staged'
 _STAGED_SUFFIX = '.staged'
-
-
-@dataclass(frozen=True)
-class PendingStagedEntry:
-    """Одна pending staged-модификация для apply-staged."""
-
-    active_path: Path
-    staged_path: Path
-    meta_path: Path
-    parent_hash: str | None  # None если sidecar отсутствует или active не существовал.
 
 
 def _strip_staged_suffix(staged: Path) -> Path:
@@ -64,4 +54,11 @@ def scan_pending_staged(project_root: Path) -> list[PendingStagedEntry]:
     return entries
 
 
-__all__ = ['PendingStagedEntry', 'scan_pending_staged']
+class KicadPendingStagedScanner:
+    """Adapter-инкарнация `PendingStagedScanner` для KiCad staged-файлов."""
+
+    def scan(self, project_root: Path) -> list[PendingStagedEntry]:
+        return scan_pending_staged(project_root)
+
+
+__all__ = ['KicadPendingStagedScanner', 'scan_pending_staged']

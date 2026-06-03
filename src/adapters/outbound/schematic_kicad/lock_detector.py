@@ -15,18 +15,12 @@ user override через apply-staged `--force` flag.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 from adapters.outbound.schematic_kicad.staged_paths import lock_path
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-
-class LockDetector(Protocol):
-    """Абстракция «удерживается ли файл сторонним инструментом»."""
-
-    def is_held_by_kicad(self, active: Path) -> bool: ...
 
 
 class KicadLockDetector:
@@ -36,4 +30,4 @@ class KicadLockDetector:
         return lock_path(active).exists()
 
 
-__all__ = ['KicadLockDetector', 'LockDetector']
+__all__ = ['KicadLockDetector']
