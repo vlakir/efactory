@@ -36,6 +36,35 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T031 + T177 — Tube-curve-fitting pipeline + persistent agent
+  overlay (Phase 0-7, PR #115).** Полный путь «PDF/PNG datasheet →
+  vision JSON IV-точек → собственный scipy-fitter (Koren triode /
+  Ayumi-style pentode) → `.lib` в user overlay → SPICE-симуляция»
+  через CLI + agent slash + KB-routing. 6 success criteria PASS:
+  round-trip 12AX7/EL34 ≤5% (SC#1), CLI deterministic test (SC#3),
+  acceptance 6Ж38П (через 6BH6 western eq.) + 6П13С на ±15% Ia
+  (SC#2, mean 3.3-4.5% / max 7.6%), KB integration + L2 regression
+  (SC#4/6). **3 новые built-in tube models:** 6Ж38П (frame-grid RF
+  pentode), 6П13С (output beam tetrode), 6Ж32П (low-noise audio
+  pentode, EF86 eq.). **3 новых template:** `6zh38p-if-amp`
+  (RF/IF preamp), `6p13s-se-resistive` (SE output без OPT,
+  Spec A-W3), `6zh32p-mic-preamp` (микрофонный преамп, gain
+  40.76 dB, BW 9.5-87.5 kHz). **Phase 6 live agent smoke test:**
+  agent в `efactory:linux` контейнере автономно нашёл baseline
+  template через KB routing, скачал datasheet (Svetlana EF86 10/96),
+  vision-extracted 53 IV-точки, fit RMS 0.057 mA, схему адаптировал
+  (EF86 noval pinout 2=K/3=G/6=P/8=G2), достиг ТЗ. **Phase 7 (T177)
+  закрыл architectural gap:** `efactory template create-from-project`
+  + `Settings.user_templates_root` + bind-mount `$STATE_DIR/efactory:
+  /efactory/data:rw` в `efactory-up --agent`. Pre-T177 agent's .lib
+  и templates ушли в transient `/opt/efactory/data/`; post-T177 —
+  persistent в host `$STATE_DIR/efactory/`. KB sync: 5 new topics
+  (`tubes.curve-fitting`, `spice.tube-rf-amp-6zh38p`,
+  `spice.tube-se-resistive-6p13s`, `spice.tube-mic-preamp-6zh32p`,
+  + slash `/tube-add-from-datasheet`), 4 routing rows, 11 L2
+  regression cases. ADR-T031a (свой fitter, не wrap Заславского) в
+  DECISIONS.md. Tests 1826 → 1962 (+136). Pre-push 5/5 ✓.
+
 - **T027 Phase E — `/project-create [TEMPLATE]` slash extension +
   `efactory project list-templates` CLI subcommand + T027 closure.**
   Slash command `/project-create <NAME> [TEMPLATE]` (default
