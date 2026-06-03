@@ -25,6 +25,95 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-04 — T182 ADR-T182a: modified Koren (Tier 3+) vs Reefman / Cohen-Hélie / neural
+
+- **Контекст.** Koren-pentode форма `E1^EX/KG1 · atan(Va/KVB)` (T031)
+  даёт systematic knee error до 70-80% Ia на Mullard EL34 (Phase 0
+  §6) и нефизичный fit 6П13С (`KG1=51000, EX=2.67` — формула
+  компенсирует limit числами). Нужно выбрать tube-model formulation
+  для следующего шага точности.
+- **Решение.** Идём по варианту **Tier 3+ (modified Koren)** —
+  добавляем 1-2 параметра к canonical Koren-pentode и Koren-triode
+  для better knee/cutoff fidelity, без перехода на Tier-2 / Tier-1.
+- **Альтернативы (ROI matrix).**
+
+  | Tier | Formula | Params | Knee accuracy class | Fit complexity | .lib portability | Status |
+  |------|---------|--------|---------------------|----------------|------------------|--------|
+  | 3 baseline | **Koren canonical** (T031) | 5-7 | ±70% knee on EL34 | scipy.curve_fit, multi-start 5 | ngspice native | **Current** |
+  | 3+ (this ADR) | **Modified Koren** (T182) | 6-9 | ±30-40% knee | scipy.curve_fit, multi-start 8, σ-weighted | ngspice native (atan + sigmoid + exp) | **Chosen** |
+  | 2 | Reefman 2003 (extended Koren + grid term) | 8-10 | ±15-20% knee (claim) | scipy.curve_fit, нужен careful init | ngspice native | Rejected — bigger refactor; ROI unclear до T182 baseline |
+  | 1 | Cohen-Hélie 2009 (3/2-power backbone + cutoff term) | 12-15 | ±5-10% knee (claim) | scipy + careful bounds, may need adaptive jacobian | ngspice complex (multiple B-sources) | Rejected — too many params for typical 20-40 vision-extracted points; identifiability marginal |
+  | 5 | Neural / Spice surrogate | thousands | trivial по definition | offline training | non-portable (no ngspice native) | Rejected — out of scope для SPICE pipeline |
+
+- **Последствия.**
+  - **+** Минимальный refactor: ~100-200 строк в `_formulas.py`,
+    `_bounds.py`, `_fitter.py`; backwards-compat `koren-canonical`
+    default; opt-in `--formula-variant`.
+  - **+** Pentode knee modifier `(1-exp(-Va/Vk))` zero-preserving,
+    plateau-preserving — round-trip SC#3 tolerance ≤15% Vk.
+  - **+** Triode cutoff modifier sigmoid round-trip SC#3b tolerance
+    ≤20%/≤25%.
+  - **−** Phase 4 acceptance probe показал, что modified-knee modifier
+    *сам по себе* close gap only partially (39% mean knee on EL34
+    vs target 30%). Большая часть улучшения приходит от добавленного
+    σ-weighting (`σ = max(Ia, 1 mA)`) в modified fitter. Strict target
+    closure не достигнут — для full closure нужен Tier 2 (Reefman).
+  - **−** Decision flip на Reefman / Cohen-Hélie — отдельная T-задача,
+    не блокер T182.
+- **См. также:** `specs/T182-koren-modified-knee/spec.md`,
+  `phase-4-acceptance.md` (key finding §2).
+
+### 2026-06-04 — T182 ADR-T182b: формальное определение modified variants
+
+- **Контекст.** T182 вводит два новых FormulaVariant. Нужна
+  однозначная формальная запись math form, parameters, bounds,
+  .lib emission — для совместимости fitter / writer / future re-fits.
+- **Решение.** Two variants formally defined:
+
+  **`koren-modified-knee` (pentode):**
+  ```
+  E1 = (Vg2/KP) · ln(1 + exp(KP · (1/MU + Vg/Vg2)))
+  Ia = (2 · E1^EX / KG1) · atan(Va/KVB) · (1 - exp(-Va/Vk))     при E1>0
+  Ig2 = 2 · E1^EX / KG2                                            (как canonical)
+  ```
+  - Params: MU, EX, KG1, KG2, KP, KVB, screen_v (input), **Vk** (new).
+  - Vk bounds: (5, 500) V; typical 50 V.
+  - .lib emission: `B_KNEE 8 0 V=1-EXP(-V(P,K)/{vk})` + `G1` multiplied
+    by `V(8)`.
+
+  **`koren-modified-cutoff` (triode):**
+  ```
+  E1 = (Va/KP) · ln(1 + exp(KP · (1/MU + (Vg+Vct)/sqrt(KVB+Va²))))
+  Ia_canonical = 2 · E1^EX / KG1
+  Ia = Ia_canonical · sigmoid((Vg - Vc_off) / Vs_off)              при E1>0
+  ```
+  - Params: MU, EX, KG1, KP, KVB, **Vc_off** (new, negative),
+    **Vs_off** (new, positive). `vct` forced None (mutually
+    exclusive — A-W1).
+  - Vc_off bounds: (-200, -0.5) V; Vs_off bounds: (0.5, 30.0) V.
+  - .lib emission: `B_SIG 8 0 V=1/(1+EXP(-((V(G,K)-VC_OFF)/VS_OFF)))`
+    + `G1` multiplied by `V(8)`.
+
+- **Альтернативы (для knee modifier).**
+  - **(a) `(1-exp(-Va/Vk))`** — chosen. C∞-smooth, zero-preserving,
+    plateau-preserving, 1 new param.
+  - **(b) Piecewise sharp / smooth** — rejected: C¹-сшивка усложняет
+    curve_fit jacobian.
+  - **(c) Cohen-Hélie cutoff term** — rejected: пересекается с
+    triode-cutoff модификатором; double-modeling.
+- **Альтернативы (для cutoff modifier).**
+  - **(i) sigmoid((Vg - Vc_off) / Vs_off)** — chosen. 2 params,
+    smooth, transitions to 0/1, ngspice-portable.
+  - **(ii) Cohen-Hélie additive cutoff term** — rejected: смещает
+    mid-region Ia, breaks canonical baseline.
+- **Последствия.**
+  - .lib emission точно соответствует Python forward formulas
+    (SC#5 ngspice OP smoke 2026-06-04 confirmed bit-exact match:
+    pentode mod-knee 112.643 mA, triode mod-cutoff 380.934 mA).
+  - Future re-fit / re-emit pipeline backwards-compatible через
+    explicit `fit variant: koren-modified-{knee|cutoff}` marker в
+    comment header `.lib`.
+
 ### 2026-06-03 — T031 ADR-T031a: свой scipy-fitter, не wrap Заславского
 
 - **Контекст.** Для T031 (Tube-curve-fitting) рассматривали готовый

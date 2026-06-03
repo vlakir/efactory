@@ -36,6 +36,29 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T182 — Modified Koren-pentode + Koren-triode formulas (knee/cutoff
+  upgrade, Tier 3+, PR forthcoming).** Расширение T031 tube-fitting
+  pipeline двумя opt-in variants: `koren-modified-knee` (pentode
+  plate-term × `(1-exp(-Va/Vk))` для резче knee) и
+  `koren-modified-cutoff` (triode Ia × sigmoid((Vg-Vc_off)/Vs_off)
+  для резче strong cutoff). CLI flag `--formula-variant`
+  (`koren-canonical` default = T031 backwards-compat). Two new pydantic
+  param VO + bounds + typicals + ngspice-portable `.lib` emission.
+  Phase 2 round-trip SC#3 / SC#3b: pentode mod-knee MU/KG1/KG2/KP/KVB
+  ≤7%, EX ≤3%, Vk ≤15%; triode mod-cutoff Vc_off ≤20%, Vs_off ≤25%.
+  Phase 4 acceptance EL34 / 300B / 6П13С: PARTIAL — direction-of-
+  improvement демонстрирована на всех метриках (knee 146% → 39%,
+  300B cutoff 16% → 12%, 6П13С KG1 50965 → 12925), но строгие spec
+  thresholds (knee <30%, plateau <15%) не закрыты — структурный
+  ceiling Koren+modifier; Tier 2 (Reefman) / Tier 1 (Cohen-Hélie) —
+  отдельная T-задача. Key finding: бóльшая часть улучшения приходит
+  от relative-error `σ = max(Ia, 1 mA)` weighting, встроенного в
+  modified fitter. ADR-T182a (ROI matrix Koren / Reefman / Cohen-Hélie /
+  neural) + ADR-T182b (formal definition variants math + .lib
+  emission) в DECISIONS.md. SC#5 ngspice OP smoke на обеих .lib —
+  bit-exact match Python forward-formula. Tests 1962 → 1996 (+34).
+  Pre-push 5/5 ✓.
+
 - **T031 + T177 — Tube-curve-fitting pipeline + persistent agent
   overlay (Phase 0-7, PR #115).** Полный путь «PDF/PNG datasheet →
   vision JSON IV-точек → собственный scipy-fitter (Koren triode /
