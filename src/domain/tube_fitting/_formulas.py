@@ -27,7 +27,12 @@ import math
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
-    from domain.tube_fitting._params import AyumiPentodeParams, KorenTriodeParams
+    from domain.tube_fitting._params import (
+        AyumiPentodeParams,
+        KorenModifiedCutoffTriodeParams,
+        KorenModifiedKneePentodeParams,
+        KorenTriodeParams,
+    )
 
 SOFTPLUS_LARGE_ARG: Final[float] = 50.0
 """arg > этого порога: log1p(exp(arg)) ≈ arg (без exp overflow)."""
@@ -85,3 +90,69 @@ def ayumi_pentode_ia(vg: float, va: float, params: AyumiPentodeParams) -> float:
         return 0.0
     # KG1 в ngspice convention → Ia в Amperes; конвертируем в mA.
     return (2.0 * (e1**params.ex) / params.kg1) * math.atan(va / params.kvb) * 1000.0
+
+
+def koren_modified_knee_pentode_ia(
+    vg: float, va: float, params: KorenModifiedKneePentodeParams
+) -> float:
+    """
+    T182: Modified Koren-pentode Ia (mA) с резче knee region.
+
+    Formula:
+
+        E1 = (Vg2/KP) * ln(1 + exp(KP * (1/MU + Vg/Vg2)))
+        Ia = (2 * E1^EX / KG1) * atan(Va/KVB) * (1 - exp(-Va/Vk))
+
+    при `E1 > 0`; иначе 0. Множитель `(1 - exp(-Va/Vk))` zero-preserving
+    (Va=0 → 0) и plateau-preserving (Va → ∞ → 1). См. spec C1.
+    """
+    arg = params.kp * (1.0 / params.mu + vg / params.screen_v)
+    if arg < SOFTPLUS_DEEP_CUTOFF:
+        return 0.0
+    softplus = arg if arg > SOFTPLUS_LARGE_ARG else math.log1p(math.exp(arg))
+    e1 = (params.screen_v / params.kp) * softplus
+    if e1 <= 0.0:
+        return 0.0
+    knee = 1.0 - math.exp(-va / params.vk)
+    return (
+        (2.0 * (e1**params.ex) / params.kg1)
+        * math.atan(va / params.kvb)
+        * knee
+        * 1000.0
+    )
+
+
+def koren_modified_cutoff_triode_ia(
+    vg: float, va: float, params: KorenModifiedCutoffTriodeParams
+) -> float:
+    """
+    T182: Modified Koren-triode Ia (mA) с резче strong cutoff.
+
+    Formula:
+
+        E1 = (Va/KP) * ln(1 + exp(KP * (1/MU + (Vg+Vct)/sqrt(KVB+Va²))))
+        Ia_canonical = 2 * E1^EX / KG1
+        sigmoid(x) = 1/(1 + exp(-x))
+        Ia = Ia_canonical * sigmoid((Vg - Vc_off) / Vs_off)
+
+    При `Vg ≫ Vc_off` (mid-region) sigmoid → 1 → канонический Koren.
+    При `Vg ≪ Vc_off` sigmoid → 0 → резкий cutoff floor.
+    """
+    vct = params.vct if params.vct is not None else 0.0
+    plate_norm = math.sqrt(params.kvb + va * va)
+    arg = params.kp * (1.0 / params.mu + (vg + vct) / plate_norm)
+    if arg < SOFTPLUS_DEEP_CUTOFF:
+        return 0.0
+    softplus = arg if arg > SOFTPLUS_LARGE_ARG else math.log1p(math.exp(arg))
+    e1 = (va / params.kp) * softplus
+    if e1 <= 0.0:
+        return 0.0
+    sigmoid_arg = (vg - params.vc_off) / params.vs_off
+    # Numerical guards mirror SOFTPLUS bounds; sigmoid диапазон [0, 1].
+    if sigmoid_arg < SOFTPLUS_DEEP_CUTOFF:
+        return 0.0
+    if sigmoid_arg > SOFTPLUS_LARGE_ARG:
+        sigmoid_val = 1.0
+    else:
+        sigmoid_val = 1.0 / (1.0 + math.exp(-sigmoid_arg))
+    return 2.0 * (e1**params.ex) / params.kg1 * sigmoid_val * 1000.0

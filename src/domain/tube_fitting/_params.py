@@ -31,6 +31,29 @@ TubeType = Literal['triode', 'pentode']
 post-fit (Phase 2, A-W1).
 """
 
+FormulaVariant = Literal[
+    'koren-canonical', 'koren-modified-knee', 'koren-modified-cutoff'
+]
+"""Forward-formula variant (T182).
+
+* `'koren-canonical'` — оригинальный Koren triode + Ayumi/Koren-pentode
+  (T031 baseline). Default. Каноничные `KorenTriodeParams` /
+  `AyumiPentodeParams`.
+* `'koren-modified-knee'` — pentode-only: plate-term получает
+  `(1 - exp(-Va/Vk))` множитель, knee region резче. Используется с
+  `KorenModifiedKneePentodeParams` (+1 параметр `vk` сверх canonical
+  pentode). См. T182 spec §3.
+* `'koren-modified-cutoff'` — triode-only: Ia умножается на
+  sigmoid((Vg − Vc_off)/Vs_off), strong cutoff резче без overshoot
+  в mid-region. Используется с `KorenModifiedCutoffTriodeParams`
+  (+2 параметра `vc_off`, `vs_off` сверх canonical triode). См.
+  T182 spec §3.
+
+Совместимость triode/pentode → variant: `koren-modified-knee` ↔
+pentode only; `koren-modified-cutoff` ↔ triode only. Mismatch ловится
+use case'ом до запуска fitter'а (A-W5).
+"""
+
 
 _FROZEN = ConfigDict(frozen=True, extra='forbid')
 
@@ -86,6 +109,79 @@ class AyumiPentodeParams(BaseModel):
 
     screen_v: Annotated[float, Field(gt=0)]
     """Screen-grid voltage Vg2 at which datasheet curves были measured."""
+
+
+class KorenModifiedKneePentodeParams(BaseModel):
+    """
+    Modified Koren-pentode (T182): canonical pentode + knee modifier.
+
+    Forward Ia:
+        E1 = (Vg2/KP) * ln(1 + exp(KP * (1/MU + Vg/Vg2)))
+        Ia = (2 * E1^EX / KG1) * atan(Va/KVB) * (1 - exp(-Va/Vk))
+
+    `vk` (V) — knee voltage scale: меньший Vk → резче подъём в knee
+    region; при Va → ∞ модификатор → 1 (plateau не меняется по
+    сравнению с canonical Koren-pentode).
+
+    Backwards-compat: для `vk → ∞` modifier ≡ 1 → формула вырождается
+    в canonical, но т.к. `vk` имеет positive lower bound (5 V), это
+    asymptotic property, не bit-exact.
+    """
+
+    model_config = _FROZEN
+
+    mu: Annotated[float, Field(gt=0)]
+    ex: Annotated[float, Field(gt=1.0, lt=3.0)]
+    kg1: Annotated[float, Field(gt=0)]
+    kg2: Annotated[float, Field(gt=0)]
+    kp: Annotated[float, Field(gt=0)]
+    kvb: Annotated[float, Field(gt=0)]
+    screen_v: Annotated[float, Field(gt=0)]
+    vk: Annotated[float, Field(gt=0)]
+    """Knee voltage scale (V). Typical: 30-100 V для receiving
+    pentodes, 50-200 V для power pentodes."""
+
+
+class KorenModifiedCutoffTriodeParams(BaseModel):
+    """
+    Modified Koren-triode (T182): canonical triode + sigmoid cutoff.
+
+    Forward Ia:
+        E1 = (Va/KP) * ln(1 + exp(KP * (1/MU + (Vg+Vct)/sqrt(KVB+Va²))))
+        Ia_canonical = 2 * E1^EX / KG1
+        Ia = Ia_canonical * sigmoid((Vg - Vc_off) / Vs_off)
+             где sigmoid(x) = 1/(1 + exp(-x))
+
+    `Vc_off` (V, **negative**) — cutoff threshold center; для 300B
+    typical: -50..-60 V. При `Vg ≫ Vc_off` (нормальная mid-region)
+    sigmoid → 1 → Ia ≡ canonical. При `Vg ≪ Vc_off` sigmoid → 0 →
+    Ia → 0 (sharp cutoff).
+
+    `Vs_off` (V, positive) — sigmoid transition width: меньший Vs_off
+    → резче cutoff edge.
+
+    Совместимость с A-W1: при использовании этого variant'а
+    `--include-vct` запрещён CLI (cathode-contact `vct` и cutoff
+    threshold `vc_off` semantically overlap).
+    """
+
+    model_config = _FROZEN
+
+    mu: Annotated[float, Field(gt=0)]
+    ex: Annotated[float, Field(gt=1.0, lt=3.0)]
+    kg1: Annotated[float, Field(gt=0)]
+    kp: Annotated[float, Field(gt=0)]
+    kvb: Annotated[float, Field(gt=0)]
+    vct: Annotated[float, Field(ge=0, le=5)] | None = None
+    """`Vct` остаётся в VO для совместимости с canonical schema, но
+    use case при variant='koren-modified-cutoff' форсирует `vct=None`
+    (см. A-W1)."""
+
+    vc_off: Annotated[float, Field(lt=0, gt=-300)]
+    """Cutoff threshold center (V, negative)."""
+
+    vs_off: Annotated[float, Field(gt=0)]
+    """Sigmoid transition width (V, positive)."""
 
 
 class IVPoint(BaseModel):
@@ -222,7 +318,12 @@ class FitResult(BaseModel):
 
     model_config = _FROZEN
 
-    params: KorenTriodeParams | AyumiPentodeParams
+    params: (
+        KorenTriodeParams
+        | AyumiPentodeParams
+        | KorenModifiedKneePentodeParams
+        | KorenModifiedCutoffTriodeParams
+    )
     rms_residual_ma: Annotated[float, Field(ge=0)]
     """RMS residual Ia error по всему датасету (mA)."""
 

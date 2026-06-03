@@ -17,8 +17,12 @@ import pytest
 
 from domain.tube_fitting import (
     AyumiPentodeParams,
+    KorenModifiedCutoffTriodeParams,
+    KorenModifiedKneePentodeParams,
     KorenTriodeParams,
     ayumi_pentode_ia,
+    koren_modified_cutoff_triode_ia,
+    koren_modified_knee_pentode_ia,
     koren_triode_ia,
 )
 
@@ -116,3 +120,149 @@ def test_ayumi_pentode_atan_plateau_approaches_max() -> None:
     ia_close = ayumi_pentode_ia(vg=-10.0, va=400.0, params=_EL34)
     # Ratio должен быть < 1.10 (plateau).
     assert ia_far / ia_close < 1.10
+
+
+# ============================== T182: Modified Koren-pentode (knee) ==============================
+
+
+_EL34_MOD_KNEE = KorenModifiedKneePentodeParams(
+    mu=11, ex=1.35, kg1=650, kg2=4500, kp=60, kvb=24, screen_v=250, vk=50.0
+)
+
+
+def test_modified_knee_pentode_el34_plateau_matches_canonical() -> None:
+    # Plateau region (Va ≫ Vk): modifier (1-exp(-Va/Vk)) ≈ 1, должно быть
+    # близко к canonical Ayumi EL34 (113.3 mA).
+    ia = koren_modified_knee_pentode_ia(vg=-12.2, va=250.0, params=_EL34_MOD_KNEE)
+    assert ia == pytest.approx(112.64, rel=2e-2)
+
+
+def test_modified_knee_pentode_el34_knee_region_lower_than_canonical() -> None:
+    # Hand-calc: canonical EL34 @ Vg=-12.2, Va=50 → 86.36 mA;
+    # modified-knee vk=50 → 54.59 mA (-37%, modifier даёт sharper rise).
+    ia_mod = koren_modified_knee_pentode_ia(vg=-12.2, va=50.0, params=_EL34_MOD_KNEE)
+    ia_can = ayumi_pentode_ia(
+        vg=-12.2,
+        va=50.0,
+        params=AyumiPentodeParams(
+            mu=11, ex=1.35, kg1=650, kg2=4500, kp=60, kvb=24, screen_v=250
+        ),
+    )
+    assert ia_mod == pytest.approx(54.59, rel=2e-2)
+    assert ia_mod < ia_can  # знак modifier'а: knee давит Ia вниз
+
+
+def test_modified_knee_pentode_zero_va_returns_zero() -> None:
+    # Modifier (1 - exp(-0/Vk)) = 0. И atan(0) = 0. Дважды zero.
+    ia = koren_modified_knee_pentode_ia(vg=-5.0, va=0.001, params=_EL34_MOD_KNEE)
+    assert ia < 0.05  # negligible near zero
+
+
+def test_modified_knee_pentode_plateau_unchanged_vs_canonical() -> None:
+    # При Va → ∞ modifier → 1, должно совпасть с canonical.
+    ia_mod_far = koren_modified_knee_pentode_ia(
+        vg=-10.0, va=2000.0, params=_EL34_MOD_KNEE
+    )
+    ia_can_far = ayumi_pentode_ia(
+        vg=-10.0,
+        va=2000.0,
+        params=AyumiPentodeParams(
+            mu=11, ex=1.35, kg1=650, kg2=4500, kp=60, kvb=24, screen_v=250
+        ),
+    )
+    assert ia_mod_far == pytest.approx(ia_can_far, rel=1e-2)
+
+
+def test_modified_knee_pentode_monotonic_in_va() -> None:
+    ias = [
+        koren_modified_knee_pentode_ia(vg=-10.0, va=v, params=_EL34_MOD_KNEE)
+        for v in (50, 100, 200, 400)
+    ]
+    assert ias[0] < ias[1] < ias[2] < ias[3]
+
+
+def test_modified_knee_pentode_smaller_vk_gives_steeper_knee() -> None:
+    # vk=10 — резче подъём; vk=100 — мягче. На фикс. (Vg, Va<<plateau)
+    # vk=10 даёт больший Ia (модификатор быстрее насыщается до 1).
+    p_sharp = _EL34_MOD_KNEE.model_copy(update={'vk': 10.0})
+    p_smooth = _EL34_MOD_KNEE.model_copy(update={'vk': 200.0})
+    ia_sharp = koren_modified_knee_pentode_ia(vg=-10.0, va=100.0, params=p_sharp)
+    ia_smooth = koren_modified_knee_pentode_ia(vg=-10.0, va=100.0, params=p_smooth)
+    assert ia_sharp > ia_smooth
+
+
+def test_modified_knee_pentode_cutoff_returns_negligible() -> None:
+    ia = koren_modified_knee_pentode_ia(vg=-50.0, va=250.0, params=_EL34_MOD_KNEE)
+    assert ia < 0.01
+
+
+# ============================== T182: Modified Koren-triode (cutoff) ==============================
+
+
+_300B_LIKE = KorenModifiedCutoffTriodeParams(
+    mu=4, ex=1.4, kg1=1500, kp=800, kvb=200, vc_off=-50.0, vs_off=5.0
+)
+
+
+def test_modified_cutoff_triode_at_vc_off_sigmoid_half() -> None:
+    # Vg = vc_off → sigmoid(0) = 0.5 → Ia = canonical * 0.5.
+    # Hand-calc: 106.71 mA.
+    ia = koren_modified_cutoff_triode_ia(vg=-50.0, va=350.0, params=_300B_LIKE)
+    assert ia == pytest.approx(106.71, rel=2e-2)
+
+
+def test_modified_cutoff_triode_mid_region_sigmoid_one() -> None:
+    # Vg ≫ vc_off (Vg=-30 > -50) → sigmoid → 1 → Ia ≈ canonical.
+    # Hand-calc: 380.93 mA.
+    ia = koren_modified_cutoff_triode_ia(vg=-30.0, va=350.0, params=_300B_LIKE)
+    assert ia == pytest.approx(380.93, rel=2e-2)
+
+
+def test_modified_cutoff_triode_deep_cutoff_sigmoid_zero() -> None:
+    # Vg ≪ vc_off (Vg=-80 < -50) → sigmoid → ~0 → Ia → ~0.
+    # Hand-calc: 0.056 mA (vs canonical 22.66 mA — sharp shutdown).
+    ia = koren_modified_cutoff_triode_ia(vg=-80.0, va=350.0, params=_300B_LIKE)
+    assert ia < 0.1  # ≪ canonical 22.66; настоящий shutdown
+
+
+def test_modified_cutoff_triode_monotonic_in_va() -> None:
+    ias = [
+        koren_modified_cutoff_triode_ia(vg=-30.0, va=v, params=_300B_LIKE)
+        for v in (100, 200, 300, 400)
+    ]
+    assert ias[0] < ias[1] < ias[2] < ias[3]
+
+
+def test_modified_cutoff_triode_monotonic_in_vg() -> None:
+    ias = [
+        koren_modified_cutoff_triode_ia(vg=v, va=350.0, params=_300B_LIKE)
+        for v in (-60.0, -40.0, -20.0, -10.0)
+    ]
+    assert ias[0] < ias[1] < ias[2] < ias[3]
+
+
+def test_modified_cutoff_triode_smaller_vs_off_gives_sharper_cutoff() -> None:
+    # Sharper sigmoid → deeper-cutoff Ia уменьшается быстрее.
+    p_sharp = _300B_LIKE.model_copy(update={'vs_off': 1.0})
+    p_smooth = _300B_LIKE.model_copy(update={'vs_off': 15.0})
+    ia_sharp = koren_modified_cutoff_triode_ia(vg=-55.0, va=350.0, params=p_sharp)
+    ia_smooth = koren_modified_cutoff_triode_ia(vg=-55.0, va=350.0, params=p_smooth)
+    assert ia_sharp < ia_smooth  # sharper модификатор сильнее давит при Vg < vc_off
+
+
+def test_modified_cutoff_triode_vct_still_works() -> None:
+    # `vct` остаётся в схеме (хотя CLI запретит использование с этим
+    # variant'ом — A-W1). Проверяем что формула учитывает vct корректно.
+    p0 = _300B_LIKE
+    p1 = _300B_LIKE.model_copy(update={'vct': 0.5})
+    ia0 = koren_modified_cutoff_triode_ia(vg=-30.0, va=350.0, params=p0)
+    ia1 = koren_modified_cutoff_triode_ia(vg=-30.0, va=350.0, params=p1)
+    # vct смещает Vg → larger Ia.
+    assert ia1 > ia0
+
+
+def test_modified_cutoff_triode_handles_extreme_sigmoid_no_overflow() -> None:
+    # Очень глубокий cutoff: (Vg - Vc_off)/Vs_off → большое отрицательное;
+    # формула должна возвращать finite значение, не NaN/inf.
+    ia = koren_modified_cutoff_triode_ia(vg=-150.0, va=300.0, params=_300B_LIKE)
+    assert ia == 0.0  # глубокий cutoff — sigmoid_arg ниже SOFTPLUS_DEEP_CUTOFF
