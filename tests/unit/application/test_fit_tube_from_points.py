@@ -16,8 +16,12 @@ from application.fit_tube_from_points import (
 )
 from domain.tube_fitting import (
     AyumiPentodeParams,
+    KorenModifiedCutoffTriodeParams,
+    KorenModifiedKneePentodeParams,
     KorenTriodeParams,
     ayumi_pentode_ia,
+    koren_modified_cutoff_triode_ia,
+    koren_modified_knee_pentode_ia,
     koren_triode_ia,
 )
 
@@ -351,3 +355,183 @@ def test_seed_from_triode_threads_into_fitter(tmp_path: Path) -> None:
     # Fit с seed_from = ground truth → должен попасть точно.
     p = result.fit_result.params
     assert abs(p.mu - 100) / 100 <= 0.05
+
+
+# ============================== T182: --formula-variant routing ==============================
+
+
+_EL34_MOD_KNEE = KorenModifiedKneePentodeParams(
+    mu=11, ex=1.35, kg1=650, kg2=4500, kp=60, kvb=24, screen_v=250, vk=50.0
+)
+_300B_MOD_CUTOFF = KorenModifiedCutoffTriodeParams(
+    mu=4, ex=1.4, kg1=1500, kp=800, kvb=200, vc_off=-50.0, vs_off=5.0
+)
+
+
+def _synthesize_modified_knee_pentode_json(
+    tmp_path: Path, name: str = 'EL34_MOD'
+) -> Path:
+    vg_values = (-2.0, -5.0, -10.0, -15.0, -20.0)
+    va_values = (30.0, 50.0, 80.0, 120.0, 200.0, 300.0, 400.0, 500.0)
+    payload = {
+        'tube_name': name,
+        'tube_type': 'pentode',
+        'source': 'synth-mod-knee',
+        'date_extracted': '2026-06-04',
+        'screen_voltage_v': 250.0,
+        'curves': [
+            {
+                'vg': vg,
+                'points': [
+                    [va, koren_modified_knee_pentode_ia(vg, va, _EL34_MOD_KNEE)]
+                    for va in va_values
+                ],
+            }
+            for vg in vg_values
+        ],
+    }
+    p = tmp_path / 'mod_knee_pentode.json'
+    p.write_text(json.dumps(payload), encoding='utf-8')
+    return p
+
+
+def _synthesize_modified_cutoff_triode_json(
+    tmp_path: Path, name: str = '300B_MOD'
+) -> Path:
+    vg_values = (-5.0, -15.0, -30.0, -45.0, -55.0, -65.0)
+    va_values = (50.0, 100.0, 200.0, 300.0, 400.0)
+    payload = {
+        'tube_name': name,
+        'tube_type': 'triode',
+        'source': 'synth-mod-cutoff',
+        'date_extracted': '2026-06-04',
+        'curves': [
+            {
+                'vg': vg,
+                'points': [
+                    [va, koren_modified_cutoff_triode_ia(vg, va, _300B_MOD_CUTOFF)]
+                    for va in va_values
+                ],
+            }
+            for vg in vg_values
+        ],
+    }
+    p = tmp_path / 'mod_cutoff_triode.json'
+    p.write_text(json.dumps(payload), encoding='utf-8')
+    return p
+
+
+def test_t182_modified_knee_variant_dispatches_to_correct_fitter(
+    tmp_path: Path,
+) -> None:
+    json_path = _synthesize_modified_knee_pentode_json(tmp_path)
+    writer = _StubLibWriter()
+    request = FitTubeFromPointsRequest(
+        spice_name='EL34_MOD',
+        tube_type='pentode',
+        points_json=json_path,
+        out_dir=tmp_path / 'out',
+        formula_variant='koren-modified-knee',
+    )
+    result = fit_tube_from_points(
+        request, iv_repository=_make_repo(), lib_writer=writer
+    )
+    assert isinstance(result.fit_result.params, KorenModifiedKneePentodeParams)
+    # Round-trip ≤7% (SC#3):
+    p = result.fit_result.params
+    assert abs(p.mu - 11.0) / 11.0 <= 0.07
+    assert abs(p.vk - 50.0) / 50.0 <= 0.15
+    # Writer получил modified-knee params.
+    written = writer.calls[0]['params']
+    assert isinstance(written, KorenModifiedKneePentodeParams)
+
+
+def test_t182_modified_cutoff_variant_dispatches_to_correct_fitter(
+    tmp_path: Path,
+) -> None:
+    json_path = _synthesize_modified_cutoff_triode_json(tmp_path)
+    writer = _StubLibWriter()
+    request = FitTubeFromPointsRequest(
+        spice_name='X300B_MOD',
+        tube_type='triode',
+        points_json=json_path,
+        out_dir=tmp_path / 'out',
+        formula_variant='koren-modified-cutoff',
+    )
+    result = fit_tube_from_points(
+        request, iv_repository=_make_repo(), lib_writer=writer
+    )
+    assert isinstance(result.fit_result.params, KorenModifiedCutoffTriodeParams)
+    p = result.fit_result.params
+    assert abs(p.mu - 4.0) / 4.0 <= 0.07
+    assert abs(p.vc_off - (-50.0)) / 50.0 <= 0.20
+    written = writer.calls[0]['params']
+    assert isinstance(written, KorenModifiedCutoffTriodeParams)
+
+
+def test_t182_modified_knee_with_triode_type_raises(tmp_path: Path) -> None:
+    json_path = _synthesize_triode_json(tmp_path)
+    writer = _StubLibWriter()
+    request = FitTubeFromPointsRequest(
+        spice_name='X12AX7',
+        tube_type='triode',
+        points_json=json_path,
+        out_dir=tmp_path / 'out',
+        formula_variant='koren-modified-knee',
+    )
+    with pytest.raises(FitTubeUseCaseError, match='requires --type pentode'):
+        fit_tube_from_points(
+            request, iv_repository=_make_repo(), lib_writer=writer
+        )
+
+
+def test_t182_modified_cutoff_with_pentode_type_raises(tmp_path: Path) -> None:
+    json_path = _synthesize_pentode_json(tmp_path)
+    writer = _StubLibWriter()
+    request = FitTubeFromPointsRequest(
+        spice_name='XEL34',
+        tube_type='pentode',
+        points_json=json_path,
+        out_dir=tmp_path / 'out',
+        formula_variant='koren-modified-cutoff',
+    )
+    with pytest.raises(FitTubeUseCaseError, match='requires --type triode'):
+        fit_tube_from_points(
+            request, iv_repository=_make_repo(), lib_writer=writer
+        )
+
+
+def test_t182_modified_cutoff_with_include_vct_raises(tmp_path: Path) -> None:
+    """A-W1: vct и vc_off semantically overlap → mutually exclusive."""
+    json_path = _synthesize_modified_cutoff_triode_json(tmp_path)
+    writer = _StubLibWriter()
+    request = FitTubeFromPointsRequest(
+        spice_name='X300B_MOD',
+        tube_type='triode',
+        points_json=json_path,
+        out_dir=tmp_path / 'out',
+        formula_variant='koren-modified-cutoff',
+        include_vct=True,
+    )
+    with pytest.raises(FitTubeUseCaseError, match='mutually exclusive'):
+        fit_tube_from_points(
+            request, iv_repository=_make_repo(), lib_writer=writer
+        )
+
+
+def test_t182_canonical_default_unchanged_behavior(tmp_path: Path) -> None:
+    """Default formula_variant='koren-canonical' → backward-compat T031 flow."""
+    json_path = _synthesize_triode_json(tmp_path)
+    writer = _StubLibWriter()
+    request = FitTubeFromPointsRequest(
+        spice_name='X12AX7',
+        tube_type='triode',
+        points_json=json_path,
+        out_dir=tmp_path / 'out',
+        # formula_variant default = 'koren-canonical'
+    )
+    result = fit_tube_from_points(
+        request, iv_repository=_make_repo(), lib_writer=writer
+    )
+    # T031 canonical path: returns KorenTriodeParams.
+    assert isinstance(result.fit_result.params, KorenTriodeParams)

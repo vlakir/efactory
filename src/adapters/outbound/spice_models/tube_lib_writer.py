@@ -21,12 +21,21 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from domain.tube_fitting import AyumiPentodeParams, KorenTriodeParams
+from domain.tube_fitting import (
+    AyumiPentodeParams,
+    KorenModifiedCutoffTriodeParams,
+    KorenModifiedKneePentodeParams,
+    KorenTriodeParams,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ports.outbound.tube_lib_writer import HeaderTubeType, TubeLibMeta
+    from ports.outbound.tube_lib_writer import (
+        HeaderTubeType,
+        TubeLibMeta,
+        TubeParamsForWriter,
+    )
 
 _SPICE_NAME_RE = re.compile(r'^[A-Z0-9][A-Z0-9_]+$')
 
@@ -48,7 +57,7 @@ class FilesystemTubeLibWriter:
         self,
         path: Path,
         spice_name: str,
-        params: KorenTriodeParams | AyumiPentodeParams,
+        params: TubeParamsForWriter,
         *,
         header_tube_type: HeaderTubeType,
         meta: TubeLibMeta,
@@ -79,21 +88,25 @@ def _validate_spice_name(spice_name: str) -> None:
 
 
 def _validate_params_match_header(
-    params: KorenTriodeParams | AyumiPentodeParams,
+    params: TubeParamsForWriter,
     header_tube_type: HeaderTubeType,
 ) -> None:
-    if isinstance(params, KorenTriodeParams) and header_tube_type != 'triode':
+    if isinstance(
+        params, KorenTriodeParams | KorenModifiedCutoffTriodeParams
+    ) and header_tube_type != 'triode':
         msg = (
-            f"KorenTriodeParams requires header_tube_type='triode', "
+            f'{type(params).__name__} requires header_tube_type=triode, '
             f"got '{header_tube_type}'"
         )
         raise TypeError(msg)
-    if isinstance(params, AyumiPentodeParams) and header_tube_type not in (
+    if isinstance(
+        params, AyumiPentodeParams | KorenModifiedKneePentodeParams
+    ) and header_tube_type not in (
         'pentode',
         'tetrode',
     ):
         msg = (
-            f'AyumiPentodeParams requires header_tube_type in '
+            f'{type(params).__name__} requires header_tube_type in '
             f"('pentode', 'tetrode'), got '{header_tube_type}'"
         )
         raise TypeError(msg)
@@ -101,13 +114,19 @@ def _validate_params_match_header(
 
 def _render_lib(
     spice_name: str,
-    params: KorenTriodeParams | AyumiPentodeParams,
+    params: TubeParamsForWriter,
     *,
     header_tube_type: HeaderTubeType,
     meta: TubeLibMeta,
 ) -> str:
+    if isinstance(params, KorenModifiedCutoffTriodeParams):
+        return _render_modified_cutoff_triode(spice_name, params, meta=meta)
     if isinstance(params, KorenTriodeParams):
         return _render_triode(spice_name, params, meta=meta)
+    if isinstance(params, KorenModifiedKneePentodeParams):
+        return _render_modified_knee_pentode(
+            spice_name, params, header_tube_type=header_tube_type, meta=meta
+        )
     return _render_pentode(
         spice_name, params, header_tube_type=header_tube_type, meta=meta
     )
@@ -143,6 +162,95 @@ def _render_triode(
         f'+sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f}))/{p.kg1:.4f}}}\n'
         f'* Inter-electrode capacitances — typical small-signal triode defaults\n'
         f'* (см. spec T031 §7 Out of Scope: per-tube extraction).\n'
+        f'C1 G K {caps["cgk"]:.1f}p\n'
+        f'C2 G P {caps["cgp"]:.1f}p\n'
+        f'C3 P K {caps["cpk"]:.1f}p\n'
+        f'RGI G K 1MEG\n'
+        f'.ENDS {spice_name}\n'
+    )
+
+
+def _render_modified_cutoff_triode(
+    spice_name: str,
+    p: KorenModifiedCutoffTriodeParams,
+    *,
+    meta: TubeLibMeta,
+) -> str:
+    """T182: triode + sigmoid cutoff modifier.
+
+    `vct` всегда None (use case форсирует — A-W1). `vc_off` отрицателен;
+    в ngspice-syntax `(V(G,K) - VC_OFF)` корректно для negative VC_OFF
+    через дробное представление `... + (-VC_OFF)` — но проще писать
+    разность напрямую: `(V(G,K) - {p.vc_off:.4f})` где vc_off negative
+    числу включает знак.
+    """
+    caps = _TRIODE_TYPICAL_CAPS
+    # Sigmoid: 1/(1 + EXP(-(V(G,K) - VC_OFF)/VS_OFF))
+    sigmoid_arg = f'(V(G,K)-({p.vc_off:.4f}))/{p.vs_off:.4f}'
+    return (
+        f'* {meta.display_name} — fitted by `efactory tube fit-from-points` (T182).\n'
+        f'*\n'
+        f'* Source: {meta.source}\n'
+        f'* IV points extracted: {meta.date_extracted.isoformat()}\n'
+        f'* Fitted:              {meta.date_fitted.isoformat()}\n'
+        f'* RMS residual: {meta.rms_residual_ma:.3f} mA over {meta.n_points} points\n'
+        f'*\n'
+        f'* fit variant: koren-modified-cutoff (T182)\n'
+        f'* tube_type: triode\n'
+        f'* Pins: P (plate), G (grid), K (cathode).\n'
+        f'.SUBCKT {spice_name} P G K\n'
+        f'* Koren-modified-cutoff parameters: MU={p.mu:.4f} EX={p.ex:.4f} '
+        f'KG1={p.kg1:.4f} KP={p.kp:.4f} KVB={p.kvb:.4f} '
+        f'VC_OFF={p.vc_off:.4f} VS_OFF={p.vs_off:.4f}\n'
+        f'E1 7 0 VALUE={{V(P,K)/{p.kp:.4f}*LN(1+EXP({p.kp:.4f}*'
+        f'(1/{p.mu:.4f}+V(G,K)/SQRT({p.kvb:.4f}+V(P,K)*V(P,K)))))}}\n'
+        f'* Sigmoid cutoff factor: 1/(1+EXP(-(V(G,K)-VC_OFF)/VS_OFF))\n'
+        f'B_SIG 8 0 V=1/(1+EXP(-({sigmoid_arg})))\n'
+        f'G1 P K VALUE={{(sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f})'
+        f'+sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f}))/{p.kg1:.4f}*V(8)}}\n'
+        f'* Inter-electrode capacitances — typical small-signal triode defaults.\n'
+        f'C1 G K {caps["cgk"]:.1f}p\n'
+        f'C2 G P {caps["cgp"]:.1f}p\n'
+        f'C3 P K {caps["cpk"]:.1f}p\n'
+        f'RGI G K 1MEG\n'
+        f'.ENDS {spice_name}\n'
+    )
+
+
+def _render_modified_knee_pentode(
+    spice_name: str,
+    p: KorenModifiedKneePentodeParams,
+    *,
+    header_tube_type: HeaderTubeType,
+    meta: TubeLibMeta,
+) -> str:
+    """T182: pentode + knee modifier `(1 - EXP(-V(P,K)/VK))`."""
+    caps = _PENTODE_TYPICAL_CAPS
+    return (
+        f'* {meta.display_name} — fitted by `efactory tube fit-from-points` (T182).\n'
+        f'*\n'
+        f'* Source: {meta.source}\n'
+        f'* IV points extracted: {meta.date_extracted.isoformat()}\n'
+        f'* Fitted:              {meta.date_fitted.isoformat()}\n'
+        f'* RMS residual: {meta.rms_residual_ma:.3f} mA over {meta.n_points} points\n'
+        f'*\n'
+        f'* fit variant: koren-modified-knee (T182)\n'
+        f'* tube_type: {header_tube_type}\n'
+        f'* Pins: P (plate), G2 (screen), G (grid 1), K (cathode).\n'
+        f'.SUBCKT {spice_name} P G2 G K\n'
+        f'* Koren-modified-knee parameters:\n'
+        f'* MU={p.mu:.4f} EX={p.ex:.4f} KG1={p.kg1:.4f} KG2={p.kg2:.4f} '
+        f'KP={p.kp:.4f} KVB={p.kvb:.4f} VK={p.vk:.4f}\n'
+        f'E1 7 0 VALUE={{V(G2,K)/{p.kp:.4f}*LN(1+EXP({p.kp:.4f}*'
+        f'(1/{p.mu:.4f}+V(G,K)/V(G2,K))))}}\n'
+        f'* Knee modifier: (1 - EXP(-V(P,K)/VK))\n'
+        f'B_KNEE 8 0 V=1-EXP(-V(P,K)/{p.vk:.4f})\n'
+        f'G1 P K VALUE={{(sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f})'
+        f'+sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f}))/{p.kg1:.4f} '
+        f'* ATAN(V(P,K)/{p.kvb:.4f}) * V(8)}}\n'
+        f'G2 G2 K VALUE={{(sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f})'
+        f'+sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f}))/{p.kg2:.4f}}}\n'
+        f'* Inter-electrode capacitances — typical pentode defaults.\n'
         f'C1 G K {caps["cgk"]:.1f}p\n'
         f'C2 G P {caps["cgp"]:.1f}p\n'
         f'C3 P K {caps["cpk"]:.1f}p\n'
