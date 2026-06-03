@@ -143,6 +143,30 @@ Built-in примеры: `6N1P` (6Н1П), `6P14P` (6П14П), `GU50` (ГУ50),
   имя должно быть `12AX7_SOVTEK.lib` (S3 use case), built-in
   остаётся нетронутым.
 
+## Persistent agent overlay (T177)
+
+Внутри `efactory:linux` агент-контейнера (запуск через `efactory-up
+--agent`):
+
+- **Tube `.lib`** через `efactory tube fit-from-points --out` default
+  → `$EFACTORY_USER_LIBRARY_ROOT` (bind-mounted в
+  `/efactory/data/models/tubes/custom/` → host `$STATE_DIR/efactory/
+  models/tubes/custom/`). **Persistent между container exit'ами.**
+- **Templates** через `efactory template create-from-project
+  <project> --name <template> [--summary "..."]` → `$EFACTORY_USER_
+  TEMPLATES_ROOT` (bind-mounted в `/efactory/data/templates/` → host
+  `$STATE_DIR/efactory/templates/`). **Persistent.**
+
+**Pre-T177 bug:** agent thought он писал в built-in dirs (`/opt/
+efactory/data/...`) — это transient image filesystem, после
+container exit изменения пропали. T177 fix добавил user overlay
+parallel'но к existing user_library_root (T006 fix-up Q3 pattern).
+
+User overlay побеждает built-in при name conflict. Если пишешь
+template с именем существующего built-in (`se-amp`, `6zh38p-if-amp`)
+— overlay перекроет built-in для этого user, built-in для других —
+без изменений.
+
 ## См. также
 
 - Spec `specs/T031-tube-curve-fitting/spec.md` (полная
@@ -150,5 +174,7 @@ Built-in примеры: `6N1P` (6Н1П), `6P14P` (6П14П), `GU50` (ГУ50),
 - `phase-0-probe.md` — vision feasibility check на Mullard EL34.
 - ADR-T031a в `DECISIONS.md` — почему свой fitter, не wrap
   Заславского.
+- T177 в `phase-7-persistent-overlay.md` — bind-mount strategy,
+  CLI `template create-from-project`, KB sync.
 - `/kb-search tubes.6p14p`, `tubes.6n2p` — built-in tube models
   Phase 5/6.

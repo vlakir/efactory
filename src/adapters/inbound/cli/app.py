@@ -57,6 +57,11 @@ from application.bridge_sweep import (
     bridge_sweep,
 )
 from application.create_project import create_project as create_project_use_case
+from application.create_template_from_project import (
+    CreateTemplateError,
+    CreateTemplateRequest,
+    create_template_from_project,
+)
 from application.delete_project import delete_project as delete_project_use_case
 from application.design_to_netlist import (
     design_to_netlist as design_to_netlist_use_case,
@@ -444,6 +449,7 @@ def build_app(
     staged_scanner: PendingStagedScanner,
     tube_iv_repository: TubeIVRepository,
     tube_lib_writer: TubeLibWriter,
+    user_templates_root: Path,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -489,7 +495,8 @@ def build_app(
             None,
             '--template',
             help=(
-                f'Шаблон проекта. Доступно: {", ".join(list_templates()) or "(none)"}.'
+                'Шаблон проекта. Доступно: '
+                f'{", ".join(list_templates(user_templates_root)) or "(none)"}.'
             ),
         ),
         target_dir: Path | None = typer.Option(
@@ -541,6 +548,7 @@ def build_app(
                     template_name=template,
                     target_dir=project.path,
                     project_name=name,
+                    user_overlay_root=user_templates_root,
                 )
             except TemplateNotFoundError as exc:
                 typer.echo(str(exc), err=True)
@@ -586,7 +594,7 @@ def build_app(
 
         Data-driven из ``data/templates/*/template.yaml`` (T027 Phase E).
         """
-        templates = describe_templates()
+        templates = describe_templates(user_templates_root)
         if as_json:
             typer.echo(json.dumps(templates, indent=2, ensure_ascii=False))
             return
@@ -3622,6 +3630,62 @@ def build_app(
         _emit_apply_staged_outcome(outcome)
         if outcome.skipped:
             raise typer.Exit(code=1)
+
+    # T177: `efactory template create-from-project` — promote проект
+    # в user-overlay template (persistent persistent).
+    template_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    app.add_typer(template_app, name='template')
+
+    @template_app.command('create-from-project')
+    def template_create_from_project(
+        project_name: Annotated[
+            str,
+            typer.Argument(help='Имя существующего project (в projects_root).'),
+        ],
+        *,
+        name: Annotated[
+            str,
+            typer.Option(
+                '--name',
+                help='Имя нового template (slug, latin lowercase + dashes).',
+            ),
+        ],
+        description: Annotated[
+            str,
+            typer.Option(
+                '--description',
+                help='Многострочное описание для template.yaml.',
+            ),
+        ] = '',
+        summary: Annotated[
+            str,
+            typer.Option(
+                '--summary',
+                help='Однострочное краткое description для list-templates.',
+            ),
+        ] = '',
+        force: Annotated[
+            bool,
+            typer.Option('--force', help='Перезаписать existing template.'),
+        ] = False,
+    ) -> None:
+        """T177: promote проект в user-overlay template (persistent)."""
+        request = CreateTemplateRequest(
+            project_dir=projects_root / project_name,
+            template_name=name,
+            target_root=user_templates_root,
+            description=description,
+            summary=summary,
+            force=force,
+        )
+        try:
+            result = create_template_from_project(request)
+        except CreateTemplateError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(f'template: {result.template_dir}')
+        typer.echo(f'files: {result.files_copied}')
+        typer.echo(f'usage: efactory project create --name <new> --template {name}')
 
     # T031: `efactory tube fit-from-points` — fit Koren triode / Ayumi
     # pentode params из JSON IV-точек, пишет `.lib` в user overlay.

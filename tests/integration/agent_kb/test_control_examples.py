@@ -303,6 +303,21 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'spice.tube-mic-preamp-6zh32p',
         '40.76 db',
     ),
+    # T177 Phase 7 — L2 regression: routing «сохрани проект как шаблон»
+    # → /template create-from-project (persistent overlay CLI).
+    (
+        'сохрани проект как шаблон template promote reusable save',
+        'agent.command-routing',
+        'template create-from-project',
+    ),
+    # T177 Phase 7 — L2 regression: KB topic tubes.curve-fitting
+    # содержит секцию о persistent overlay (избегает повторения
+    # pre-T177 bug agent'ом).
+    (
+        'persistent agent overlay bind-mount transient pre-T177 user_library_root',
+        'tubes.curve-fitting',
+        'persistent',
+    ),
 ]
 
 

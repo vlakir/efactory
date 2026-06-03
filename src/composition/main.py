@@ -110,6 +110,7 @@ def build_cli_app() -> typer.Typer:
         staged_scanner=KicadPendingStagedScanner(),
         tube_iv_repository=FilesystemTubeIVRepository(),
         tube_lib_writer=FilesystemTubeLibWriter(),
+        user_templates_root=settings.user_templates_root,
     )
 
 
