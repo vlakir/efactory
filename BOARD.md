@@ -61,6 +61,27 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T182** — [taken 2026-06-04] **Modified Koren-pentode formula
+  для better knee и strong-cutoff точности (Tier 3 upgrade,
+  без перехода на Cohen-Hélie).** Phase 0 EL34 probe показал
+  systematic knee error до 70-79% (vs <15% на plateau), а Phase 4
+  6П13С получил аномальные `KG1=51000` / `EX=2.67` как
+  компенсацию formula limit'а. Refactor `_formulas.py`
+  (~100-200 строк), opt-in flag `--formula-variant
+  {koren-canonical, koren-modified-knee}` для backwards-compat,
+  Tier-сравнение в DECISIONS.md. Спека —
+  `specs/T182-koren-modified-knee/spec.md`, ветка
+  `T182-koren-modified-knee`.
+
+  Acceptance:
+  - knee region error <30% на Mullard EL34 (Vg=-10..-20V,
+    Va=50..150V), vs текущие ~70%;
+  - plateau region (Va≥200V) остаётся <15%;
+  - SC#1 round-trip на синтетике 12AX7 сохраняется
+    (≤5% MU/KG1/KP/KVB, ≤2% EX) — на canonical-вариант;
+  - Tier alternative ROI matrix (modified Koren / Reefman /
+    Cohen-Hélie) в `DECISIONS.md`.
+
 ## Done
 
 - **T031** — [closed 2026-06-04, PR #115] **Tube-curve-fitting:
