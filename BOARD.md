@@ -61,7 +61,20 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-(пусто)
+- **T031** — [taken 2026-06-03] **Tube-curve-fitting: Koren/Ayumi
+  параметры из даташитов через Claude vision.** Путь «PDF/PNG
+  даташита редкой лампы (например, 6Ж38П) → vision-extract точек
+  анодных характеристик → собственный scipy-fitter (Koren триод /
+  Ayumi пентод) → `.lib` в user overlay + KB topic `tubes.<part>` +
+  smoke-симуляция типового включения». Свой fitter, без wrap
+  Заславский (его scipy.optimize та же; его GUI не вписывается в
+  headless контейнер; пентоды не покрыты). Спека —
+  `specs/T031-tube-curve-fitting/spec.md`.
+  Acceptance: 6Ж38П → .lib + smoke-симуляция типового включения
+  сходится с datasheet-точками в пределах ±15% по Ia / ±10% по Va;
+  KB topic `tubes.6Ж38П` находится через `/kb-search`; синтетические
+  точки из 12AX7 Koren-модели → fitter возвращает параметры с
+  относительной ошибкой ≤5%.
 
 ## Done
 

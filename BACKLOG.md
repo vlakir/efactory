@@ -932,17 +932,9 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   Acceptance: URL TI/Vishay/ON Semi → модель добавлена в библиотеку
   и проходит smoke-симуляцию; KB-entry создан и находится через
   `/kb-search`.
-- **T031** — [2026-05-15, simplified 2026-06-03] Tube-curve-fitting:
-  извлечение Koren-параметров из даташитов через Claude vision (frontend
-  и так multimodal — отдельный fitting-tool не обязателен; интеграция
-  Gleb Zaslavsky'ского fitter как fallback при необходимости).
-  Workflow: pdf/png даташита через чат → vision-extract анодных
-  характеристик → fit Koren params → запись в `spice-models/tubes/` +
-  KB topic `tubes.<part>`. Калибровочная база — 23 модели в библиотеке
-  после T027 + T167.
-  Acceptance: даташит лампы (например, 6Ж38П, не покрытой Ayumi) →
-  .LIB-модель + smoke-симуляция типового включения сходится в пределах
-  допуска со снятыми с даташита точками.
+<!-- T031 (Tube-curve-fitting) — taken into BOARD → Doing 2026-06-03,
+     spec в specs/T031-tube-curve-fitting/spec.md. -->
+
 <!-- T032 (Рендер схемы в SVG + LLM-vision проверка) — removed
      2026-06-03 as fully superseded:
      - Render-часть (SVG/PNG через `kicad-cli sch export svg` +
