@@ -1,0 +1,7 @@
+name: 6zh38p-if-amp
+description: |
+  6Ж38П (= 6BH6 / EF190 western eq.) — resistance-coupled small-signal
+  pentode preamp. Vbb=150V, Vg2=150V fixed, Rp=10k, Rk=1k+bypass.
+  Typical op-point Vg=-1V: Ia ≈ 7 mA, Va_anode ≈ 80V, gain ≈ 100.
+  Pattern: GE 6BH6 datasheet ET-T525B Class A resistance-coupled amp.
+summary: 6Ж38П class A IF/AF preamp с резистивной нагрузкой.

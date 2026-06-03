@@ -47,42 +47,68 @@ def _sanitize_filename(name: str) -> str:
     return name.replace(' ', '_').replace('/', '_')
 
 
-def list_templates() -> list[str]:
-    """Список доступных шаблонов (имена subdir в data/templates/)."""
-    if not TEMPLATES_ROOT.is_dir():
-        return []
-    return sorted(
-        path.name
-        for path in TEMPLATES_ROOT.iterdir()
-        if path.is_dir() and not path.name.startswith('.')
-    )
+def _iter_template_roots(
+    user_overlay_root: Path | None,
+) -> list[Path]:
+    """Поиск idem: user overlay побеждает built-in (T177)."""
+    roots: list[Path] = []
+    if user_overlay_root and user_overlay_root.is_dir():
+        roots.append(user_overlay_root)
+    if TEMPLATES_ROOT.is_dir():
+        roots.append(TEMPLATES_ROOT)
+    return roots
 
 
-def describe_templates() -> list[dict[str, str]]:
+def _resolve_template_dir(
+    template_name: str, user_overlay_root: Path | None
+) -> Path | None:
+    """Найти template_name в user overlay → built-in (T177 overlay-wins)."""
+    for root in _iter_template_roots(user_overlay_root):
+        cand = root / template_name
+        if cand.is_dir():
+            return cand
+    return None
+
+
+def list_templates(
+    user_overlay_root: Path | None = None,
+) -> list[str]:
+    """Имена templates: user overlay ∪ built-in (T177)."""
+    names: set[str] = set()
+    for root in _iter_template_roots(user_overlay_root):
+        for path in root.iterdir():
+            if path.is_dir() and not path.name.startswith('.'):
+                names.add(path.name)
+    return sorted(names)
+
+
+def describe_templates(
+    user_overlay_root: Path | None = None,
+) -> list[dict[str, str]]:
     """
     Метаданные всех шаблонов: name + summary из ``template.yaml``.
 
-    Source-of-truth — `data/templates/<name>/template.yaml` (T027 Phase E
-    Q12 resolution: data-driven, не hard-coded registry).
+    User overlay + built-in merged (T177); duplicate names — user overlay
+    summary побеждает.
 
     Returns list of dicts sorted by name. Если template.yaml отсутствует
     или не парсится — summary = пустая строка (graceful degradation).
     """
     result: list[dict[str, str]] = []
-    if not TEMPLATES_ROOT.is_dir():
-        return result
-    for name in list_templates():
-        tpl_yaml = TEMPLATES_ROOT / name / 'template.yaml'
+    for name in list_templates(user_overlay_root):
+        tpl_dir = _resolve_template_dir(name, user_overlay_root)
         summary = ''
-        if tpl_yaml.is_file():
-            text = tpl_yaml.read_text(encoding='utf-8')
-            # Minimal `summary:` line parse — avoids yaml dependency
-            # (no other CLI code uses yaml; keep import light).
-            for line in text.splitlines():
-                stripped = line.strip()
-                if stripped.startswith('summary:'):
-                    summary = stripped[len('summary:') :].strip()
-                    break
+        if tpl_dir is not None:
+            tpl_yaml = tpl_dir / 'template.yaml'
+            if tpl_yaml.is_file():
+                text = tpl_yaml.read_text(encoding='utf-8')
+                # Minimal `summary:` line parse — avoids yaml dependency
+                # (no other CLI code uses yaml; keep import light).
+                for line in text.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith('summary:'):
+                        summary = stripped[len('summary:') :].strip()
+                        break
         result.append({'name': name, 'summary': summary})
     return result
 
@@ -91,6 +117,8 @@ def materialize_template(
     template_name: str,
     target_dir: Path,
     project_name: str,
+    *,
+    user_overlay_root: Path | None = None,
 ) -> None:
     """
     Overlay шаблон ``template_name`` в существующий ``target_dir``.
@@ -104,12 +132,15 @@ def materialize_template(
     - Конфликты по существующим файлам → ``TemplateConflictError`` ДО
       записи (pre-scan), чтобы не оставлять half-overlaid состояние.
     """
-    src_dir = TEMPLATES_ROOT / template_name
-    if not src_dir.is_dir():
-        available = ', '.join(list_templates()) or '(none)'
+    src_dir = _resolve_template_dir(template_name, user_overlay_root)
+    if src_dir is None:
+        available = ', '.join(list_templates(user_overlay_root)) or '(none)'
+        roots_searched = [TEMPLATES_ROOT]
+        if user_overlay_root:
+            roots_searched.insert(0, user_overlay_root)
         msg = (
-            f'Template {template_name!r} not found in {TEMPLATES_ROOT}. '
-            f'Available: {available}.'
+            f'Template {template_name!r} not found in '
+            f'{[str(r) for r in roots_searched]}. Available: {available}.'
         )
         raise TemplateNotFoundError(msg)
     if not target_dir.is_dir():

@@ -1,0 +1,8 @@
+name: 6zh32p-mic-preamp
+description: |
+  Микрофонный преамп на 6Ж32П (Soviet low-noise audio pentode, аналог EF86).
+  Class A common-cathode pentode stage, gain ≈40 dB (×100) @ 1 kHz,
+  bandwidth 9.5 Hz – 87 kHz (flat 20-20k ±0.3 dB), питание 250 V.
+  Self-bias через Rk=2.7k‖100µF. EF86 noval pinout (2=K, 3=G, 6=P, 8=G2)
+  — готов к разводке PCB. T031 Phase 6 agent-built (test scenario).
+summary: 6Ж32П микрофонный preamp 40 dB / 20-20k Hz, class A pentode.

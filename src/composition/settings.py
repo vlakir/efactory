@@ -55,6 +55,20 @@ def _default_user_library_root() -> Path:
     return _default_data_dir() / 'models'
 
 
+def _default_user_templates_root() -> Path:
+    """
+    `<storage_root>/templates/` для user-added project templates (T177).
+
+    Persistent overlay для агентов внутри `efactory:linux`: новые шаблоны
+    (`efactory template create-from-project`) попадают сюда, а не в
+    transient `/opt/efactory/data/templates/` (built-in, read-only при
+    bind-mount). User-template с тем же именем, что built-in, перезаписывает
+    (overlay). Каталог не создаётся автоматически — отсутствие = без
+    user-templates, только built-in.
+    """
+    return _default_data_dir() / 'templates'
+
+
 class Settings(BaseSettings):
     """
     Конфигурация приложения.
@@ -78,6 +92,7 @@ class Settings(BaseSettings):
     session_root: Path = Field(default_factory=_default_session_root)
     library_root: Path = Field(default_factory=_default_library_root)
     user_library_root: Path = Field(default_factory=_default_user_library_root)
+    user_templates_root: Path = Field(default_factory=_default_user_templates_root)
     # T134 — Knowledge Base directories. В runtime контейнере
     # `/efactory/knowledge-base/{built-in,host-mutated}`; на dev-хосте
     # переопределяется через EFACTORY_KB_BUILT_IN_DIR /

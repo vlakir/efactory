@@ -31,6 +31,7 @@ _EXPECTED_COMMANDS = {
     'sweep',  # T022 Phase D
     'edit-and-resim',  # T021 Phase C
     'schematic-apply',  # T026 Phase 2
+    'tube-add-from-datasheet',  # T031 Phase 3
 }
 _REQUIRED_FRONTMATTER = {'description', 'argument-hint', 'allowed-tools'}
 

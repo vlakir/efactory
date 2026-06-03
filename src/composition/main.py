@@ -45,6 +45,8 @@ from adapters.outbound.sim_results_filesystem.adapter import FileSystemSimResult
 from adapters.outbound.spice_models.spice_library import (
     FilesystemSpiceModelLibrary,
 )
+from adapters.outbound.spice_models.tube_json import FilesystemTubeIVRepository
+from adapters.outbound.spice_models.tube_lib_writer import FilesystemTubeLibWriter
 from adapters.outbound.subprocess_apps.app_manager import (
     SubprocessAppManager,
 )
@@ -106,6 +108,9 @@ def build_cli_app() -> typer.Typer:
         sim_results_repo=FileSystemSimResults(),
         lock_detector=KicadLockDetector(),
         staged_scanner=KicadPendingStagedScanner(),
+        tube_iv_repository=FilesystemTubeIVRepository(),
+        tube_lib_writer=FilesystemTubeLibWriter(),
+        user_templates_root=settings.user_templates_root,
     )
 
 

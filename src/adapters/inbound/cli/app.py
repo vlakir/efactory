@@ -57,6 +57,11 @@ from application.bridge_sweep import (
     bridge_sweep,
 )
 from application.create_project import create_project as create_project_use_case
+from application.create_template_from_project import (
+    CreateTemplateError,
+    CreateTemplateRequest,
+    create_template_from_project,
+)
 from application.delete_project import delete_project as delete_project_use_case
 from application.design_to_netlist import (
     design_to_netlist as design_to_netlist_use_case,
@@ -79,6 +84,12 @@ from application.errors import (
     DecisionPersistenceError,
     IndexPersistenceError,
     ProjectManifestMissingError,
+)
+from application.fit_tube_from_points import (
+    FitTubeFromPointsRequest,
+    FitTubeFromPointsResult,
+    FitTubeUseCaseError,
+    fit_tube_from_points,
 )
 from application.get_decision import get_decision as get_decision_use_case
 from application.get_project import (
@@ -196,6 +207,8 @@ if TYPE_CHECKING:
         LockDetector,
         PendingStagedScanner,
     )
+    from ports.outbound.tube_iv_repository import TubeIVRepository
+    from ports.outbound.tube_lib_writer import TubeLibWriter
 
 
 # Per-metric Y-field default для --plot (sweep): какую колонку
@@ -434,6 +447,9 @@ def build_app(
     sim_results_repo: SimResultsRepository,
     lock_detector: LockDetector,
     staged_scanner: PendingStagedScanner,
+    tube_iv_repository: TubeIVRepository,
+    tube_lib_writer: TubeLibWriter,
+    user_templates_root: Path,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -479,7 +495,8 @@ def build_app(
             None,
             '--template',
             help=(
-                f'Шаблон проекта. Доступно: {", ".join(list_templates()) or "(none)"}.'
+                'Шаблон проекта. Доступно: '
+                f'{", ".join(list_templates(user_templates_root)) or "(none)"}.'
             ),
         ),
         target_dir: Path | None = typer.Option(
@@ -531,6 +548,7 @@ def build_app(
                     template_name=template,
                     target_dir=project.path,
                     project_name=name,
+                    user_overlay_root=user_templates_root,
                 )
             except TemplateNotFoundError as exc:
                 typer.echo(str(exc), err=True)
@@ -576,7 +594,7 @@ def build_app(
 
         Data-driven из ``data/templates/*/template.yaml`` (T027 Phase E).
         """
-        templates = describe_templates()
+        templates = describe_templates(user_templates_root)
         if as_json:
             typer.echo(json.dumps(templates, indent=2, ensure_ascii=False))
             return
@@ -1064,7 +1082,7 @@ def build_app(
         name: str,
         category: ComponentCategory,
         empty_message: str,
-    ) -> None:
+    ) -> typer.Typer:
         sub = typer.Typer(no_args_is_help=True, add_completion=False)
         app.add_typer(sub, name=name)
 
@@ -1163,7 +1181,9 @@ def build_app(
             typer.echo('')
             typer.echo(subckt)
 
-    _register_model_subapp(
+        return sub
+
+    tube_app = _register_model_subapp(
         'tube',
         ComponentCategory.TUBE,
         'No tube models found.',
@@ -3611,7 +3631,190 @@ def build_app(
         if outcome.skipped:
             raise typer.Exit(code=1)
 
+    # T177: `efactory template create-from-project` — promote проект
+    # в user-overlay template (persistent persistent).
+    template_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    app.add_typer(template_app, name='template')
+
+    @template_app.command('create-from-project')
+    def template_create_from_project(
+        project_name: Annotated[
+            str,
+            typer.Argument(help='Имя существующего project (в projects_root).'),
+        ],
+        *,
+        name: Annotated[
+            str,
+            typer.Option(
+                '--name',
+                help='Имя нового template (slug, latin lowercase + dashes).',
+            ),
+        ],
+        description: Annotated[
+            str,
+            typer.Option(
+                '--description',
+                help='Многострочное описание для template.yaml.',
+            ),
+        ] = '',
+        summary: Annotated[
+            str,
+            typer.Option(
+                '--summary',
+                help='Однострочное краткое description для list-templates.',
+            ),
+        ] = '',
+        force: Annotated[
+            bool,
+            typer.Option('--force', help='Перезаписать existing template.'),
+        ] = False,
+    ) -> None:
+        """T177: promote проект в user-overlay template (persistent)."""
+        request = CreateTemplateRequest(
+            project_dir=projects_root / project_name,
+            template_name=name,
+            target_root=user_templates_root,
+            description=description,
+            summary=summary,
+            force=force,
+        )
+        try:
+            result = create_template_from_project(request)
+        except CreateTemplateError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(f'template: {result.template_dir}')
+        typer.echo(f'files: {result.files_copied}')
+        typer.echo(f'usage: efactory project create --name <new> --template {name}')
+
+    # T031: `efactory tube fit-from-points` — fit Koren triode / Ayumi
+    # pentode params из JSON IV-точек, пишет `.lib` в user overlay.
+    # tube_app — это existing sub-app (T006: list/show), reuse'им.
+
+    @tube_app.command('fit-from-points')
+    def tube_fit_from_points(
+        spice_name: Annotated[
+            str,
+            typer.Argument(help='SPICE id для .SUBCKT (e.g., 6ZH38P).'),
+        ],
+        tube_type: Annotated[
+            str,
+            typer.Option(
+                '--type',
+                help='Тип лампы для fit (`triode` или `pentode`).',
+            ),
+        ],
+        points: Annotated[
+            Path,
+            typer.Option(
+                '--points',
+                help='Path к JSON с IVDataset.',
+            ),
+        ],
+        *,
+        out: Annotated[
+            Path | None,
+            typer.Option(
+                '--out',
+                help='Куда положить .lib (default: $XDG_DATA_HOME/efactory'
+                '/models/tubes/custom/).',
+            ),
+        ] = None,
+        include_vct: Annotated[
+            bool,
+            typer.Option(
+                '--include-vct',
+                help='Fit Vct (cathode contact potential) — только для triode.',
+            ),
+        ] = False,
+        header_type: Annotated[
+            str,
+            typer.Option(
+                '--header-type',
+                help='tube_type header в .lib (pentode | tetrode); для triode '
+                'игнорируется.',
+            ),
+        ] = 'pentode',
+        seed_from: Annotated[
+            Path | None,
+            typer.Option(
+                '--seed-from',
+                help='JSON с params существующей лампы — multi-start hint (S3).',
+            ),
+        ] = None,
+        kg2_ratio: Annotated[
+            float,
+            typer.Option(
+                '--kg2-ratio',
+                help='Typical KG2/KG1 ratio fallback при отсутствии '
+                'screen_curves в JSON (default 5.0).',
+            ),
+        ] = 5.0,
+        force: Annotated[
+            bool,
+            typer.Option('--force', help='Перезаписать existing .lib.'),
+        ] = False,
+    ) -> None:
+        """T031: fit Koren triode / Ayumi pentode params → `.lib` в user overlay."""
+        if tube_type not in ('triode', 'pentode'):
+            typer.echo(
+                f"--type must be 'triode' or 'pentode', got '{tube_type}'",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if header_type not in ('pentode', 'tetrode'):
+            typer.echo(
+                f"--header-type must be 'pentode' or 'tetrode', got '{header_type}'",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if include_vct and tube_type != 'triode':
+            typer.echo(
+                '--include-vct valid only with --type triode',
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if out is None:
+            out = projects_root.parent / 'models' / 'tubes' / 'custom'
+        request = FitTubeFromPointsRequest(
+            spice_name=spice_name,
+            tube_type=tube_type,  # type: ignore[arg-type]
+            points_json=points,
+            out_dir=out,
+            include_vct=include_vct,
+            header_type=header_type,  # type: ignore[arg-type]
+            seed_from=seed_from,
+            kg2_ratio=kg2_ratio,
+            force=force,
+        )
+        try:
+            result = fit_tube_from_points(
+                request,
+                iv_repository=tube_iv_repository,
+                lib_writer=tube_lib_writer,
+            )
+        except FitTubeUseCaseError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        _emit_tube_fit_summary(result)
+
     return app
+
+
+def _emit_tube_fit_summary(
+    result: FitTubeFromPointsResult,
+) -> None:
+    """T031 CLI stdout summary (SC#3)."""
+    fr = result.fit_result
+    p = fr.params
+    typer.echo(f'lib: {result.lib_path}')
+    typer.echo(f'fit: n_points={fr.n_points} rms={fr.rms_residual_ma:.3f} mA')
+    typer.echo(f'starts: tried={fr.n_starts_tried} best={fr.best_start_index}')
+    if result.used_joint_ig2_fit:
+        typer.echo('mode: joint Ia+Ig2 (KG2 identifiable)')
+    if result.kg2_was_overridden:
+        typer.echo(f'kg2: overridden = ratio * kg1 = {p.kg2:.2f}')  # type: ignore[union-attr]
+    typer.echo(f'params: {p.model_dump()}')
 
 
 def _emit_apply_staged_outcome(outcome: ApplyStagedOutcome) -> None:

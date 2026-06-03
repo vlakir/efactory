@@ -61,9 +61,23 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-(пусто)
-
 ## Done
+
+- **T031** — [closed 2026-06-04, PR #115] **Tube-curve-fitting:
+  Koren/Ayumi параметры из даташитов через Claude vision.**
+  7-phase delivery: Phase 0 probe (vision feasibility ✓ на Mullard
+  EL34, +4.2% на reference op-point), Phase 1 domain fitter (SC#1 ✓
+  round-trip 12AX7/EL34 ≤5%), Phase 1+ joint Ia+Ig2 fit (KG2
+  identifiable), Phase 2 CLI + JSON loader + .lib writer (SC#3 ✓),
+  Phase 3 slash `/tube-add-from-datasheet` + KB topic + ADR-T031a
+  (SC#4 / SC#6 ✓), Phase 4 acceptance 6Ж38П + 6П13С (SC#2 ✓ mean
+  3.3-4.5%, max 7.6%), Phase 5 built-in tubes + templates +
+  T173/T174/T175 + KB-sync, Phase 6 live agent smoke test
+  (мик-преамп на 6Ж32П: gain 40.76 dB, BW 9.5-87.5 kHz ✓), Phase 7
+  (T177) persistent user overlay (`efactory template create-from-
+  project` + bind-mount). 3 new built-in models (6Ж38П / 6П13С /
+  6Ж32П), 3 templates, 5 KB topics, 11 L2 regression cases. Tests
+  1826 → 1962 (+136). PR одиночный, squash-merge.
 
 - **T026** — [closed 2026-06-03, PR #113] **Staged-модификации
   `.kicad_sch` при открытом KiCad.** 4-phase single-day sprint

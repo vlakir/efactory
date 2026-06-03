@@ -25,6 +25,48 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-03 — T031 ADR-T031a: свой scipy-fitter, не wrap Заславского
+
+- **Контекст.** Для T031 (Tube-curve-fitting) рассматривали готовый
+  Python-репо `github.com/Gleb-Zaslavsky/Tube-curve-fitting-by-Koren-
+  triode-model` (MIT, 2023, single-commit; точный fit Koren-triode
+  через `scipy.optimize.curve_fit`). На первый взгляд привлекательно:
+  ничего своего писать не надо, MIT-лицензия, опубликованная
+  reference математика.
+- **Решение.** Пишем **собственный** fitter в `src/domain/tube_
+  fitting/`. Wrap'аем только идею (Koren formula + scipy.curve_fit),
+  не код Заславского.
+- **Альтернативы.**
+  1. **Wrap as dependency** (`uv add git+...`). Отвергнуто:
+     a) Репо single-commit, без maintenance pipeline — supply chain
+     risk; b) `PyQt5` GUI hard-coded — не headless, не запустится
+     в `efactory:linux` контейнере без X11; c) **только** triode
+     формула, pentode/tetrode не покрыты — а T031 acceptance
+     требует pentode (6Ж38П, 6П13С); d) scipy.curve_fit та же
+     библиотека что мы бы использовали сами — никакого выигрыша
+     алгоритмически.
+  2. **Vendor copy** (скопировать формулы в наш репо). Отвергнуто:
+     те же недостатки что #1 без supply chain — но всё равно
+     приходится переписывать pentode-режим, multi-start, scipy
+     bounds wiring, hexagonal layout, ports. Чистая запись с нуля
+     проще.
+  3. **Использовать другую готовую библиотеку.** Поверхностный поиск
+     ничего готового headless + pentode + multi-start +
+     ADR-compatible licence не дал.
+- **Последствия.**
+  - **+** Hexagonal-clean: `domain/tube_fitting/` без external deps
+    кроме scipy/numpy (которые уже понадобятся в Phase 2 для CLI).
+  - **+** Pentode/Ayumi-форма от начала, без bolt-on.
+  - **+** Multi-start с seeded RNG (A-C2) — наш контроль над
+    determinism.
+  - **+** Round-trip тесты на синтетике из built-in `.lib`
+    параметров — internal consistency без external snapshot'ов.
+  - **−** Реализовать самим (~370 строк fitter + 280 строк tests).
+    Acceptable cost given alternatives all fail на pentode/headless.
+- **См. также:** `specs/T031-tube-curve-fitting/spec.md` §0 (link
+  на Zaslavsky reference); `phase-0-probe.md` (vision feasibility
+  cross-check); KB topic `tubes.curve-fitting`.
+
 ### 2026-06-03 — T026 ADR-T026a: `--force` vs `--accept-overwrite` semantic разделение
 
 - **Контекст.** T026 apply-staged use case имеет два независимых

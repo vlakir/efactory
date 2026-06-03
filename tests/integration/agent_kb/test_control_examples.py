@@ -246,6 +246,78 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         'efactory project list',
     ),
+    # T031 Phase 3 — L2 regression: routing «добавь модель лампы из datasheet»
+    # → /tube-add-from-datasheet (vision-extract pipeline).
+    (
+        'добавь модель лампы из datasheet PDF 6Ж38П extract',
+        'agent.command-routing',
+        '/tube-add-from-datasheet',
+    ),
+    # T031 Phase 3 — L2 regression: KB topic tubes.curve-fitting
+    # содержит ключевые директивы про KG2 fallback (Ia-only path) и
+    # canonical 2× множитель в Koren formula.
+    (
+        'KG2 typical ratio Ia-only pentode screen current fitting',
+        'tubes.curve-fitting',
+        'typical ratio',
+    ),
+    # T031 Phase 5 — L2 regression: routing «RF preamp 6Ж38П / IF amp
+    # sharp-cutoff» → /project-create + template 6zh38p-if-amp.
+    (
+        'RF preamp 6Ж38П IF amplifier sharp-cutoff pentode 6BH6',
+        'agent.command-routing',
+        '6zh38p-if-amp',
+    ),
+    # T031 Phase 5 — L2 regression: routing «SE amp 6П13С без OPT» →
+    # /project-create + template 6p13s-se-resistive.
+    (
+        'SE amp 6П13С output без OPT резистивная нагрузка beam tetrode',
+        'agent.command-routing',
+        '6p13s-se-resistive',
+    ),
+    # T031 Phase 5 — L2 regression: KB topic spice.tube-rf-amp-6zh38p
+    # содержит ключевые директивы про default op-point + topology.
+    (
+        '6zh38p class A resistance-coupled preamp Vbb plate cathode bias',
+        'spice.tube-rf-amp-6zh38p',
+        'resistance-coupled',
+    ),
+    # T031 Phase 5 — L2 regression: KB topic spice.tube-se-resistive-6p13s
+    # содержит ключевые директивы про A-W3 pattern + T173 refined bias.
+    (
+        '6p13s SE resistive load A-W3 Rk 470 cathode bias screen dissipation',
+        'spice.tube-se-resistive-6p13s',
+        'a-w3',
+    ),
+    # T031 Phase 6 — L2 regression: routing «микрофонный преамп 6Ж32П» →
+    # /project-create + template 6zh32p-mic-preamp (agent-built).
+    (
+        'микрофонный преамп 6Ж32П EF86 low-noise pentode mic',
+        'agent.command-routing',
+        '6zh32p-mic-preamp',
+    ),
+    # T031 Phase 6 — L2 regression: KB topic spice.tube-mic-preamp-6zh32p
+    # содержит default op-point + bandwidth measurements + agent provenance.
+    (
+        '6zh32p mic preamp 40 dB common-cathode pentode self-bias bandwidth',
+        'spice.tube-mic-preamp-6zh32p',
+        '40.76 db',
+    ),
+    # T177 Phase 7 — L2 regression: routing «сохрани проект как шаблон»
+    # → /template create-from-project (persistent overlay CLI).
+    (
+        'сохрани проект как шаблон template promote reusable save',
+        'agent.command-routing',
+        'template create-from-project',
+    ),
+    # T177 Phase 7 — L2 regression: KB topic tubes.curve-fitting
+    # содержит секцию о persistent overlay (избегает повторения
+    # pre-T177 bug agent'ом).
+    (
+        'persistent agent overlay bind-mount transient pre-T177 user_library_root',
+        'tubes.curve-fitting',
+        'persistent',
+    ),
 ]
 
 
@@ -294,7 +366,14 @@ def test_all_ten_seed_entries_exist(store: FileSystemKbStore) -> None:
 
 
 def test_seed_entries_have_expected_namespaces(store: FileSystemKbStore) -> None:
-    """Namespace coverage: spice/magnetics/fem/agent/schematic (5 ns после T026)."""
+    """Namespace coverage: spice/magnetics/fem/agent/schematic/tubes (6 ns после T031)."""
     namespaces = {entry.namespace for entry in store.list_all()}
-    expected_namespaces = {'spice', 'magnetics', 'fem', 'agent', 'schematic'}
+    expected_namespaces = {
+        'spice',
+        'magnetics',
+        'fem',
+        'agent',
+        'schematic',
+        'tubes',
+    }
     assert expected_namespaces.issubset(namespaces)
