@@ -221,6 +221,31 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         'ad-hoc',
     ),
+    # T026 Phase 2 — L2 regression: routing «apply staged» → /schematic-apply.
+    (
+        'применить отложенные изменения apply staged schematic',
+        'agent.command-routing',
+        '/schematic-apply',
+    ),
+    # T026 Phase 2 — L2 regression: KB topic schematic.staged-modifications
+    # содержит ключевые директивы про --force vs --accept-overwrite разделение.
+    (
+        'staged kicad sch parent hash lock force accept overwrite',
+        'schematic.staged-modifications',
+        '--accept-overwrite',
+    ),
+    # T026 L3 follow-up — L2 regression: routing «покажи состояние проекта» →
+    # CLI project show (а не ad-hoc ls обзор), чтобы T026 warnings не терялись.
+    (
+        'покажи состояние проекта статус summary',
+        'agent.command-routing',
+        'efactory project show',
+    ),
+    (
+        'список проектов какие проекты есть list projects',
+        'agent.command-routing',
+        'efactory project list',
+    ),
 ]
 
 
@@ -269,7 +294,7 @@ def test_all_ten_seed_entries_exist(store: FileSystemKbStore) -> None:
 
 
 def test_seed_entries_have_expected_namespaces(store: FileSystemKbStore) -> None:
-    """Namespace coverage: spice/magnetics/fem/agent (4 ns)."""
+    """Namespace coverage: spice/magnetics/fem/agent/schematic (5 ns после T026)."""
     namespaces = {entry.namespace for entry in store.list_all()}
-    expected_namespaces = {'spice', 'magnetics', 'fem', 'agent'}
+    expected_namespaces = {'spice', 'magnetics', 'fem', 'agent', 'schematic'}
     assert expected_namespaces.issubset(namespaces)

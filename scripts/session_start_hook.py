@@ -43,6 +43,7 @@ FILE_CATEGORIES: dict[str, tuple[str, ...]] = {
 MAX_FILES_PER_CATEGORY = 20
 MAX_SIM_RESULTS = 3
 SIM_RESULTS_SUBDIR = '.efactory/sim-results'
+STAGED_GLOB = '*.kicad_sch.staged'
 
 # T134 Knowledge Base extension: built-in seed + host-mutated bind-mount.
 KB_BUILT_IN_DIR = Path('/efactory/knowledge-base/built-in')
@@ -235,6 +236,23 @@ def render_context(
         lines.append('')
     if not any_files:
         lines.append('No KiCad/SPICE/FreeCAD/FEM files yet — empty project.')
+        lines.append('')
+
+    staged_paths = sorted(project_root.rglob(STAGED_GLOB))
+    if staged_paths:
+        lines.append('### ⚠️ Pending staged-модификации схемы (T026)')
+        lines.append(
+            f'Обнаружено **{len(staged_paths)}** pending `.kicad_sch.staged` '
+            f'файл(ов). Apply через `/schematic-apply` или '
+            f'`efactory schematic apply-staged {project_root.name}` '
+            f'(см. KB topic `schematic.staged-modifications`).'
+        )
+        for sp in staged_paths:
+            try:
+                rel = sp.relative_to(project_root)
+            except ValueError:
+                rel = sp
+            lines.append(f'- `{rel}`')
         lines.append('')
 
     if sim_results:

@@ -36,6 +36,8 @@ from adapters.outbound.ngspice.simulator import NgspiceSimulator
 from adapters.outbound.platform_native.platform_layer import (
     NativePlatformLayer,
 )
+from adapters.outbound.schematic_kicad.lock_detector import KicadLockDetector
+from adapters.outbound.schematic_kicad.scanner import KicadPendingStagedScanner
 from adapters.outbound.session_jsonl.session_logger import (
     FilesystemJsonlSessionLogger,
 )
@@ -102,6 +104,8 @@ def build_cli_app() -> typer.Typer:
             host_mutated_dir=settings.kb_host_mutated_dir,
         ),
         sim_results_repo=FileSystemSimResults(),
+        lock_detector=KicadLockDetector(),
+        staged_scanner=KicadPendingStagedScanner(),
     )
 
 

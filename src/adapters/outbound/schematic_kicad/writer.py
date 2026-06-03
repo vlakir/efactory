@@ -16,15 +16,37 @@ Tab-индентация и набор обязательных полей (`bod
 после save. Без них GUI при повторном save может уйти в OOM/reset
 (T100 incident 2026-05-18; в итоге причина оказалась в AppImage
 сборке, но canonical-формат всё равно желателен для стабильности).
+
+T026 (2026-06-03): добавлен staged-режим. Если `LockDetector` сообщает,
+что KiCad GUI держит `path` открытым (lock-файл рядом), writer пишет
+рядом `<path>.staged` + sidecar `.meta.json` с `parent_hash` (sha256
+active content на момент write) вместо overwrite активного. Уведомления
+через `WriterNotifier` (default Null). При наличии lock возвращает
+staged-путь, не active.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
 import uuid as uuid_module
+from datetime import UTC, datetime
 from importlib import resources
 from typing import TYPE_CHECKING
 
+from adapters.outbound.schematic_kicad.lock_detector import KicadLockDetector
+from adapters.outbound.schematic_kicad.notifier import (
+    NullWriterNotifier,
+    WriterNotifier,
+)
+from adapters.outbound.schematic_kicad.staged_metadata import (
+    StagedMetadata,
+    write_staged_metadata,
+)
+from adapters.outbound.schematic_kicad.staged_paths import (
+    meta_path,
+    staged_path,
+)
 from ports.outbound.schematic_writer import SchematicWriteError
 
 if TYPE_CHECKING:
@@ -40,12 +62,15 @@ if TYPE_CHECKING:
         TextSpec,
         WireSpec,
     )
+    from ports.outbound.staged_schematics import LockDetector
 
 
 _LIB_SYMBOLS_PACKAGE = 'adapters.outbound.schematic_kicad.lib_symbols'
 _KICAD_FILE_VERSION = '20260306'
 _KICAD_GENERATOR = 'efactory'
 _KICAD_GENERATOR_VERSION = '10.0'
+_STAGED_BY = 'efactory'
+_STAGED_TRIGGER_DEFAULT = 'unknown'
 
 
 def _fmt(value: float) -> str:
@@ -62,6 +87,14 @@ def _t(depth: int) -> str:
 
 
 _EXTENDS_RE = re.compile(r'\(extends "([^"]+)"\)')
+
+
+def _sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _utc_iso() -> str:
+    return datetime.now(tz=UTC).isoformat(timespec='seconds').replace('+00:00', 'Z')
 
 
 def _load_lib_symbol(lib_id: str) -> str:
@@ -332,15 +365,65 @@ def _sheet_instances(depth: int) -> list[str]:
 
 
 class KicadSchematicWriter:
-    """Сериализует `SchematicSpec` в `.kicad_sch` файл (атомарная запись)."""
+    """
+    Сериализует `SchematicSpec` в `.kicad_sch` файл (атомарная запись).
+
+    При детекте «KiCad GUI держит файл открытым» (lock_detector) —
+    пишет рядом `<path>.staged` + sidecar `.meta.json` с `parent_hash`,
+    активный файл не трогает. Notifier получает `staged()` /
+    `staged_overwrite()` события для CLI-уведомлений.
+    """
+
+    def __init__(
+        self,
+        *,
+        notifier: WriterNotifier | None = None,
+        lock_detector: LockDetector | None = None,
+    ) -> None:
+        self._notifier: WriterNotifier = notifier or NullWriterNotifier()
+        self._lock_detector: LockDetector = lock_detector or KicadLockDetector()
 
     def write(self, spec: SchematicSpec, path: Path) -> Path:
         text = self._serialize(spec)
         path.parent.mkdir(parents=True, exist_ok=True)
+        if self._lock_detector.is_held_by_kicad(path):
+            return self._write_staged(text, path)
+        return self._write_direct(text, path)
+
+    def _write_direct(self, text: str, path: Path) -> Path:
+        new_bytes = text.encode('utf-8')
+        if path.exists() and path.read_bytes() == new_bytes:
+            return path
         tmp = path.with_suffix(path.suffix + '.tmp')
         tmp.write_text(text, encoding='utf-8')
         tmp.replace(path)
         return path
+
+    def _write_staged(self, text: str, active_path: Path) -> Path:
+        staged = staged_path(active_path)
+        new_bytes = text.encode('utf-8')
+        # Full no-op: identical staged already exists.
+        if staged.exists() and staged.read_bytes() == new_bytes:
+            return staged
+        # Overwrite warning if staged already present with different bytes.
+        if staged.exists():
+            prev_hash = _sha256_hex(staged.read_bytes())
+            self._notifier.staged_overwrite(prev_hash)
+        parent_hash = (
+            _sha256_hex(active_path.read_bytes()) if active_path.exists() else None
+        )
+        tmp = staged.with_suffix(staged.suffix + '.tmp')
+        tmp.write_text(text, encoding='utf-8')
+        tmp.replace(staged)
+        meta = StagedMetadata(
+            parent_hash=parent_hash,
+            staged_at=_utc_iso(),
+            staged_by=_STAGED_BY,
+            trigger=_STAGED_TRIGGER_DEFAULT,
+        )
+        write_staged_metadata(meta_path(staged), meta)
+        self._notifier.staged(staged)
+        return staged
 
     def _serialize(self, spec: SchematicSpec) -> str:
         sheet_uuid = _new_uuid()

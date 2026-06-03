@@ -65,6 +65,28 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T026** — [closed 2026-06-03, PR #113] **Staged-модификации
+  `.kicad_sch` при открытом KiCad.** 4-phase single-day sprint
+  2026-06-03 (Phase 0 probe → 1 writer → 2 apply-staged use case +
+  CLI + slash + KB → 3 entry-point warnings → refactor под
+  import-linter ports). KiCad 10.0.3 lock-pattern verified
+  empirical `<dir>/~<name>.lck` + JSON content. Stale-lock после
+  SIGTERM/SIGKILL — норма (KiCad не cleanup'ит); `--force` flag
+  для рутинного recovery в активном использовании. W1 (c) semantic
+  разделение: `--force` обходит **только** lock; `--accept-overwrite`
+  отдельно для parent-hash mismatch (real data loss). Защита
+  универсальная в `KicadSchematicWriter` adapter (W4 honored —
+  Protocol signature unchanged). New port `ports/outbound/
+  staged_schematics.py` (LockDetector + PendingStagedEntry +
+  PendingStagedScanner) + KicadLockDetector / KicadPendingStagedScanner
+  adapters; composition root инжектит. New KB namespace
+  `schematic.*`. Slash `/schematic-apply` + KB topic
+  `schematic.staged-modifications` + agent.command-routing row.
+  Spec — `specs/T026-staged-modifications/spec.md` (Done; AC-0
+  PASSED + AC-1..AC-10 covered). Pre-push 4/4 ✓ + import-linter 3/3
+  KEPT; 1829 passed (+67 vs T025 baseline 1762), coverage 86.51%
+  (выше 86.31%).
+
 - **T025** — [closed 2026-06-02, PR #111] **Визуализация схемы в чате
   после `/sim-run` + `/project-create`.** `SchematicRenderer` outbound
   port + `KicadCliSchematicRenderer` adapter (`kicad-cli sch export svg`

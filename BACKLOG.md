@@ -891,11 +891,15 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      Spec — specs/T025-schematic-visualization/spec.md (Draft, Round 2
      открыт). -->
 
-- **T026** — [2026-05-15] Конкурентный доступ к файлам: staged-
-  модификации при открытом KiCad (`.kicad_sch.staged` → diff →
-  apply через IPC reload).
-  Acceptance: при изменении схемы из чата запущенный KiCad
-  не теряет состояние, перезагружает изменения.
+<!-- T026 переехала в BOARD.md → Doing 2026-06-03 после Round 1
+     clarify (10 ответов) + Analyze pass (1 Critical, 5 Warnings, 7
+     Notes; W1 force-split semantic — resolved (c) разделение
+     --force/--accept-overwrite). Acceptance переформулирован:
+     убран «apply через IPC reload» (нет Schematic API в kicad-python
+     0.7.1, горизонт KiCad 11/12), заменён на staged-файл + явный
+     apply command. Spec — specs/T026-staged-modifications/spec.md
+     (Analyzed). -->
+
 <!-- T027 переехала в BOARD.md → Doing 2026-06-02. Scope расширен
      по запросу Vladimir: 4 новых шаблона (PP amp, line preamp,
      phono RIAA preamp, active LPF) — SE amp уже закрыт ранее в
