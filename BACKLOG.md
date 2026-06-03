@@ -914,31 +914,61 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
 ### Фаза 3 (+2 недели)
 
-- **T029** — [2026-05-15] Интеграция ERC/DRC через `kicad-mcp-pro`
-  quality gates в pipeline.
-  Acceptance: pipeline блокирует переход к экспорту, если ERC/DRC
-  не зелёные; ошибки рендерятся понятно.
-- **T030** — [2026-05-15] `model_import_url`: скачивание SPICE-моделей
-  от производителей по URL с автоматической классификацией.
+- **T029** — [2026-05-15, reformulated 2026-06-03] ERC quality gate
+  через `kicad-cli sch erc` в `/sim-run` / новой `/design-check`.
+  `kicad-mcp-pro` отвергнут (ADR 2026-05-19: no MCP, CLI + filesystem).
+  DRC отложен в Фазу 4 (PCB) — до неё DRC-чекать нечего. Частично
+  уже подготовлено: `facade.py` ставит PWR_FLAG и NoConnect маркеры
+  для прохождения ERC.
+  Acceptance: pipeline блокирует sim-run, если ERC возвращает
+  errors (warnings — допустимы, рендерятся в человеко-читаемый отчёт);
+  есть slash `/design-check <project>` для standalone-запуска.
+- **T030** — [2026-05-15, reformulated 2026-06-03] Импорт SPICE-моделей
+  по URL: slash `/spice-import-url <url>` (primary) и/или CLI
+  `efactory spice import-url <url>`. Pipeline: download → классификация
+  (BJT/MOSFET/op-amp/tube/diode/...) → `convert_pwrs_to_ngspice` (T168)
+  → раскладка по `spice-models/<class>/` → метаданные в KB topic
+  `spice.<vendor>.<part>` (T134 namespace).
   Acceptance: URL TI/Vishay/ON Semi → модель добавлена в библиотеку
-  с метаданными.
-- **T031** — [2026-05-15] Интеграция Tube-curve-fitting (Gleb
-  Zaslavsky): извлечение параметров Koren из сканов даташитов.
-  Acceptance: даташит лампы → параметры Koren → .LIB-модель в
-  библиотеке.
-- **T032** — [2026-05-15] Рендер схемы в SVG (через kicad-cli) +
-  визуальная проверка LLM (vision-режим, где доступно).
-  Acceptance: схема → SVG → опционально показывается LLM для
-  валидации топологии.
+  и проходит smoke-симуляцию; KB-entry создан и находится через
+  `/kb-search`.
+- **T031** — [2026-05-15, simplified 2026-06-03] Tube-curve-fitting:
+  извлечение Koren-параметров из даташитов через Claude vision (frontend
+  и так multimodal — отдельный fitting-tool не обязателен; интеграция
+  Gleb Zaslavsky'ского fitter как fallback при необходимости).
+  Workflow: pdf/png даташита через чат → vision-extract анодных
+  характеристик → fit Koren params → запись в `spice-models/tubes/` +
+  KB topic `tubes.<part>`. Калибровочная база — 23 модели в библиотеке
+  после T027 + T167.
+  Acceptance: даташит лампы (например, 6Ж38П, не покрытой Ayumi) →
+  .LIB-модель + smoke-симуляция типового включения сходится в пределах
+  допуска со снятыми с даташита точками.
+<!-- T032 (Рендер схемы в SVG + LLM-vision проверка) — removed
+     2026-06-03 as fully superseded:
+     - Render-часть (SVG/PNG через `kicad-cli sch export svg` +
+       `rsvg-convert`) реализована в T025 (`adapters/outbound/
+       kicad_cli/schematic_renderer.py`); auto-show после `/sim-run`
+       и `/project-create` работает.
+     - LLM-vision как отдельный pipeline потерял смысл — Claude Code
+       как frontend (ADR 2026-05-19) видит картинку в чате напрямую,
+       ad-hoc visual review работает out-of-box.
+     - Узкая ниша `/schematic-review` (regression baseline + structured
+       отчёт) имеет смысл только под CI visual-regression, которой нет
+       и в обозримых планах не предвидится. Если потребуется — заведём
+       новой задачей под конкретный triggering use case.
+     - Снятие блокировки: T106 Phase 3 и T107 Phase 1 больше не
+       зависят от T032 (см. их обновлённые формулировки). -->
+
 - **T107 Phase 1 (deferred)** — datasheet-accurate symbol drawing для
   советских ламп. Phase 0 (закрыт 2026-05-19, PR #46) реализован
   через copy-rename базовых EL84/ECC81 форм (visually одинаковы,
   отличается lib_id и Value). Phase 1 — нарисовать оригинальные
   shapes: GU50 (octal base с top-cap anode), 6П45С (specific beam
   tetrode shape), 6Н6П (octal dual triode layout). Drawing-heavy
-  vector polyline work. Возможно делегировать LLM-vision при T032
-  SVG render + T106 Phase 3 beautifier готовности (LLM смотрит
-  datasheet картинку → генерирует s-expr polylines).
+  vector polyline work. **Снятие блокировки 2026-06-03:** SVG-render
+  больше не блокер (T032 superseded by T025) — фоновый workflow
+  «datasheet image через чат → vector polylines через Claude vision»
+  можно начинать в любой момент.
 - **T106** — [2026-05-19] **Scheme layout beautifier.** Post-process
   валидного `.kicad_sch` (после ERC) для «textbook look»: убрать
   collisions подписей/компонентов/проводников, выровнять reference/
@@ -946,10 +976,10 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
   **Edge:** Altium / KiCad auto-place были разработаны до multimodal
   LLM эры — их алгоритмы чисто deterministic-rule-based. У нас есть
-  **iterative LLM-vision refinement** (через T032 SVG render → vision
-  model → diff), которого pre-LLM tools физически не имели. Это
-  потенциально даёт нам качество выше commercial EDA для нишевых
-  схем (audio amps в нашем случае).
+  **iterative LLM-vision refinement** (SVG/PNG-render через T025 →
+  Claude vision в чате → diff), которого pre-LLM tools физически не
+  имели. Это потенциально даёт нам качество выше commercial EDA для
+  нишевых схем (audio amps в нашем случае).
 
   **Phase 0 (rule-based, ~1 сессия):** детект label/value/reference
   text-on-component-body или text-on-wire overlap'ов через bbox
@@ -971,28 +1001,40 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   слева-направо). Acceptance: auto-built ≈ mentor-style reference
   fixture.
 
-  **Phase 3 (LLM-vision driven, наш main edge):** feed SVG-render
-  схемы в multimodal LLM с промптом «оптимизируй визуал как audio
-  textbook». LLM возвращает список patches (nudge label / rotate
-  component / reroute wire), фасад применяет diff к `.kicad_sch`,
-  итеративно до convergence. Acceptance: blind test — pre-LLM
-  pipeline output vs T106-Phase3 output, выбираем «красивее»; T106
-  выигрывает на ≥80% test cases.
+  **Phase 3 (LLM-vision driven, наш main edge):** slash
+  `/schematic-beautify <project>` рендерит схему через T025, отдаёт
+  PNG в Claude в чате с промптом «оптимизируй визуал как audio
+  textbook»; vision-ответ парсится в список patches (nudge label /
+  rotate component / reroute wire), фасад применяет diff к
+  `.kicad_sch`, итеративно до convergence. Reformulated 2026-06-03:
+  без отдельного MCP/vision-pipeline в коде — переиспользуем
+  существующий чат (ADR 2026-05-19 «Claude Code as frontend»).
+  Acceptance: blind test — Phase 0+1+2 (rule-based only) output vs
+  Phase 0+1+2+3 (rule-based + LLM-vision) output, выбираем «красивее»;
+  Phase 3 выигрывает на ≥80% test cases.
 
-  Зависит от **T032** (SVG render) — выход T032 = вход T106 Phase 3.
-  Не блокирует Phase 1b LLM chat-client (chat работает с
-  функционально верными схемами независимо от визуала).
-- **T033** — [2026-05-15] Команда `/cost` — трекинг расходов на API
-  по сессии и проекту.
-  Acceptance: `/cost` показывает токены и стоимость по бэкендам.
-- **T034** — [2026-05-15] Автодополнение команд и имён компонентов
-  в Rich TUI.
-  Acceptance: Tab дополняет команды, имена компонентов из текущей
-  схемы, имена проектов.
-- **T035** — [2026-05-15] Публикационный workflow:
-  `export_schematic_publication`, `export_sim_report`.
-  Acceptance: схема → SVG/PDF для статьи; результаты симуляции →
-  Markdown-отчёт с графиками.
+  **Зависимости 2026-06-03:** SVG-render — T025 (готов).
+  T032 (как блокер) снят. Не блокирует production-workflow — chat
+  работает с функционально верными схемами независимо от визуала.
+<!-- T033 (`/cost` команда) — removed 2026-06-03 as obsolete after
+     ADR 2026-05-19 «Claude Code as frontend»: Claude Code сам даёт
+     `/cost`, `/usage-credits` плюс `ccusage`. Своего TUI нет —
+     некуда встраивать. -->
+<!-- T034 (Rich TUI autocomplete) — removed 2026-06-03 as obsolete
+     after ADR 2026-05-19 «Claude Code as frontend»: Rich TUI
+     отказались. Slash-command autocomplete уже в Claude Code.
+     Component-name completion (имена из текущей схемы) — задача
+     prompts/KB, не нашего TUI. -->
+
+- **T035** — [2026-05-15, reformulated 2026-06-03] Публикационный
+  workflow как slash-команды: `/export-schematic-publication
+  <project>` (схема → SVG/PDF для статьи, использует T025 render)
+  и `/export-sim-report <project>` (результаты симуляции →
+  Markdown-отчёт с графиками, использует существующие
+  `cli/*_renderer.py` + `/plot-*` адаптеры).
+  Acceptance: для тестового проекта обе команды генерируют
+  публикационно-готовые артефакты в `out/publications/<ts>/`;
+  README с описанием включения в статью.
 - **T036** — [2026-05-15, re-evaluate 2026-05-19 после Phase 0.9]
   Стратегия обновлений: флаги `--update`, `--update-models`,
   `--doctor` в bootstrap + CLI.
