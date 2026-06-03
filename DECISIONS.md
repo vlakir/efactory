@@ -25,6 +25,77 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-03 — T026 ADR-T026a: `--force` vs `--accept-overwrite` semantic разделение
+
+- **Контекст.** T026 apply-staged use case имеет два независимых
+  pre-check'а перед перезаписью `<active>.kicad_sch`:
+  - **Lock-check** — `<dir>/~<name>.lck` файл КiCad 10 GUI
+    рядом. Phase 0 probe (2026-06-03, KiCad 10.0.3) показал: lock
+    **НЕ удаляется** при SIGTERM/SIGKILL/crash, только при graceful
+    File→Close. Stale-lock после crash — норма, не edge case.
+    Bypass штатно.
+  - **Parent-hash check** — `current_active_hash` (sha256 содержимого
+    `.kicad_sch`) ≠ `parent_hash` из sidecar `.staged.meta.json`.
+    Означает что user сохранил свою версию в KiCad GUI после
+    staged-write efactory. Bypass = осознанное согласие потерять
+    KiCad-edit (real data loss).
+- **Решение.** Два отдельных флага:
+  - `--force` → bypass только lock-check.
+  - `--accept-overwrite` → bypass только parent-hash check.
+  - `--force` **НЕ** охватывает `--accept-overwrite`; для apply
+    при stale-lock + diverged active нужны **оба**.
+- **Альтернативы.**
+  - **(A) Один `--force` для обоих.** Проще UX. Отвергли: user
+    легко может пропустить parent-hash warning под `--force`
+    интуицией «обхожу stale-lock» → silent data loss.
+  - **(B) `--force-lock` + `--force-hash`.** Precise. Отвергли:
+    два `--force-*` флага путают, неочевидно что какой делает.
+- **Последствия.**
+  - Rutinный recovery (stale crash, типичный workflow) — простой
+    `--force` без cognitive overhead про data loss.
+  - Реальный data-loss path **требует именно** `--accept-overwrite`
+    — типонимия делает риск осознанным.
+  - L2 regression тест `test_force_alone_does_not_bypass_parent_
+    hash_check` фиксирует contract.
+
+### 2026-06-03 — T026 ADR-T026b: hexagonal port `staged_schematics` для LockDetector + Scanner
+
+- **Контекст.** T026 staged-workflow требует двух абстракций:
+  «удерживается ли файл сторонним инструментом» (lock detection) и
+  «найти все pending staged в project root» (scanning). Initial
+  имплементация держала их в `adapters/outbound/schematic_kicad/`
+  и импортировала напрямую из `application/apply_staged_schematic.py`
+  + `adapters/inbound/cli/app.py`. import-linter
+  отверг на pre-push:
+  - **Layers contract** (composition > adapters > application >
+    ports > domain): application импортирует adapter →
+    нарушение.
+  - **Adapters independence**: inbound CLI импортирует
+    outbound schematic_kicad → нарушение.
+- **Решение.** Извлечь Protocols + DTO в новый port-файл
+  `ports/outbound/staged_schematics.py`:
+  - `LockDetector` Protocol (`is_held_by_kicad(path) -> bool`).
+  - `PendingStagedEntry` `@dataclass(frozen=True)`.
+  - `PendingStagedScanner` Protocol (`scan(root) -> list[PendingStagedEntry]`).
+  KiCad-конкретные impls (`KicadLockDetector`,
+  `KicadPendingStagedScanner`) живут в adapter. Composition root
+  инжектит их в `build_app(...)` + в use case.
+- **Альтернативы.**
+  - **(A) Оставить адаптерные классы напрямую в use case.**
+    Простой код, но **ломает hexagonal layering** — application
+    тащит KiCad-specific импорт. Отвергли: фундаментальный
+    architecture violation, ловится автоматизированно.
+  - **(B) Положить Protocols в `domain/staged_schematics.py`.**
+    domain должен быть **infrastructure-free**. Lock-файл concern
+    — infrastructure, не domain. Отвергли по definition hexagonal.
+- **Последствия.**
+  - import-linter contracts 3/3 KEPT.
+  - Будущая подмена детектора (например, через kicad-python IPC
+    когда выйдет Schematic API в KiCad 11/12) — drop-in replacement
+    через composition root, без правки application/CLI.
+  - Тестам удобнее использовать ad-hoc fake `LockDetector`
+    реализации (Protocol structurally matched).
+
 ### 2026-06-02 — T027 Phase D ADR-T027d: Sallen-Key equal-R unequal-C для exact Butterworth
 
 - **Контекст.** T027 Phase D — `active-lpf-sallen-key` template —
