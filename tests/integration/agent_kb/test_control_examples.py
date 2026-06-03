@@ -289,6 +289,20 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'spice.tube-se-resistive-6p13s',
         'a-w3',
     ),
+    # T031 Phase 6 — L2 regression: routing «микрофонный преамп 6Ж32П» →
+    # /project-create + template 6zh32p-mic-preamp (agent-built).
+    (
+        'микрофонный преамп 6Ж32П EF86 low-noise pentode mic',
+        'agent.command-routing',
+        '6zh32p-mic-preamp',
+    ),
+    # T031 Phase 6 — L2 regression: KB topic spice.tube-mic-preamp-6zh32p
+    # содержит default op-point + bandwidth measurements + agent provenance.
+    (
+        '6zh32p mic preamp 40 dB common-cathode pentode self-bias bandwidth',
+        'spice.tube-mic-preamp-6zh32p',
+        '40.76 db',
+    ),
 ]
 
 

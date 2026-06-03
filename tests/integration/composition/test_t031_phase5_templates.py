@@ -183,3 +183,36 @@ def test_6p13s_se_resistive_op_point(
         f'Ig2={ig2_ma:.2f}mA exceeds 15mA — screen overload risk '
         f'(>15mA × 200V = 3W approaching Pg2_max=4W)'
     )
+
+
+# ============================== 6Ж32П mic preamp (Phase 6) ==============================
+
+
+@needs_kicad
+@needs_ngspice
+def test_6zh32p_mic_preamp_op_point(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """6Ж32П mic preamp materialize + .op smoke (T031 Phase 6).
+
+    Expected from physics: Vbb=250V, Ra=100k, fit gives Ia ≈ 1.7 mA →
+    V_plate = 250 - 100k·1.7mA = 80V (anode pulled down through plate
+    load — class A mid-supply под Vbb=250V).
+    """
+    projects_root = _setup_env(tmp_path, monkeypatch)
+    netlist = _materialize_and_simulate(
+        'p_6zh32p', '6zh32p-mic-preamp', projects_root,
+    )
+    probe = _ngspice_op_probe(
+        netlist, prints=('v(/plate)', 'v(/cathode)', 'i(V1)'),
+    )
+    v_plate = probe['v(/plate)']
+    ia_ma = -probe['i(v1)'] * 1000.0
+
+    assert 60.0 < v_plate < 110.0, (
+        f'V(plate)={v_plate:.1f}V outside [60,110]V active region '
+        f'(expected ~82V from physics: Vbb-Ra·Ia)'
+    )
+    assert 1.0 < ia_ma < 2.5, (
+        f'Ia={ia_ma:.2f}mA outside [1.0,2.5]mA small-signal range'
+    )
