@@ -234,6 +234,18 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'schematic.staged-modifications',
         '--accept-overwrite',
     ),
+    # T026 L3 follow-up — L2 regression: routing «покажи состояние проекта» →
+    # CLI project show (а не ad-hoc ls обзор), чтобы T026 warnings не терялись.
+    (
+        'покажи состояние проекта статус summary',
+        'agent.command-routing',
+        'efactory project show',
+    ),
+    (
+        'список проектов какие проекты есть list projects',
+        'agent.command-routing',
+        'efactory project list',
+    ),
 ]
 
 
