@@ -19,13 +19,22 @@ from domain.tube_fitting import (
     CurveData,
     FitFailedError,
     IVDataset,
+    KorenModifiedCutoffTriodeParams,
+    KorenModifiedKneePentodeParams,
     KorenTriodeParams,
     ayumi_pentode_ia,
     fit_ayumi_pentode,
+    fit_koren_modified_cutoff_triode,
+    fit_koren_modified_knee_pentode,
     fit_koren_triode,
+    koren_modified_cutoff_triode_ia,
+    koren_modified_knee_pentode_ia,
     koren_triode_ia,
 )
-from domain.tube_fitting._fitter import _ayumi_pentode_ig2_vec
+from domain.tube_fitting._fitter import (
+    _ayumi_pentode_ig2_vec,
+    _koren_modified_knee_pentode_ig2_vec,
+)
 
 
 def _synthesize_triode_dataset(
@@ -328,3 +337,203 @@ def test_fit_koren_residual_is_meaningful_when_noisy() -> None:
     assert fr.rms_residual_ma < 1.0
     # Params всё ещё ≤5%.
     assert _rel_err(fr.params.mu, 100.0) <= 0.05
+
+
+# ============================== T182: round-trip modified-knee pentode (SC#3) ==============================
+
+
+def _synthesize_modified_knee_pentode_dataset(
+    params: KorenModifiedKneePentodeParams,
+    tube_name: str = 'SYNTH_MOD_KNEE_PENTODE',
+    vg_values: tuple[float, ...] = (-2.0, -5.0, -10.0, -15.0, -20.0),
+    va_values: tuple[float, ...] = (30.0, 50.0, 80.0, 120.0, 200.0, 300.0, 400.0, 500.0),
+    *,
+    include_screen: bool = False,
+) -> IVDataset:
+    curves = tuple(
+        CurveData(
+            vg=vg,
+            points=tuple(
+                (va, koren_modified_knee_pentode_ia(vg, va, params)) for va in va_values
+            ),
+        )
+        for vg in vg_values
+    )
+    screen_curves: tuple[CurveData, ...] = ()
+    if include_screen:
+        screen_curves = tuple(
+            CurveData(
+                vg=vg,
+                points=tuple(
+                    (
+                        va,
+                        float(
+                            _koren_modified_knee_pentode_ig2_vec(
+                                np.array([vg]),
+                                params.mu,
+                                params.ex,
+                                params.kg2,
+                                params.kp,
+                                params.screen_v,
+                            )[0]
+                        ),
+                    )
+                    for va in va_values
+                ),
+            )
+            for vg in vg_values
+        )
+    return IVDataset(
+        tube_name=tube_name,
+        tube_type='pentode',
+        source='synthesized-modified-knee',
+        date_extracted=date(2026, 6, 4),
+        curves=curves,
+        screen_voltage_v=params.screen_v,
+        screen_curves=screen_curves,
+    )
+
+
+_EL34_MOD_KNEE_TRUTH = KorenModifiedKneePentodeParams(
+    mu=11, ex=1.35, kg1=650, kg2=4500, kp=60, kvb=24, screen_v=250, vk=50.0
+)
+
+
+def test_round_trip_modified_knee_pentode_joint_within_sc3_tolerance() -> None:
+    """
+    Spec SC#3: synthetic EL34-style modified-knee → fitter:
+    MU/KG1/KG2/KP/KVB ≤7%, EX ≤3%, Vk ≤15%.
+
+    Joint Ia+Ig2 mode гарантирует identifiability KG2.
+    """
+    ds = _synthesize_modified_knee_pentode_dataset(_EL34_MOD_KNEE_TRUTH, include_screen=True)
+    fr = fit_koren_modified_knee_pentode(ds, n_starts=8, seed=42)
+
+    assert isinstance(fr.params, KorenModifiedKneePentodeParams)
+    p = fr.params
+    assert _rel_err(p.mu, 11.0) <= 0.07
+    assert _rel_err(p.ex, 1.35) <= 0.03
+    assert _rel_err(p.kg1, 650.0) <= 0.07
+    assert _rel_err(p.kg2, 4500.0) <= 0.07
+    assert _rel_err(p.kp, 60.0) <= 0.07
+    assert _rel_err(p.kvb, 24.0) <= 0.07
+    assert _rel_err(p.vk, 50.0) <= 0.15
+    assert p.screen_v == 250.0  # input, not fitted
+    assert fr.converged is True
+
+
+def test_round_trip_modified_knee_pentode_ia_only_within_sc3_tolerance() -> None:
+    """SC#3 Ia-only path: KG2 не identifiable, остальные ≤7%/≤3%/≤15%."""
+    ds = _synthesize_modified_knee_pentode_dataset(_EL34_MOD_KNEE_TRUTH)
+    fr = fit_koren_modified_knee_pentode(ds, n_starts=8, seed=42)
+
+    assert isinstance(fr.params, KorenModifiedKneePentodeParams)
+    p = fr.params
+    assert _rel_err(p.mu, 11.0) <= 0.07
+    assert _rel_err(p.ex, 1.35) <= 0.03
+    assert _rel_err(p.kg1, 650.0) <= 0.07
+    assert _rel_err(p.kp, 60.0) <= 0.07
+    assert _rel_err(p.kvb, 24.0) <= 0.07
+    assert _rel_err(p.vk, 50.0) <= 0.15
+
+
+def test_round_trip_modified_knee_pentode_seed_determinism() -> None:
+    ds = _synthesize_modified_knee_pentode_dataset(_EL34_MOD_KNEE_TRUTH, include_screen=True)
+    fr_a = fit_koren_modified_knee_pentode(ds, n_starts=8, seed=42)
+    fr_b = fit_koren_modified_knee_pentode(ds, n_starts=8, seed=42)
+    assert fr_a.params == fr_b.params
+    assert fr_a.rms_residual_ma == fr_b.rms_residual_ma
+
+
+def test_fit_modified_knee_pentode_rejects_triode() -> None:
+    ds = _synthesize_triode_dataset(_TWELVE_AX7_TRUTH)
+    with pytest.raises(ValueError, match='tube_type'):
+        fit_koren_modified_knee_pentode(ds)
+
+
+def test_fit_modified_knee_pentode_n_starts_zero_raises() -> None:
+    ds = _synthesize_modified_knee_pentode_dataset(_EL34_MOD_KNEE_TRUTH)
+    with pytest.raises(ValueError, match='n_starts'):
+        fit_koren_modified_knee_pentode(ds, n_starts=0)
+
+
+# ============================== T182: round-trip modified-cutoff triode (SC#3b) ==============================
+
+
+def _synthesize_modified_cutoff_triode_dataset(
+    params: KorenModifiedCutoffTriodeParams,
+    tube_name: str = 'SYNTH_MOD_CUTOFF_TRIODE',
+    vg_values: tuple[float, ...] = (-5.0, -15.0, -30.0, -45.0, -55.0, -65.0),
+    va_values: tuple[float, ...] = (50.0, 100.0, 200.0, 300.0, 400.0),
+) -> IVDataset:
+    curves = tuple(
+        CurveData(
+            vg=vg,
+            points=tuple(
+                (va, koren_modified_cutoff_triode_ia(vg, va, params)) for va in va_values
+            ),
+        )
+        for vg in vg_values
+    )
+    return IVDataset(
+        tube_name=tube_name,
+        tube_type='triode',
+        source='synthesized-modified-cutoff',
+        date_extracted=date(2026, 6, 4),
+        curves=curves,
+    )
+
+
+_300B_MOD_CUTOFF_TRUTH = KorenModifiedCutoffTriodeParams(
+    mu=4, ex=1.4, kg1=1500, kp=800, kvb=200, vc_off=-50.0, vs_off=5.0
+)
+
+
+def test_round_trip_modified_cutoff_triode_within_sc3b_tolerance() -> None:
+    """
+    Spec SC#3b: synthetic 300B-style modified-cutoff → fitter:
+    MU/KG1/KP/KVB ≤7%, EX ≤3%, Vc_off ≤20%, Vs_off ≤25%.
+    """
+    ds = _synthesize_modified_cutoff_triode_dataset(_300B_MOD_CUTOFF_TRUTH)
+    fr = fit_koren_modified_cutoff_triode(ds, n_starts=8, seed=42)
+
+    assert isinstance(fr.params, KorenModifiedCutoffTriodeParams)
+    p = fr.params
+    assert _rel_err(p.mu, 4.0) <= 0.07
+    assert _rel_err(p.ex, 1.4) <= 0.03
+    assert _rel_err(p.kg1, 1500.0) <= 0.07
+    assert _rel_err(p.kp, 800.0) <= 0.07
+    assert _rel_err(p.kvb, 200.0) <= 0.07
+    assert _rel_err(p.vc_off, -50.0) <= 0.20
+    assert _rel_err(p.vs_off, 5.0) <= 0.25
+    assert p.vct is None  # A-W1: forced to None
+    assert fr.converged is True
+
+
+def test_round_trip_modified_cutoff_triode_seed_determinism() -> None:
+    ds = _synthesize_modified_cutoff_triode_dataset(_300B_MOD_CUTOFF_TRUTH)
+    fr_a = fit_koren_modified_cutoff_triode(ds, n_starts=8, seed=42)
+    fr_b = fit_koren_modified_cutoff_triode(ds, n_starts=8, seed=42)
+    assert fr_a.params == fr_b.params
+    assert fr_a.rms_residual_ma == fr_b.rms_residual_ma
+
+
+def test_fit_modified_cutoff_triode_rejects_pentode() -> None:
+    ds = _synthesize_pentode_dataset(_EL34_TRUTH)
+    with pytest.raises(ValueError, match='tube_type'):
+        fit_koren_modified_cutoff_triode(ds)
+
+
+def test_fit_modified_cutoff_triode_n_starts_zero_raises() -> None:
+    ds = _synthesize_modified_cutoff_triode_dataset(_300B_MOD_CUTOFF_TRUTH)
+    with pytest.raises(ValueError, match='n_starts'):
+        fit_koren_modified_cutoff_triode(ds, n_starts=0)
+
+
+def test_fit_modified_cutoff_triode_forces_vct_to_none() -> None:
+    """A-W1: vct (cathode contact) overlaps semantically с vc_off.
+    Fitter форсирует vct=None в результате независимо от input."""
+    ds = _synthesize_modified_cutoff_triode_dataset(_300B_MOD_CUTOFF_TRUTH)
+    fr = fit_koren_modified_cutoff_triode(ds, n_starts=8, seed=42)
+    assert isinstance(fr.params, KorenModifiedCutoffTriodeParams)
+    assert fr.params.vct is None

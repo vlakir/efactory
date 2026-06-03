@@ -5,6 +5,8 @@ from __future__ import annotations
 from domain.tube_fitting._fitter import (
     FitFailedError,
     fit_ayumi_pentode,
+    fit_koren_modified_cutoff_triode,
+    fit_koren_modified_knee_pentode,
     fit_koren_triode,
 )
 from domain.tube_fitting._formulas import (
@@ -40,6 +42,8 @@ __all__ = [
     'TubeType',
     'ayumi_pentode_ia',
     'fit_ayumi_pentode',
+    'fit_koren_modified_cutoff_triode',
+    'fit_koren_modified_knee_pentode',
     'fit_koren_triode',
     'koren_modified_cutoff_triode_ia',
     'koren_modified_knee_pentode_ia',
