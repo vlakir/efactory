@@ -1,0 +1,16 @@
+{
+  "tube_name": "300B (Western Electric, vision-extracted 2026-06-04)",
+  "tube_type": "triode",
+  "source": "Western Electric 300B datasheet Bell System Practices AB46.300B Jan 1950 (frank.pocnet.net/sheets/084/3/300B.pdf), Page 3 top graph: plate characteristics Ia=f(Va) for Ec=0..-140V, Ef=5.0V. Vision-extracted in T182 Phase 4 — calibrated against published op-point Eb=350V, Ec=-74V → Ia=60mA (page 2). Interp verification: Ec=-60@Va=350 ≈140mA, Ec=-80@Va=350 ≈25mA → Vg=-74 interp = 59.5mA ≈ published 60mA.",
+  "date_extracted": "2026-06-04",
+  "curves": [
+    {"vg":   0.0, "points": [[50,  5], [100,  80], [150, 240]]},
+    {"vg": -20.0, "points": [[100,  5], [150,  35], [200, 140], [250, 290]]},
+    {"vg": -40.0, "points": [[175,  5], [200,  30], [250, 130], [300, 280]]},
+    {"vg": -60.0, "points": [[250,  5], [300,  50], [350, 140], [400, 280]]},
+    {"vg": -80.0, "points": [[325,  5], [350,  25], [400, 110], [450, 250]]},
+    {"vg":-100.0, "points": [[400,  5], [450,  40], [500, 130], [550, 270]]},
+    {"vg":-120.0, "points": [[475,  5], [525,  30], [575, 100], [625, 240]]},
+    {"vg":-140.0, "points": [[550,  5], [600,  25], [650,  90], [700, 210]]}
+  ]
+}

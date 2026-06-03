@@ -137,6 +137,10 @@ _TRIODE_FIT_KEYS_WITH_VCT = (*_TRIODE_FIT_KEYS, 'vct')
 _IS_SCREEN_THRESHOLD = 0.5
 """Marker mask threshold для joint Ia+Ig2 callback: 0=Ia, 1=Ig2; threshold > 0.5."""
 
+_MODIFIED_RELATIVE_NOISE_FLOOR_MA = 1.0
+"""T182: noise floor for relative-error sigma weighting in modified-variant
+fitters. Без floor cutoff-точки с Ia=0 дают σ=0 → singular weights."""
+
 
 def _triode_initial_guesses(
     n_starts: int,
@@ -587,6 +591,12 @@ def fit_koren_modified_knee_pentode(
 
     xdata = np.vstack([vgs_all, vas_all, is_screen])
 
+    # T182: relative-error loss via sigma = max(y_all, NOISE_FLOOR_MA).
+    # Без этого high-Ia plateau-точки доминируют loss → fitter забивает
+    # knee region (Phase 4 EL34: 146% mean err). Floor 1 mA — типичный
+    # noise floor datasheet'ов.
+    sigma = np.maximum(y_all, _MODIFIED_RELATIVE_NOISE_FLOOR_MA)
+
     rng = default_rng(seed)
     starts = _pentode_knee_initial_guesses(n_starts, rng, seed_from=seed_from)
 
@@ -603,6 +613,8 @@ def fit_koren_modified_knee_pentode(
                     p0=p0_clipped,
                     bounds=(lower, upper),
                     method='trf',
+                    sigma=sigma,
+                    absolute_sigma=False,
                     max_nfev=max_nfev,
                 )
         except (RuntimeError, scipy_opt.OptimizeWarning, ValueError):
@@ -751,6 +763,7 @@ def fit_koren_modified_cutoff_triode(
         )
 
     xdata = np.vstack([vgs, vas])
+    sigma = np.maximum(ias, _MODIFIED_RELATIVE_NOISE_FLOOR_MA)
 
     rng = default_rng(seed)
     starts = _triode_cutoff_initial_guesses(n_starts, rng, seed_from=seed_from)
@@ -768,6 +781,8 @@ def fit_koren_modified_cutoff_triode(
                     p0=p0_clipped,
                     bounds=(lower, upper),
                     method='trf',
+                    sigma=sigma,
+                    absolute_sigma=False,
                     max_nfev=max_nfev,
                 )
         except (RuntimeError, scipy_opt.OptimizeWarning, ValueError):

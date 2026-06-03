@@ -1,0 +1,14 @@
+{
+  "tube_name": "6П13С (output beam tetrode for TV line scan, ~14W Pa)",
+  "tube_type": "pentode",
+  "source": "datasheet: 6П13С (USSR official handbook, Vol. ?). Page 3 left graph: Ia, Ig2 = f(Ua), Uh=6.3V, Ug2=150V. Vg1 = 0..-16V curves.",
+  "date_extracted": "2026-06-03",
+  "screen_voltage_v": 150,
+  "curves": [
+    {"vg": 0.0, "points": [[50, 200], [100, 260], [150, 265], [200, 270], [250, 275]]},
+    {"vg": -4.0, "points": [[50, 30], [100, 165], [150, 180], [200, 185], [250, 190]]},
+    {"vg": -8.0, "points": [[100, 70], [150, 95], [200, 110], [250, 115]]},
+    {"vg": -12.0, "points": [[150, 40], [200, 50], [250, 55]]},
+    {"vg": -16.0, "points": [[200, 15], [250, 20]]}
+  ]
+}
