@@ -11,6 +11,7 @@ from __future__ import annotations
 import random
 from datetime import date
 
+import numpy as np
 import pytest
 
 from domain.tube_fitting import (
@@ -24,6 +25,7 @@ from domain.tube_fitting import (
     fit_koren_triode,
     koren_triode_ia,
 )
+from domain.tube_fitting._fitter import _ayumi_pentode_ig2_vec
 
 
 def _synthesize_triode_dataset(
@@ -55,6 +57,8 @@ def _synthesize_pentode_dataset(
     tube_name: str = 'SYNTH_PENTODE',
     vg_values: tuple[float, ...] = (-5.0, -10.0, -15.0, -20.0),
     va_values: tuple[float, ...] = (50.0, 100.0, 200.0, 300.0, 400.0, 500.0),
+    *,
+    include_screen: bool = False,
 ) -> IVDataset:
     curves = tuple(
         CurveData(
@@ -65,6 +69,32 @@ def _synthesize_pentode_dataset(
         )
         for vg in vg_values
     )
+    screen_curves: tuple[CurveData, ...] = ()
+    if include_screen:
+        # Ig2 не зависит от Va — реальные Ig2-curves плоские по Va,
+        # но всё равно сэмплируем на тех же Va для realism + cross-check.
+        screen_curves = tuple(
+            CurveData(
+                vg=vg,
+                points=tuple(
+                    (
+                        va,
+                        float(
+                            _ayumi_pentode_ig2_vec(
+                                np.array([vg]),
+                                params.mu,
+                                params.ex,
+                                params.kg2,
+                                params.kp,
+                                params.screen_v,
+                            )[0]
+                        ),
+                    )
+                    for va in va_values
+                ),
+            )
+            for vg in vg_values
+        )
     return IVDataset(
         tube_name=tube_name,
         tube_type='pentode',
@@ -72,6 +102,7 @@ def _synthesize_pentode_dataset(
         date_extracted=date(2026, 6, 3),
         curves=curves,
         screen_voltage_v=params.screen_v,
+        screen_curves=screen_curves,
     )
 
 
@@ -125,10 +156,11 @@ _EL34_TRUTH = AyumiPentodeParams(
 )
 
 
-def test_round_trip_ayumi_pentode_el34_within_sc1_tolerance() -> None:
+def test_round_trip_ayumi_pentode_el34_ia_only_within_sc1_tolerance() -> None:
     """
-    SC#1 для pentode: MU/KG1/KP/KVB ≤5%, EX ≤2%. KG2 не identifiable
-    (см. _fitter.py docstring) — не assert'им.
+    SC#1 Ia-only path: MU/KG1/KP/KVB ≤5%, EX ≤2%. KG2 не identifiable —
+    `per_param_stderr['kg2']` undefined (scipy pinv может дать
+    artificial ~0 или ~inf), не assert'им.
     """
     ds = _synthesize_pentode_dataset(_EL34_TRUTH)
     fr = fit_ayumi_pentode(ds, n_starts=5, seed=42)
@@ -143,6 +175,26 @@ def test_round_trip_ayumi_pentode_el34_within_sc1_tolerance() -> None:
     assert p.screen_v == 250.0  # input, not fitted
     assert fr.converged is True
     assert fr.rms_residual_ma < 0.1
+
+
+def test_round_trip_ayumi_pentode_el34_joint_recovers_kg2() -> None:
+    """
+    Joint Ia+Ig2 path: с screen_curves все 6 params identifiable,
+    включая KG2 (≤5%).
+    """
+    ds = _synthesize_pentode_dataset(_EL34_TRUTH, include_screen=True)
+    fr = fit_ayumi_pentode(ds, n_starts=5, seed=42)
+
+    assert isinstance(fr.params, AyumiPentodeParams)
+    p = fr.params
+    assert _rel_err(p.mu, 11.0) <= 0.05
+    assert _rel_err(p.ex, 1.35) <= 0.02
+    assert _rel_err(p.kg1, 650.0) <= 0.05
+    assert _rel_err(p.kg2, 4500.0) <= 0.05  # ← теперь identifiable
+    assert _rel_err(p.kp, 60.0) <= 0.05
+    assert _rel_err(p.kvb, 24.0) <= 0.05
+    # n_points = 24 Ia + 24 Ig2 = 48.
+    assert fr.n_points == 48
 
 
 # ============================== multi-start determinism (A-C2) ==============================

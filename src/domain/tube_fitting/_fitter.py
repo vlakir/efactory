@@ -91,11 +91,44 @@ def _ayumi_pentode_ia_vec(
     return ia_a * 1000.0
 
 
+def _ayumi_pentode_ig2_vec(
+    vgs: NDArray[np.float64],
+    mu: float,
+    ex: float,
+    kg2: float,
+    kp: float,
+    screen_v: float,
+) -> NDArray[np.float64]:
+    """
+    Vectorized Ayumi pentode screen-current Ig2 (mA).
+
+    Формула (из built-in `data/models/tubes/*.lib`):
+
+        Ig2 = 2 * E1^EX / KG2
+
+    Не зависит от Va plate-voltage — это известное упрощение
+    Koren-pentode формы. Реальные Ig2-curves slowly rising с Va,
+    но Koren-model это игнорирует.
+    """
+    arg = kp * (1.0 / mu + vgs / screen_v)
+    arg_clipped = np.clip(arg, SOFTPLUS_DEEP_CUTOFF, SOFTPLUS_LARGE_ARG)
+    softplus = np.where(arg > SOFTPLUS_LARGE_ARG, arg, np.log1p(np.exp(arg_clipped)))
+    softplus = np.where(arg < SOFTPLUS_DEEP_CUTOFF, 0.0, softplus)
+    e1 = (screen_v / kp) * softplus
+    e1_pos = np.maximum(e1, 1e-30)
+    ig2_a = 2.0 * (e1_pos**ex) / kg2
+    ig2_a = np.where(e1 <= 0.0, 0.0, ig2_a)
+    return ig2_a * 1000.0
+
+
 # ============================== fitter — Koren triode ==============================
 
 
 _TRIODE_FIT_KEYS = ('mu', 'ex', 'kg1', 'kp', 'kvb')
 _TRIODE_FIT_KEYS_WITH_VCT = (*_TRIODE_FIT_KEYS, 'vct')
+
+_IS_SCREEN_THRESHOLD = 0.5
+"""Marker mask threshold для joint Ia+Ig2 callback: 0=Ia, 1=Ig2; threshold > 0.5."""
 
 
 def _triode_initial_guesses(
@@ -275,13 +308,19 @@ def fit_ayumi_pentode(
     `screen_voltage_v` берётся из `ds`, **не** fit'ится — это known input.
     Fit'ятся 6 параметров: mu, ex, kg1, kg2, kp, kvb.
 
-    Замечание про identifiability: KG2 входит **только** в формулу Ig2
-    (screen current), не в Ia. IVDataset содержит только Ia точки → fit
-    KG2 не identifiable; scipy сходится в произвольное значение в bounds,
-    `per_param_stderr['kg2']` отразит это (large / inf). Это known
-    limitation: для production KG2 либо передаётся через `seed_from`,
-    либо в .lib пишется typical ratio (KG2 ≈ 5·KG1) post-fit (Phase 2
-    .lib writer). Round-trip tests на KG2 не assert'им.
+    Два режима, выбираются автоматически по `ds.screen_curves`:
+
+    * **Ia-only** (`screen_curves` пуст, default): cost function =
+      Σ (Ia_obs − Ia_pred)². KG2 не identifiable — входит только в
+      Ig2-формулу, residual по нему нулевой, scipy сходится в
+      произвольное значение в bounds. `per_param_stderr['kg2']`
+      будет large / inf — signal для caller'а, что KG2 не доверять.
+      Для production .lib writer'у (Phase 2) рекомендуется заменить
+      fit'нутый KG2 typical ratio (KG2 ≈ 5·KG1).
+    * **Joint Ia+Ig2** (`screen_curves` задан): cost function =
+      Σ (Ia_obs − Ia_pred)² + Σ (Ig2_obs − Ig2_pred)². Все 6
+      параметров identifiable, KG2 восстанавливается per SC#1
+      tolerance (≤5%).
     """
     if ds.tube_type != 'pentode':
         msg = f"fit_ayumi_pentode expects tube_type='pentode', got '{ds.tube_type}'"
@@ -294,22 +333,44 @@ def fit_ayumi_pentode(
         raise ValueError(msg)
 
     screen_v = ds.screen_voltage_v
-    vgs_t, vas_t, ias_t = ds.flatten()
-    vgs = np.asarray(vgs_t, dtype=np.float64)
-    vas = np.asarray(vas_t, dtype=np.float64)
+    vgs_ia_t, vas_ia_t, ias_t = ds.flatten()
+    vgs_ig2_t, vas_ig2_t, ig2s_t = ds.flatten_screen()
+    has_screen = bool(ds.screen_curves)
+
+    vgs_ia = np.asarray(vgs_ia_t, dtype=np.float64)
+    vas_ia = np.asarray(vas_ia_t, dtype=np.float64)
     ias = np.asarray(ias_t, dtype=np.float64)
-    n_points = len(ias)
+
+    if has_screen:
+        vgs_ig2 = np.asarray(vgs_ig2_t, dtype=np.float64)
+        vas_ig2 = np.asarray(vas_ig2_t, dtype=np.float64)
+        ig2s = np.asarray(ig2s_t, dtype=np.float64)
+        vgs_all = np.concatenate([vgs_ia, vgs_ig2])
+        vas_all = np.concatenate([vas_ia, vas_ig2])
+        is_screen = np.concatenate([np.zeros_like(vgs_ia), np.ones_like(vgs_ig2)])
+        y_all = np.concatenate([ias, ig2s])
+        n_points = len(y_all)
+    else:
+        vgs_all = vgs_ia
+        vas_all = vas_ia
+        is_screen = np.zeros_like(vgs_ia)
+        y_all = ias
+        n_points = len(y_all)
 
     keys = _PENTODE_FIT_KEYS
     lower = np.asarray([AYUMI_PENTODE_BOUNDS[k][0] for k in keys], dtype=np.float64)
     upper = np.asarray([AYUMI_PENTODE_BOUNDS[k][1] for k in keys], dtype=np.float64)
 
     def _callback(x: NDArray[np.float64], *theta: float) -> NDArray[np.float64]:
-        # KG2 fit'ится но не identifiable из Ia (см. docstring fit_ayumi_pentode).
-        mu, ex, kg1, _kg2, kp, kvb = theta
-        return _ayumi_pentode_ia_vec(x[0], x[1], mu, ex, kg1, kp, kvb, screen_v)
+        mu, ex, kg1, kg2, kp, kvb = theta
+        vgs_x, vas_x, is_screen_x = x[0], x[1], x[2]
+        ia_pred = _ayumi_pentode_ia_vec(vgs_x, vas_x, mu, ex, kg1, kp, kvb, screen_v)
+        if not has_screen:
+            return ia_pred
+        ig2_pred = _ayumi_pentode_ig2_vec(vgs_x, mu, ex, kg2, kp, screen_v)
+        return np.where(is_screen_x > _IS_SCREEN_THRESHOLD, ig2_pred, ia_pred)
 
-    xdata = np.vstack([vgs, vas])
+    xdata = np.vstack([vgs_all, vas_all, is_screen])
 
     rng = default_rng(seed)
     starts = _pentode_initial_guesses(n_starts, rng, seed_from=seed_from)
@@ -323,7 +384,7 @@ def fit_ayumi_pentode(
                 popt, pcov = scipy_opt.curve_fit(
                     _callback,
                     xdata,
-                    ias,
+                    y_all,
                     p0=p0_clipped,
                     bounds=(lower, upper),
                     method='trf',
@@ -331,7 +392,7 @@ def fit_ayumi_pentode(
                 )
         except (RuntimeError, scipy_opt.OptimizeWarning, ValueError):
             continue
-        residuals = ias - _callback(xdata, *popt)
+        residuals = y_all - _callback(xdata, *popt)
         rms = float(np.sqrt(np.mean(residuals * residuals)))
         if best is None or rms < best[0]:
             best = (rms, list(popt), pcov, i)

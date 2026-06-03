@@ -150,10 +150,22 @@ class IVDataset(BaseModel):
     date_extracted: date
 
     curves: tuple[CurveData, ...]
-    """Список constant-Vg curves. Non-empty."""
+    """Constant-Vg Ia curves (plate current). Non-empty."""
 
     screen_voltage_v: Annotated[float, Field(gt=0)] | None = None
     """Vg2 для pentode. Required для tube_type='pentode', None для triode."""
+
+    screen_curves: tuple[CurveData, ...] = ()
+    """
+    Optional constant-Vg Ig2 curves (screen current).
+
+    Если задано — fitter использует joint Ia+Ig2 loss, KG2 становится
+    identifiable (см. `fit_ayumi_pentode` docstring). Если пусто — KG2
+    из формулы Ia никак не извлекается; Phase 2 .lib writer должен
+    подставить typical ratio (KG2 ≈ 5·KG1).
+
+    Только для pentode; triode не имеет screen grid.
+    """
 
     @model_validator(mode='after')
     def _check_consistency(self) -> IVDataset:
@@ -166,23 +178,43 @@ class IVDataset(BaseModel):
         if self.tube_type == 'triode' and self.screen_voltage_v is not None:
             msg = "tube_type='triode' must not have screen_voltage_v"
             raise ValueError(msg)
+        if self.tube_type == 'triode' and self.screen_curves:
+            msg = "tube_type='triode' must not have screen_curves"
+            raise ValueError(msg)
         return self
 
     def flatten(self) -> tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]]:
         """
-        Развернуть в плоские (vg, va, ia) arrays — convenience для fitter'а.
+        Развернуть Ia-curves в плоские (vg, va, ia) arrays для fitter'а.
 
         Возвращает 3 tuple'а одинаковой длины, выровненные по index.
         """
-        vgs: list[float] = []
-        vas: list[float] = []
-        ias: list[float] = []
-        for curve in self.curves:
-            for va, ia in curve.points:
-                vgs.append(curve.vg)
-                vas.append(va)
-                ias.append(ia)
-        return tuple(vgs), tuple(vas), tuple(ias)
+        return _flatten_curves(self.curves)
+
+    def flatten_screen(
+        self,
+    ) -> tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]]:
+        """
+        Развернуть Ig2-curves в плоские (vg, va, ig2) arrays.
+
+        Возвращает пустые tuple'ы, если `screen_curves` пуст.
+        """
+        return _flatten_curves(self.screen_curves)
+
+
+def _flatten_curves(
+    curves: tuple[CurveData, ...],
+) -> tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]]:
+    """Generic flatten: (Vg constant per curve, list of (Va, y)) → 3 parallel arrays."""
+    vgs: list[float] = []
+    vas: list[float] = []
+    ys: list[float] = []
+    for curve in curves:
+        for va, y in curve.points:
+            vgs.append(curve.vg)
+            vas.append(va)
+            ys.append(y)
+    return tuple(vgs), tuple(vas), tuple(ys)
 
 
 class FitResult(BaseModel):

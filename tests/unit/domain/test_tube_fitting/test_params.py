@@ -229,6 +229,64 @@ def test_iv_dataset_triode_with_screen_voltage_rejected() -> None:
         )
 
 
+def test_iv_dataset_pentode_with_screen_curves_round_trip() -> None:
+    ds = IVDataset(
+        tube_name='EL34',
+        tube_type='pentode',
+        source='Mullard 1962',
+        date_extracted=date(2026, 6, 3),
+        curves=(CurveData(vg=-10.0, points=((250.0, 100.0),)),),
+        screen_voltage_v=250.0,
+        screen_curves=(CurveData(vg=-10.0, points=((250.0, 12.0),)),),
+    )
+    assert len(ds.screen_curves) == 1
+    assert ds.screen_curves[0].points[0] == (250.0, 12.0)
+
+
+def test_iv_dataset_pentode_screen_curves_default_empty() -> None:
+    ds = _make_pentode_dataset()  # без screen_curves
+    assert ds.screen_curves == ()
+
+
+def test_iv_dataset_triode_with_screen_curves_rejected() -> None:
+    with pytest.raises(ValidationError):
+        IVDataset(
+            tube_name='X',
+            tube_type='triode',
+            source='x',
+            date_extracted=date(2026, 6, 3),
+            curves=(CurveData(vg=-2.0, points=((250.0, 1.0),)),),
+            screen_curves=(CurveData(vg=-2.0, points=((250.0, 0.1),)),),
+        )
+
+
+def test_iv_dataset_flatten_screen_pentode() -> None:
+    ds = IVDataset(
+        tube_name='EL34',
+        tube_type='pentode',
+        source='m',
+        date_extracted=date(2026, 6, 3),
+        curves=(CurveData(vg=-10.0, points=((250.0, 100.0),)),),
+        screen_voltage_v=250.0,
+        screen_curves=(
+            CurveData(vg=-10.0, points=((200.0, 11.0), (300.0, 12.5))),
+            CurveData(vg=-15.0, points=((300.0, 5.0),)),
+        ),
+    )
+    vgs, vas, ig2s = ds.flatten_screen()
+    assert vgs == (-10.0, -10.0, -15.0)
+    assert vas == (200.0, 300.0, 300.0)
+    assert ig2s == (11.0, 12.5, 5.0)
+
+
+def test_iv_dataset_flatten_screen_empty_when_no_screen_curves() -> None:
+    ds = _make_pentode_dataset()
+    vgs, vas, ig2s = ds.flatten_screen()
+    assert vgs == ()
+    assert vas == ()
+    assert ig2s == ()
+
+
 def test_iv_dataset_flatten_pentode() -> None:
     ds = _make_pentode_dataset()
     vgs, vas, ias = ds.flatten()
