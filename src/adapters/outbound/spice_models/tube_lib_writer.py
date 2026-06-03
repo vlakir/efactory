@@ -91,9 +91,10 @@ def _validate_params_match_header(
     params: TubeParamsForWriter,
     header_tube_type: HeaderTubeType,
 ) -> None:
-    if isinstance(
-        params, KorenTriodeParams | KorenModifiedCutoffTriodeParams
-    ) and header_tube_type != 'triode':
+    if (
+        isinstance(params, KorenTriodeParams | KorenModifiedCutoffTriodeParams)
+        and header_tube_type != 'triode'
+    ):
         msg = (
             f'{type(params).__name__} requires header_tube_type=triode, '
             f"got '{header_tube_type}'"
@@ -176,7 +177,8 @@ def _render_modified_cutoff_triode(
     *,
     meta: TubeLibMeta,
 ) -> str:
-    """T182: triode + sigmoid cutoff modifier.
+    """
+    T182: triode + sigmoid cutoff modifier.
 
     `vct` всегда None (use case форсирует — A-W1). `vc_off` отрицателен;
     в ngspice-syntax `(V(G,K) - VC_OFF)` корректно для negative VC_OFF
@@ -185,7 +187,6 @@ def _render_modified_cutoff_triode(
     числу включает знак.
     """
     caps = _TRIODE_TYPICAL_CAPS
-    # Sigmoid: 1/(1 + EXP(-(V(G,K) - VC_OFF)/VS_OFF))
     sigmoid_arg = f'(V(G,K)-({p.vc_off:.4f}))/{p.vs_off:.4f}'
     return (
         f'* {meta.display_name} — fitted by `efactory tube fit-from-points` (T182).\n'

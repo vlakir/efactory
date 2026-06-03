@@ -168,7 +168,9 @@ Phase 4 `/tmp/t031-probe/6P13S_iv.json` (Vg2=150V).
   из `frank.pocnet.net/sheets/084/3/300B.pdf`.
 - `fixtures/6p13s_iv.json` — 19 точек, copy из T031 Phase 4
   `/tmp/t031-probe/`.
-- `phase-4-acceptance.py` — probe runner (standalone, не unit-test).
+- `scripts/t182_phase4_probe.py` — probe runner (standalone, не unit-test;
+  лежит в `scripts/` per ruff convention для one-off tooling).
+  Запуск: `PYTHONPATH=src uv run python scripts/t182_phase4_probe.py`.
 - `phase-4-results.json` — machine-readable acceptance metrics.
 
 ## 8. Phase 4 closure

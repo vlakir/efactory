@@ -429,7 +429,7 @@ def fit_ayumi_pentode(
     )
 
 
-# ============================== T182: Modified Koren-pentode (knee) ==============================
+# ===== T182: modified-knee pentode =====
 
 
 def _koren_modified_knee_pentode_ia_vec(
@@ -443,8 +443,10 @@ def _koren_modified_knee_pentode_ia_vec(
     screen_v: float,
     vk: float,
 ) -> NDArray[np.float64]:
-    """Vectorized T182 modified-knee Ia (mA). Совпадает с
-    `koren_modified_knee_pentode_ia` поточечно."""
+    """
+    Vectorized T182 modified-knee Ia (mA). Совпадает с
+    `koren_modified_knee_pentode_ia` поточечно.
+    """
     arg = kp * (1.0 / mu + vgs / screen_v)
     arg_clipped = np.clip(arg, SOFTPLUS_DEEP_CUTOFF, SOFTPLUS_LARGE_ARG)
     softplus = np.where(arg > SOFTPLUS_LARGE_ARG, arg, np.log1p(np.exp(arg_clipped)))
@@ -465,7 +467,8 @@ def _koren_modified_knee_pentode_ig2_vec(
     kp: float,
     screen_v: float,
 ) -> NDArray[np.float64]:
-    """Vectorized T182 modified-knee Ig2 (mA).
+    """
+    Vectorized T182 modified-knee Ig2 (mA).
 
     Screen current форма та же, что в Ayumi-canonical (Ig2 = 2·E1^EX/KG2;
     knee modifier на plate-term не распространяется на Ig2). См. T031
@@ -645,7 +648,7 @@ def fit_koren_modified_knee_pentode(
     )
 
 
-# ============================== T182: Modified Koren-triode (cutoff) ==============================
+# ===== T182: modified-cutoff triode =====
 
 
 def _koren_modified_cutoff_triode_ia_vec(
@@ -660,8 +663,10 @@ def _koren_modified_cutoff_triode_ia_vec(
     vs_off: float,
     vct: float = 0.0,
 ) -> NDArray[np.float64]:
-    """Vectorized T182 modified-cutoff triode Ia (mA). Совпадает с
-    `koren_modified_cutoff_triode_ia` поточечно."""
+    """
+    Vectorized T182 modified-cutoff triode Ia (mA). Совпадает с
+    `koren_modified_cutoff_triode_ia` поточечно.
+    """
     plate_norm = np.sqrt(kvb + vas * vas)
     arg = kp * (1.0 / mu + (vgs + vct) / plate_norm)
     arg_clipped = np.clip(arg, SOFTPLUS_DEEP_CUTOFF, SOFTPLUS_LARGE_ARG)

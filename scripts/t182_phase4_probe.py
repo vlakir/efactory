@@ -3,9 +3,9 @@
 Не unit-test: standalone runner, генерирующий JSON metrics для
 ручного code review + markdown summary. Запуск:
 
-    uv run python specs/T182-koren-modified-knee/phase-4-acceptance.py
+    PYTHONPATH=src uv run python scripts/t182_phase4_probe.py
 
-Артефакт: `phase-4-results.json` рядом со скриптом.
+Артефакт: `specs/T182-koren-modified-knee/phase-4-results.json`.
 """
 
 from __future__ import annotations
@@ -33,7 +33,13 @@ from domain.tube_fitting import (
     koren_triode_ia,
 )
 
-_FIXTURES = Path(__file__).parent / 'fixtures'
+_FIXTURES = (
+    Path(__file__).parent.parent / 'specs' / 'T182-koren-modified-knee' / 'fixtures'
+)
+_RESULTS = (
+    Path(__file__).parent.parent
+    / 'specs' / 'T182-koren-modified-knee' / 'phase-4-results.json'
+)
 
 
 def _load(filename: str) -> IVDataset:
@@ -254,9 +260,8 @@ def main() -> None:
     print(f'  EX ∈ [1.0, 2.0]:    {sc6["sc6_check"]["ex_in_physical_range"]}\n')
     out['6p13s'] = sc6
 
-    out_path = Path(__file__).parent / 'phase-4-results.json'
-    out_path.write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding='utf-8')
-    print(f'Results written to: {out_path}')
+    _RESULTS.write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding='utf-8')
+    print(f'Results written to: {_RESULTS}')
 
 
 if __name__ == '__main__':

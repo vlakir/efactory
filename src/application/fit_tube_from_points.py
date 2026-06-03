@@ -192,23 +192,21 @@ def _validate_request_against_dataset(
         )
         raise FitTubeUseCaseError(msg)
     # T182: variant ↔ tube_type compatibility (A-W5).
-    if request.formula_variant == 'koren-modified-knee' and request.tube_type != 'pentode':
+    variant = request.formula_variant
+    if variant == 'koren-modified-knee' and request.tube_type != 'pentode':
         msg = (
             '--formula-variant koren-modified-knee requires --type pentode '
             f'(got --type {request.tube_type})'
         )
         raise FitTubeUseCaseError(msg)
-    if request.formula_variant == 'koren-modified-cutoff' and request.tube_type != 'triode':
+    if variant == 'koren-modified-cutoff' and request.tube_type != 'triode':
         msg = (
             '--formula-variant koren-modified-cutoff requires --type triode '
             f'(got --type {request.tube_type})'
         )
         raise FitTubeUseCaseError(msg)
     # T182 A-W1: vct и vc_off semantically overlap → mutually exclusive.
-    if (
-        request.formula_variant == 'koren-modified-cutoff'
-        and request.include_vct
-    ):
+    if request.formula_variant == 'koren-modified-cutoff' and request.include_vct:
         msg = (
             '--include-vct mutually exclusive with --formula-variant '
             'koren-modified-cutoff (both model cathode-side cutoff edge — '
@@ -267,20 +265,20 @@ def _fit_pentode(
     if request.formula_variant == 'koren-modified-knee':
         # T182 modified-knee: 7-param fit.
         n_starts = max(request.n_starts, 8)
-        fr = fit_koren_modified_knee_pentode(
+        fr_mod = fit_koren_modified_knee_pentode(
             ds, n_starts=n_starts, seed=request.seed, seed_from=None
         )
-        if not isinstance(fr.params, KorenModifiedKneePentodeParams):
+        if not isinstance(fr_mod.params, KorenModifiedKneePentodeParams):
             msg = 'fit_koren_modified_knee_pentode did not return expected params'
             raise FitTubeUseCaseError(msg)
-        used_joint = bool(ds.screen_curves)
-        if used_joint:
-            return fr.params, fr, True, False
-        fixed = fr.params.model_copy(
-            update={'kg2': request.kg2_ratio * fr.params.kg1}
+        used_joint_mod = bool(ds.screen_curves)
+        if used_joint_mod:
+            return fr_mod.params, fr_mod, True, False
+        fixed_mod = fr_mod.params.model_copy(
+            update={'kg2': request.kg2_ratio * fr_mod.params.kg1}
         )
-        fr_fixed = fr.model_copy(update={'params': fixed})
-        return fixed, fr_fixed, False, True
+        fr_mod_fixed = fr_mod.model_copy(update={'params': fixed_mod})
+        return fixed_mod, fr_mod_fixed, False, True
 
     pentode_seed = seed_from if isinstance(seed_from, AyumiPentodeParams) else None
     fr = fit_ayumi_pentode(

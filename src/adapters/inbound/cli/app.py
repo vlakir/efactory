@@ -3764,7 +3764,7 @@ def build_app(
             ),
         ] = 'koren-canonical',
     ) -> None:
-        """T031/T182: fit Koren triode / Ayumi pentode params → `.lib` в user overlay."""
+        """T031/T182: fit Koren triode / Ayumi pentode → `.lib` в user overlay."""
         if tube_type not in ('triode', 'pentode'):
             typer.echo(
                 f"--type must be 'triode' or 'pentode', got '{tube_type}'",
@@ -3789,7 +3789,7 @@ def build_app(
             'koren-modified-cutoff',
         ):
             typer.echo(
-                f"--formula-variant must be one of: koren-canonical, "
+                f'--formula-variant must be one of: koren-canonical, '
                 f"koren-modified-knee, koren-modified-cutoff (got '{formula_variant}')",
                 err=True,
             )

@@ -81,8 +81,10 @@ class TubeLibWriter(Protocol):
         * `spice_name` валидируется по `[A-Z0-9][A-Z0-9_]+`.
         * `header_tube_type` должен соответствовать runtime типу
           `params`:
-          - `KorenTriodeParams` / `KorenModifiedCutoffTriodeParams` → `triode`;
-          - `AyumiPentodeParams` / `KorenModifiedKneePentodeParams` → `pentode`/`tetrode`.
+          - `KorenTriodeParams` / `KorenModifiedCutoffTriodeParams`
+            → `triode`;
+          - `AyumiPentodeParams` / `KorenModifiedKneePentodeParams`
+            → `pentode`/`tetrode`.
         * existing файл при `force=False` → исключение
           (`TubeLibWriteError` или совместимое).
         * T182: для modified-knee и modified-cutoff variants `.lib`
