@@ -943,24 +943,22 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   Acceptance: даташит лампы (например, 6Ж38П, не покрытой Ayumi) →
   .LIB-модель + smoke-симуляция типового включения сходится в пределах
   допуска со снятыми с даташита точками.
-- **T032** — [2026-05-15, mostly-superseded 2026-06-03 by T025;
-  narrow scope remains] Render-часть (SVG/PNG через `kicad-cli sch
-  export svg` + `rsvg-convert`) реализована в T025 (`adapters/outbound/
-  kicad_cli/schematic_renderer.py`), auto-show после `/sim-run` и
-  `/project-create` работает. LLM-vision как отдельный pipeline тоже
-  потерял смысл — Claude Code как frontend (ADR 2026-05-19) видит
-  картинку в чате напрямую.
-  Остаётся **узкая часть**: формальная slash-команда `/schematic-review
-  <project>` для воспроизводимого vision-комментария (regression
-  baseline + structured отчёт «severity/category/anchor»). Если не
-  потребуется отдельной командой — закрываем при ревью Фазы 3 как
-  fully superseded.
-  Acceptance (если оставляем): `/schematic-review` возвращает
-  markdown-отчёт с findings и якорями на компоненты/wires; повторный
-  запуск на той же схеме даёт стабильный набор категорий (без
-  random-фантомов).
-  **Снятие блокировки:** T106 Phase 3 и T107 Phase 1 больше не
-  зависят от T032 — SVG-render уже есть.
+<!-- T032 (Рендер схемы в SVG + LLM-vision проверка) — removed
+     2026-06-03 as fully superseded:
+     - Render-часть (SVG/PNG через `kicad-cli sch export svg` +
+       `rsvg-convert`) реализована в T025 (`adapters/outbound/
+       kicad_cli/schematic_renderer.py`); auto-show после `/sim-run`
+       и `/project-create` работает.
+     - LLM-vision как отдельный pipeline потерял смысл — Claude Code
+       как frontend (ADR 2026-05-19) видит картинку в чате напрямую,
+       ad-hoc visual review работает out-of-box.
+     - Узкая ниша `/schematic-review` (regression baseline + structured
+       отчёт) имеет смысл только под CI visual-regression, которой нет
+       и в обозримых планах не предвидится. Если потребуется — заведём
+       новой задачей под конкретный triggering use case.
+     - Снятие блокировки: T106 Phase 3 и T107 Phase 1 больше не
+       зависят от T032 (см. их обновлённые формулировки). -->
+
 - **T107 Phase 1 (deferred)** — datasheet-accurate symbol drawing для
   советских ламп. Phase 0 (закрыт 2026-05-19, PR #46) реализован
   через copy-rename базовых EL84/ECC81 форм (visually одинаковы,
