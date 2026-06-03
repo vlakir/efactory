@@ -260,6 +260,41 @@ class TestRenderContext:
         )
         assert 'no sim results' in text.lower() or 'sim-results' in text.lower()
 
+    def test_pending_staged_warning_when_present(self, workspace: Path) -> None:
+        """T026: SessionStart hook отмечает pending .kicad_sch.staged."""
+        project = workspace / 'pending-proj'
+        project.mkdir()
+        (project / 'se_amp.kicad_sch').touch()
+        (project / 'se_amp.kicad_sch.staged').write_text('x', encoding='utf-8')
+        text = hook.render_context(
+            project_root=project, cwd=project, workspace_root=workspace
+        )
+        assert 'Pending staged' in text or 'pending staged' in text.lower()
+        assert 'se_amp.kicad_sch.staged' in text
+        assert '/schematic-apply' in text
+
+    def test_pending_staged_absent_when_clean(self, workspace: Path) -> None:
+        project = workspace / 'clean-proj'
+        project.mkdir()
+        (project / 'se_amp.kicad_sch').touch()
+        text = hook.render_context(
+            project_root=project, cwd=project, workspace_root=workspace
+        )
+        assert 'pending staged' not in text.lower()
+
+    def test_pending_staged_multi_sheet(self, workspace: Path) -> None:
+        project = workspace / 'multi-proj'
+        sub = project / 'subsheets'
+        sub.mkdir(parents=True)
+        (project / 'root.kicad_sch.staged').write_text('x', encoding='utf-8')
+        (sub / 'amp.kicad_sch.staged').write_text('x', encoding='utf-8')
+        text = hook.render_context(
+            project_root=project, cwd=project, workspace_root=workspace
+        )
+        assert '**2**' in text  # count
+        assert 'root.kicad_sch.staged' in text
+        assert 'subsheets/amp.kicad_sch.staged' in text
+
 
 class TestMain:
     def test_emits_valid_session_start_json(
