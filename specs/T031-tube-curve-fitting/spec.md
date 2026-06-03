@@ -1,6 +1,6 @@
 # Spec: Tube-curve-fitting — Koren/Ayumi-параметры из даташитов через Claude vision
 
-**Статус:** Analyzed
+**Статус:** Approved
 **Дата создания:** 2026-06-03
 **Связанные документы:**
 - `data/models/tubes/README.md` — формат built-in моделей (T006).
@@ -162,10 +162,11 @@ overlay — built-in остаётся нетронутым.
 - **Для 6Ж38П** — облегчённый smoke: `.op`-симуляция типичной
   bias-точки, сравнение Ia с одной-двумя datasheet-точками без
   полного RF-каскада (RF-схема для одной задачи overkill).
-- **Для 6П13С** — полный SE-amp по образцу существующих T027 templates
-  (например, `audio-pent-se-amp`): Vb ≈ 250 V, cathode resistor bias,
-  резистивная нагрузка 5-10 kΩ. Smoke = `.op` + проверка анодного
-  тока и операционной точки.
+- **Для 6П13С** — SE-amp на основе существующего `data/templates/
+  se-amp/` (A-N3): копируем template, в `.kicad_sch` подменяем
+  `.SUBCKT 6P14P` на `6P13S` (без OPT-трансформатора, **резистивная
+  нагрузка 5-10 kΩ** на анод, A-W3). Smoke = `.op` + проверка
+  анодного тока и операционной точки.
 - Допуски — §4 Success Criteria.
 - Механизм запуска — переиспользуем существующие `efactory bridge
   sim-run op` (T145) + `efactory sim-results` (T142), нового CLI на
@@ -177,18 +178,24 @@ overlay — built-in остаётся нетронутым.
    (Va: 0..400 V, 7-10 точек на curve; Vg: -0.5..-4 V, 5 curves) →
    fitter → параметры с относительной ошибкой по MU ≤5%,
    KG1/KP/KVB ≤5%, EX ≤2% (это абсолютный показатель).
-2. **Acceptance на двух лампах (S1, Clarify C3 вариант c).**
+2. **Acceptance на двух лампах (S1, Clarify C3 вариант c).** На
+   3-5 control-точках на лампу `(Vg_i, Va_i, Ia_datasheet_i)`,
+   равномерно распределённых по curve range (low/mid/high-Vg
+   корнеры), проверяется:
+   ```
+   |Ia_model(Vg_i, Va_i) − Ia_datasheet_i| / Ia_datasheet_i ≤ 0.15
+   ```
+   Прямая оценка от Vg, Va к Ia, без inverse Va(Ia) — см. A-W2.
    - **6Ж38П (RF pentode):** vision-extract → fit → `.lib` + `.op`
-     smoke в типичной bias-точке → сравнение Ia с datasheet'ом на
-     одной-двух control-точках. Допуск ±15% по Ia.
+     smoke в типичной bias-точке.
    - **6П13С (audio output pentode):** vision-extract → fit →
-     `.lib` + SE-amp smoke (Vb ≈ 250 V, Rk bias, Rload 5-10 kΩ) →
-     сравнение Ia (op-point) и Va с datasheet'ом. Допуск ±15% по Ia,
-     ±10% по Va при заданном Ia.
-   - Контроль на **3-5 control-точках** на лампу — равномерно
-     распределённых по всему curve range (low-Vg + mid + high-Vg
-     корнеры). Не на всех извлечённых точках, чтобы избежать
-     overfitting-bias оценки.
+     `.lib` + SE-amp smoke (Vb ≈ 250 V, Rk cathode bias, **Rload
+     резистивный 5-10 kΩ** — A-W3; OPT не подключаем). Сравнение
+     Ia op-point с datasheet'ом.
+   - Control-точки отбираются из набора **не** использованного для
+     fit'а (чтобы не оценивать overfitting своими же точками).
+     Если vision извлёк только N точек целиком — control = ½ из них
+     held-out.
 3. **CLI deterministic test.** Готовый JSON c точками → команда
    возвращает exit 0, `.lib` в указанном пути, stdout содержит
    summary параметров и RMS residual.
@@ -497,14 +504,18 @@ Analyze-проходе, см. ниже.)
   Вариант (b) предпочтителен — никаких подпроцессов, тесты
   миллисекундные.
 
-### Phase 1 entry gate (после Analyze)
+### Phase 1 entry gate (после Analyze) — закрыто 2026-06-03
 
-Перед началом implement-ов фиксируем эти решения:
+Approved Vladimir:
 
-- A-C1, A-C2 — обязательны в коде.
+- A-C1, A-C2 — обязательны в коде Phase 1.
 - A-W1 — CLI argparse валидирует.
-- A-W2 — переформулировать §4 Success Criterion #2 (только Ia при
-  заданных Vg, Va). Согласовать с Vladimir.
-- A-W3 — резистивная нагрузка, без OPT.
-- A-W5, A-W6 — экспериментально валидируются в Phase 0; результат
-  определяет, нужны ли поправки спеки.
+- A-W2 — Success Criterion #2 переформулирован (только Ia при
+  заданных Vg, Va, без inverse Va(Ia)). ✓ Принято.
+- A-W3 — SE-amp 6П13С на резистивной нагрузке 5-10 kΩ, без OPT.
+  ✓ Принято.
+- A-W5, A-W6 — гипотезы валидируются в Phase 0; результат вшивается
+  в `phase-0-probe.md` и при необходимости триггерит правку спеки.
+  ✓ Принято.
+
+Спека `Approved`. Следующая сессия начинается с Phase 0 (probe).
