@@ -1,0 +1,190 @@
+"""
+Filesystem implementation of `TubeLibWriter` для T031 use case.
+
+Формат — близко к built-in `data/models/tubes/*.lib`:
+
+* header (multiline comment) с metadata: source datasheet, date,
+  RMS residual, display name;
+* `tube_type:` line — необходима для `FilesystemSpiceModelLibrary`
+  (T006/T007) tube-type detection;
+* `.SUBCKT NAME P G K` (triode) или `P G2 G K` (pentode/tetrode);
+* E1/G1/G2/C/RGI — Koren-канонический ngspice-syntax (`sgn(x)*pwr(
+  abs(x),y)`, без HSPICE `pwr()`), без `^` (с `**`).
+
+Capacitances и tube-shape (envelope) — typical defaults; в production
+адаптируются под конкретный datasheet (out of scope T031, см. spec
+§7 Out of Scope).
+"""
+
+from __future__ import annotations
+
+import re
+from typing import TYPE_CHECKING
+
+from domain.tube_fitting import AyumiPentodeParams, KorenTriodeParams
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ports.outbound.tube_lib_writer import HeaderTubeType, TubeLibMeta
+
+_SPICE_NAME_RE = re.compile(r'^[A-Z0-9][A-Z0-9_]+$')
+
+
+class TubeLibWriteError(RuntimeError):
+    """Запись .lib файла невозможна (existing файл без --force и т.п.)."""
+
+
+# Typical capacitance defaults (pF) per tube class. См. § Out of Scope:
+# точные значения требуют per-tube datasheet extraction.
+_TRIODE_TYPICAL_CAPS = {'cgk': 2.0, 'cgp': 2.0, 'cpk': 1.0}
+_PENTODE_TYPICAL_CAPS = {'cgk': 10.0, 'cgp': 1.0, 'cpk': 10.0}
+
+
+class FilesystemTubeLibWriter:
+    """`TubeLibWriter` implementation: пишет .lib на локальный диск."""
+
+    def write(
+        self,
+        path: Path,
+        spice_name: str,
+        params: KorenTriodeParams | AyumiPentodeParams,
+        *,
+        header_tube_type: HeaderTubeType,
+        meta: TubeLibMeta,
+        force: bool = False,
+    ) -> None:
+        _validate_spice_name(spice_name)
+        _validate_params_match_header(params, header_tube_type)
+        if path.exists() and not force:
+            msg = f'.lib file already exists: {path} (use force=True to overwrite)'
+            raise TubeLibWriteError(msg)
+
+        content = _render_lib(
+            spice_name, params, header_tube_type=header_tube_type, meta=meta
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + '.tmp')
+        tmp.write_text(content, encoding='utf-8')
+        tmp.replace(path)
+
+
+def _validate_spice_name(spice_name: str) -> None:
+    if not _SPICE_NAME_RE.match(spice_name):
+        msg = (
+            f'spice_name must match {_SPICE_NAME_RE.pattern} '
+            f"(uppercase letters/digits/underscore, ≥2 chars), got '{spice_name}'"
+        )
+        raise ValueError(msg)
+
+
+def _validate_params_match_header(
+    params: KorenTriodeParams | AyumiPentodeParams,
+    header_tube_type: HeaderTubeType,
+) -> None:
+    if isinstance(params, KorenTriodeParams) and header_tube_type != 'triode':
+        msg = (
+            f"KorenTriodeParams requires header_tube_type='triode', "
+            f"got '{header_tube_type}'"
+        )
+        raise TypeError(msg)
+    if isinstance(params, AyumiPentodeParams) and header_tube_type not in (
+        'pentode',
+        'tetrode',
+    ):
+        msg = (
+            f'AyumiPentodeParams requires header_tube_type in '
+            f"('pentode', 'tetrode'), got '{header_tube_type}'"
+        )
+        raise TypeError(msg)
+
+
+def _render_lib(
+    spice_name: str,
+    params: KorenTriodeParams | AyumiPentodeParams,
+    *,
+    header_tube_type: HeaderTubeType,
+    meta: TubeLibMeta,
+) -> str:
+    if isinstance(params, KorenTriodeParams):
+        return _render_triode(spice_name, params, meta=meta)
+    return _render_pentode(
+        spice_name, params, header_tube_type=header_tube_type, meta=meta
+    )
+
+
+def _render_triode(
+    spice_name: str,
+    p: KorenTriodeParams,
+    *,
+    meta: TubeLibMeta,
+) -> str:
+    vct = p.vct if p.vct is not None else 0.0
+    vct_line = f' VCT={vct:.4f}' if p.vct is not None else ''
+    vg_term = f'V(G,K)+{vct:.4f}' if p.vct is not None else 'V(G,K)'
+    caps = _TRIODE_TYPICAL_CAPS
+
+    return (
+        f'* {meta.display_name} — fitted by `efactory tube fit-from-points` (T031).\n'
+        f'*\n'
+        f'* Source: {meta.source}\n'
+        f'* IV points extracted: {meta.date_extracted.isoformat()}\n'
+        f'* Fitted:              {meta.date_fitted.isoformat()}\n'
+        f'* RMS residual: {meta.rms_residual_ma:.3f} mA over {meta.n_points} points\n'
+        f'*\n'
+        f'* tube_type: triode\n'
+        f'* Pins: P (plate), G (grid), K (cathode).\n'
+        f'.SUBCKT {spice_name} P G K\n'
+        f'* Koren parameters: MU={p.mu:.4f} EX={p.ex:.4f} '
+        f'KG1={p.kg1:.4f} KP={p.kp:.4f} KVB={p.kvb:.4f}{vct_line}\n'
+        f'E1 7 0 VALUE={{V(P,K)/{p.kp:.4f}*LN(1+EXP({p.kp:.4f}*'
+        f'(1/{p.mu:.4f}+({vg_term})/SQRT({p.kvb:.4f}+V(P,K)*V(P,K)))))}}\n'
+        f'G1 P K VALUE={{(sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f})'
+        f'+sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f}))/{p.kg1:.4f}}}\n'
+        f'* Inter-electrode capacitances — typical small-signal triode defaults\n'
+        f'* (см. spec T031 §7 Out of Scope: per-tube extraction).\n'
+        f'C1 G K {caps["cgk"]:.1f}p\n'
+        f'C2 G P {caps["cgp"]:.1f}p\n'
+        f'C3 P K {caps["cpk"]:.1f}p\n'
+        f'RGI G K 1MEG\n'
+        f'.ENDS {spice_name}\n'
+    )
+
+
+def _render_pentode(
+    spice_name: str,
+    p: AyumiPentodeParams,
+    *,
+    header_tube_type: HeaderTubeType,
+    meta: TubeLibMeta,
+) -> str:
+    caps = _PENTODE_TYPICAL_CAPS
+    return (
+        f'* {meta.display_name} — fitted by `efactory tube fit-from-points` (T031).\n'
+        f'*\n'
+        f'* Source: {meta.source}\n'
+        f'* IV points extracted: {meta.date_extracted.isoformat()}\n'
+        f'* Fitted:              {meta.date_fitted.isoformat()}\n'
+        f'* RMS residual: {meta.rms_residual_ma:.3f} mA over {meta.n_points} points\n'
+        f'*\n'
+        f'* tube_type: {header_tube_type}\n'
+        f'* Pins: P (plate), G2 (screen), G (grid 1), K (cathode).\n'
+        f'.SUBCKT {spice_name} P G2 G K\n'
+        f'* Koren-pentode parameters (calibrated on Ayumi baseline):\n'
+        f'* MU={p.mu:.4f} EX={p.ex:.4f} KG1={p.kg1:.4f} KG2={p.kg2:.4f} '
+        f'KP={p.kp:.4f} KVB={p.kvb:.4f}\n'
+        f'E1 7 0 VALUE={{V(G2,K)/{p.kp:.4f}*LN(1+EXP({p.kp:.4f}*'
+        f'(1/{p.mu:.4f}+V(G,K)/V(G2,K))))}}\n'
+        f'G1 P K VALUE={{(sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f})'
+        f'+sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f}))/{p.kg1:.4f} '
+        f'* ATAN(V(P,K)/{p.kvb:.4f})}}\n'
+        f'G2 G2 K VALUE={{(sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f})'
+        f'+sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f}))/{p.kg2:.4f}}}\n'
+        f'* Inter-electrode capacitances — typical pentode defaults\n'
+        f'* (см. spec T031 §7 Out of Scope: per-tube extraction).\n'
+        f'C1 G K {caps["cgk"]:.1f}p\n'
+        f'C2 G P {caps["cgp"]:.1f}p\n'
+        f'C3 P K {caps["cpk"]:.1f}p\n'
+        f'RGI G K 1MEG\n'
+        f'.ENDS {spice_name}\n'
+    )

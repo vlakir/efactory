@@ -80,6 +80,12 @@ from application.errors import (
     IndexPersistenceError,
     ProjectManifestMissingError,
 )
+from application.fit_tube_from_points import (
+    FitTubeFromPointsRequest,
+    FitTubeFromPointsResult,
+    FitTubeUseCaseError,
+    fit_tube_from_points,
+)
 from application.get_decision import get_decision as get_decision_use_case
 from application.get_project import (
     ProjectNotFoundError,
@@ -196,6 +202,8 @@ if TYPE_CHECKING:
         LockDetector,
         PendingStagedScanner,
     )
+    from ports.outbound.tube_iv_repository import TubeIVRepository
+    from ports.outbound.tube_lib_writer import TubeLibWriter
 
 
 # Per-metric Y-field default для --plot (sweep): какую колонку
@@ -434,6 +442,8 @@ def build_app(
     sim_results_repo: SimResultsRepository,
     lock_detector: LockDetector,
     staged_scanner: PendingStagedScanner,
+    tube_iv_repository: TubeIVRepository,
+    tube_lib_writer: TubeLibWriter,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -1064,7 +1074,7 @@ def build_app(
         name: str,
         category: ComponentCategory,
         empty_message: str,
-    ) -> None:
+    ) -> typer.Typer:
         sub = typer.Typer(no_args_is_help=True, add_completion=False)
         app.add_typer(sub, name=name)
 
@@ -1163,7 +1173,9 @@ def build_app(
             typer.echo('')
             typer.echo(subckt)
 
-    _register_model_subapp(
+        return sub
+
+    tube_app = _register_model_subapp(
         'tube',
         ComponentCategory.TUBE,
         'No tube models found.',
@@ -3611,7 +3623,134 @@ def build_app(
         if outcome.skipped:
             raise typer.Exit(code=1)
 
+    # T031: `efactory tube fit-from-points` — fit Koren triode / Ayumi
+    # pentode params из JSON IV-точек, пишет `.lib` в user overlay.
+    # tube_app — это existing sub-app (T006: list/show), reuse'им.
+
+    @tube_app.command('fit-from-points')
+    def tube_fit_from_points(
+        spice_name: Annotated[
+            str,
+            typer.Argument(help='SPICE id для .SUBCKT (e.g., 6ZH38P).'),
+        ],
+        tube_type: Annotated[
+            str,
+            typer.Option(
+                '--type',
+                help='Тип лампы для fit (`triode` или `pentode`).',
+            ),
+        ],
+        points: Annotated[
+            Path,
+            typer.Option(
+                '--points',
+                help='Path к JSON с IVDataset.',
+            ),
+        ],
+        *,
+        out: Annotated[
+            Path | None,
+            typer.Option(
+                '--out',
+                help='Куда положить .lib (default: $XDG_DATA_HOME/efactory'
+                '/models/tubes/custom/).',
+            ),
+        ] = None,
+        include_vct: Annotated[
+            bool,
+            typer.Option(
+                '--include-vct',
+                help='Fit Vct (cathode contact potential) — только для triode.',
+            ),
+        ] = False,
+        header_type: Annotated[
+            str,
+            typer.Option(
+                '--header-type',
+                help='tube_type header в .lib (pentode | tetrode); для triode '
+                'игнорируется.',
+            ),
+        ] = 'pentode',
+        seed_from: Annotated[
+            Path | None,
+            typer.Option(
+                '--seed-from',
+                help='JSON с params существующей лампы — multi-start hint (S3).',
+            ),
+        ] = None,
+        kg2_ratio: Annotated[
+            float,
+            typer.Option(
+                '--kg2-ratio',
+                help='Typical KG2/KG1 ratio fallback при отсутствии '
+                'screen_curves в JSON (default 5.0).',
+            ),
+        ] = 5.0,
+        force: Annotated[
+            bool,
+            typer.Option('--force', help='Перезаписать existing .lib.'),
+        ] = False,
+    ) -> None:
+        """T031: fit Koren triode / Ayumi pentode params → `.lib` в user overlay."""
+        if tube_type not in ('triode', 'pentode'):
+            typer.echo(
+                f"--type must be 'triode' or 'pentode', got '{tube_type}'",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if header_type not in ('pentode', 'tetrode'):
+            typer.echo(
+                f"--header-type must be 'pentode' or 'tetrode', got '{header_type}'",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if include_vct and tube_type != 'triode':
+            typer.echo(
+                '--include-vct valid only with --type triode',
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if out is None:
+            out = projects_root.parent / 'models' / 'tubes' / 'custom'
+        request = FitTubeFromPointsRequest(
+            spice_name=spice_name,
+            tube_type=tube_type,  # type: ignore[arg-type]
+            points_json=points,
+            out_dir=out,
+            include_vct=include_vct,
+            header_type=header_type,  # type: ignore[arg-type]
+            seed_from=seed_from,
+            kg2_ratio=kg2_ratio,
+            force=force,
+        )
+        try:
+            result = fit_tube_from_points(
+                request,
+                iv_repository=tube_iv_repository,
+                lib_writer=tube_lib_writer,
+            )
+        except FitTubeUseCaseError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        _emit_tube_fit_summary(result)
+
     return app
+
+
+def _emit_tube_fit_summary(
+    result: FitTubeFromPointsResult,
+) -> None:
+    """T031 CLI stdout summary (SC#3)."""
+    fr = result.fit_result
+    p = fr.params
+    typer.echo(f'lib: {result.lib_path}')
+    typer.echo(f'fit: n_points={fr.n_points} rms={fr.rms_residual_ma:.3f} mA')
+    typer.echo(f'starts: tried={fr.n_starts_tried} best={fr.best_start_index}')
+    if result.used_joint_ig2_fit:
+        typer.echo('mode: joint Ia+Ig2 (KG2 identifiable)')
+    if result.kg2_was_overridden:
+        typer.echo(f'kg2: overridden = ratio * kg1 = {p.kg2:.2f}')  # type: ignore[union-attr]
+    typer.echo(f'params: {p.model_dump()}')
 
 
 def _emit_apply_staged_outcome(outcome: ApplyStagedOutcome) -> None:
