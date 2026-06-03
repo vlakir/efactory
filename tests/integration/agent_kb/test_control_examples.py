@@ -261,6 +261,34 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'tubes.curve-fitting',
         'typical ratio',
     ),
+    # T031 Phase 5 — L2 regression: routing «RF preamp 6Ж38П / IF amp
+    # sharp-cutoff» → /project-create + template 6zh38p-if-amp.
+    (
+        'RF preamp 6Ж38П IF amplifier sharp-cutoff pentode 6BH6',
+        'agent.command-routing',
+        '6zh38p-if-amp',
+    ),
+    # T031 Phase 5 — L2 regression: routing «SE amp 6П13С без OPT» →
+    # /project-create + template 6p13s-se-resistive.
+    (
+        'SE amp 6П13С output без OPT резистивная нагрузка beam tetrode',
+        'agent.command-routing',
+        '6p13s-se-resistive',
+    ),
+    # T031 Phase 5 — L2 regression: KB topic spice.tube-rf-amp-6zh38p
+    # содержит ключевые директивы про default op-point + topology.
+    (
+        '6zh38p class A resistance-coupled preamp Vbb plate cathode bias',
+        'spice.tube-rf-amp-6zh38p',
+        'resistance-coupled',
+    ),
+    # T031 Phase 5 — L2 regression: KB topic spice.tube-se-resistive-6p13s
+    # содержит ключевые директивы про A-W3 pattern + T173 refined bias.
+    (
+        '6p13s SE resistive load A-W3 Rk 470 cathode bias screen dissipation',
+        'spice.tube-se-resistive-6p13s',
+        'a-w3',
+    ),
 ]
 
 
