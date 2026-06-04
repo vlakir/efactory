@@ -25,6 +25,201 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-04 — T182 ADR-T182d: CLI cleanup — auto-default per tube_type + Reefman/Derk drop из surface
+
+- **Контекст.** После T182+T183+T184+T186 в CLI surface оказались
+  5 formula variants + `--relative-weights` toggle. Внутренний агент
+  (`efactory:linux` container) без guidance default'ом получал
+  `koren-canonical` — наименее точный fit на real datasheet'ы
+  (Phase 4 EL34 knee mean 286%). KB topic про variant choice не было,
+  агент не знал когда выбрать modified-knee/cutoff.
+- **Решение.** Cleanup CLI surface до 3 published variants + auto-default
+  per tube_type. Reefman + Derk + relative-weights — research-only,
+  доступны через Python API но не через CLI / agent slash.
+  - **`--formula-variant auto`** (default) — resolves to:
+    - `pentode` → `koren-modified-knee` (Phase 4 best 36%);
+    - `triode` → `koren-canonical` (T031 baseline; small-signal).
+  - **Explicit override:** `koren-canonical | koren-modified-knee |
+    koren-modified-cutoff`. Power triodes (300B/2A3) — opt-in
+    `koren-modified-cutoff` руками.
+  - **Removed from CLI:** `koren-reefman-pentode`, `koren-derk-pentode`,
+    `--relative-weights`. Domain code остаётся (round-trip tests +
+    `FormulaVariant` Literal сохраняют все 5 значений).
+- **KB sync (T134 Уровень 1+2).**
+  - **Новый KB topic** `tubes.formula-variant-choice` с decision tree:
+    «pentode → auto = modified-knee; triode → auto = canonical;
+    power triode → modified-cutoff opt-in; Reefman/Derk → research-
+    only, не CLI». Phase 4 empirical numbers в TL;DR.
+  - **Cross-reference** в `tubes.curve-fitting` секция «Default
+    --formula-variant auto».
+  - **`agent.command-routing`** обновлён: line 47 для `efactory tube
+    fit-from-points` теперь упоминает auto-default + новый KB topic;
+    добавлен row для «power triode strong cutoff» → modified-cutoff.
+  - **Уровень 2 deterministic regression** — 2 новых case в
+    `tests/integration/agent_kb/test_control_examples.py`:
+    (a) decision-tree query → `tubes.formula-variant-choice`,
+    (b) routing query → `agent.command-routing` + `koren-modified-cutoff`.
+- **Альтернативы.**
+  - **(A) Без cleanup, default canonical как есть.** Отвергнуто:
+    агент молча выдаёт worst-case fit (286% knee на EL34); user
+    workflow «PDF → .lib → simulate» получает заведомо плохую модель.
+  - **(B) Revert T184/T186 целиком.** Отвергнуто: математика и тесты
+    добротные, ngspice OP smoke bit-exact; убирать code значит терять
+    infrastructure-ready baseline для small-signal pentodes (когда
+    появится joint Ia+Ig2 data). Cheaper держать в API без CLI surface.
+  - **(C) Полная revert до T031.** Отвергнуто: modified-knee daet
+    measurable knee improvement на EL34 (286% → 36%), это реальная
+    польза для production fitting.
+- **Последствия.**
+  - Внутренний агент по умолчанию выбирает оптимальный variant per
+    tube_type без user override.
+  - CLI surface clean: 3 published variants вместо 5.
+  - Reefman/Derk остаются в domain layer как «research baseline» с
+    documented empirical evaluation (ADR-T182c).
+  - Backwards-compat поломки: **есть** для CLI users которые vкс
+    pentode тем не указывали `--formula-variant`. Previously default
+    `koren-canonical`, now `koren-modified-knee`. **Built-in `.lib`
+    файлы не затронуты** (они built'нуты canonical до cleanup
+    и остаются на disk unchanged). Trade-off acceptable: новый
+    default физически точнее, breaking change оправдан.
+- **См. также.** `docker/runtime-agent-knowledge-base/
+  tubes.formula-variant-choice.md` (KB topic с decision tree).
+
+### 2026-06-04 — T186 ADR-T182c: Derk pentode (Tier 1.5) empirical finding
+
+- **Контекст.** После T182 implementation Vladimir попросил pилотировать
+  «академическую суперформулу» — Derk pentode из Reefman 2016 paper
+  Sec 4.4 Eq 23-27. Имплементация: новый variant `koren-derk-pentode`
+  с 9 fit params (μ, x, kg1, kg2, kp, kvb, α_s, β, A) + derived
+  constraint α = 1 - (kg1/kg2)(1+α_s).
+- **Решение.** Derk variant **ships** в-scope T186 как infrastructure-
+  ready для small-signal pentodes, но **не promoted** как
+  recommended вариант для general pentode fitting.
+- **Phase 4 EL34 result:** Derk knee mean = 61%, **worse чем
+  modified-knee (36%) и canonical+σ (55%)**. Hypothesis "9-param
+  super-formula закроет gap до <30%" — **collapsed**.
+- **Анализ root cause.**
+  - Reefman Fig 4 показывает Derk excellent fit на **PF86**
+    (small-signal pentode) с **joint Ia+Ig2 data**.
+  - Phase 4 EL34 fixture — vision-extracted, plateau-focused, **Ia
+    only** (no screen-current data).
+  - 9-param fit без Ig2 ill-conditioned → fitter сваливается в
+    local minimum overfit'a noise + ничего значимого для knee.
+  - α-constraint (Eq 27) работает корректно (Ia(Va=0) = 0
+    verified в tests + ngspice OP smoke).
+- **Что подтвердилось.**
+  - Math implementation correct: ngspice OP `i(v3)=-80.15 mA` ↔
+    Python `Ia=80.15 mA` (bit-exact).
+  - Round-trip synthetic data ≤10%/≤5%/≤30% tolerance ✓.
+  - `.lib` emission ngspice-portable с правильным multi-B-source
+    decomposition.
+- **Что не подтвердилось.**
+  - Academic «super-formula» hypothesis — 9 params не помогают если
+    data underconstrained.
+  - Reefman claim «amazingly accurate» применим только в его
+    setup (small-signal + joint Ia+Ig2 + low Va knee data).
+- **Последствия.**
+  - **T186 ships infrastructure**, не recommended default. Vladimir
+    может использовать на small-signal pentodes (EF86/PF86/EC86) с
+    Ig2 data — там должно работать.
+  - **modified-knee (T182)** остаётся recommended для general
+    pentode fitting (best result на EL34 = 36%).
+  - Для **further EL34 closure** нужен либо (а) joint Ia+Ig2 data,
+    либо (б) different Tier 1 formulation (Cohen-Hélie 2009), либо
+    (в) tube-specific weighted-region loss function. См. phase-4 §5
+    future work.
+- **Cite:** Reefman, "Spice models for vacuum tubes using the
+  uTracer" (2016), Sec 4.4 Eq 23-27, Fig 4 (PF86 success demo).
+
+### 2026-06-04 — T182 ADR-T182a: modified Koren (Tier 3+) vs Reefman / Cohen-Hélie / neural
+
+- **Контекст.** Koren-pentode форма `E1^EX/KG1 · atan(Va/KVB)` (T031)
+  даёт systematic knee error до 70-80% Ia на Mullard EL34 (Phase 0
+  §6) и нефизичный fit 6П13С (`KG1=51000, EX=2.67` — формула
+  компенсирует limit числами). Нужно выбрать tube-model formulation
+  для следующего шага точности.
+- **Решение.** Идём по варианту **Tier 3+ (modified Koren)** —
+  добавляем 1-2 параметра к canonical Koren-pentode и Koren-triode
+  для better knee/cutoff fidelity, без перехода на Tier-2 / Tier-1.
+- **Альтернативы (ROI matrix).**
+
+  | Tier | Formula | Params | Knee accuracy class | Fit complexity | .lib portability | Status |
+  |------|---------|--------|---------------------|----------------|------------------|--------|
+  | 3 baseline | **Koren canonical** (T031) | 5-7 | ±70% knee on EL34 | scipy.curve_fit, multi-start 5 | ngspice native | **Current** |
+  | 3+ (this ADR) | **Modified Koren** (T182) | 6-9 | ±30-40% knee | scipy.curve_fit, multi-start 8, σ-weighted | ngspice native (atan + sigmoid + exp) | **Chosen** |
+  | 2 | Reefman 2003 (extended Koren + grid term) | 8-10 | ±15-20% knee (claim) | scipy.curve_fit, нужен careful init | ngspice native | Rejected — bigger refactor; ROI unclear до T182 baseline |
+  | 1 | Cohen-Hélie 2009 (3/2-power backbone + cutoff term) | 12-15 | ±5-10% knee (claim) | scipy + careful bounds, may need adaptive jacobian | ngspice complex (multiple B-sources) | Rejected — too many params for typical 20-40 vision-extracted points; identifiability marginal |
+  | 5 | Neural / Spice surrogate | thousands | trivial по definition | offline training | non-portable (no ngspice native) | Rejected — out of scope для SPICE pipeline |
+
+- **Последствия.**
+  - **+** Минимальный refactor: ~100-200 строк в `_formulas.py`,
+    `_bounds.py`, `_fitter.py`; backwards-compat `koren-canonical`
+    default; opt-in `--formula-variant`.
+  - **+** Pentode knee modifier `(1-exp(-Va/Vk))` zero-preserving,
+    plateau-preserving — round-trip SC#3 tolerance ≤15% Vk.
+  - **+** Triode cutoff modifier sigmoid round-trip SC#3b tolerance
+    ≤20%/≤25%.
+  - **−** Phase 4 acceptance probe показал, что modified-knee modifier
+    *сам по себе* close gap only partially (39% mean knee on EL34
+    vs target 30%). Большая часть улучшения приходит от добавленного
+    σ-weighting (`σ = max(Ia, 1 mA)`) в modified fitter. Strict target
+    closure не достигнут — для full closure нужен Tier 2 (Reefman).
+  - **−** Decision flip на Reefman / Cohen-Hélie — отдельная T-задача,
+    не блокер T182.
+- **См. также:** `specs/T182-koren-modified-knee/spec.md`,
+  `phase-4-acceptance.md` (key finding §2).
+
+### 2026-06-04 — T182 ADR-T182b: формальное определение modified variants
+
+- **Контекст.** T182 вводит два новых FormulaVariant. Нужна
+  однозначная формальная запись math form, parameters, bounds,
+  .lib emission — для совместимости fitter / writer / future re-fits.
+- **Решение.** Two variants formally defined:
+
+  **`koren-modified-knee` (pentode):**
+  ```
+  E1 = (Vg2/KP) · ln(1 + exp(KP · (1/MU + Vg/Vg2)))
+  Ia = (2 · E1^EX / KG1) · atan(Va/KVB) · (1 - exp(-Va/Vk))     при E1>0
+  Ig2 = 2 · E1^EX / KG2                                            (как canonical)
+  ```
+  - Params: MU, EX, KG1, KG2, KP, KVB, screen_v (input), **Vk** (new).
+  - Vk bounds: (5, 500) V; typical 50 V.
+  - .lib emission: `B_KNEE 8 0 V=1-EXP(-V(P,K)/{vk})` + `G1` multiplied
+    by `V(8)`.
+
+  **`koren-modified-cutoff` (triode):**
+  ```
+  E1 = (Va/KP) · ln(1 + exp(KP · (1/MU + (Vg+Vct)/sqrt(KVB+Va²))))
+  Ia_canonical = 2 · E1^EX / KG1
+  Ia = Ia_canonical · sigmoid((Vg - Vc_off) / Vs_off)              при E1>0
+  ```
+  - Params: MU, EX, KG1, KP, KVB, **Vc_off** (new, negative),
+    **Vs_off** (new, positive). `vct` forced None (mutually
+    exclusive — A-W1).
+  - Vc_off bounds: (-200, -0.5) V; Vs_off bounds: (0.5, 30.0) V.
+  - .lib emission: `B_SIG 8 0 V=1/(1+EXP(-((V(G,K)-VC_OFF)/VS_OFF)))`
+    + `G1` multiplied by `V(8)`.
+
+- **Альтернативы (для knee modifier).**
+  - **(a) `(1-exp(-Va/Vk))`** — chosen. C∞-smooth, zero-preserving,
+    plateau-preserving, 1 new param.
+  - **(b) Piecewise sharp / smooth** — rejected: C¹-сшивка усложняет
+    curve_fit jacobian.
+  - **(c) Cohen-Hélie cutoff term** — rejected: пересекается с
+    triode-cutoff модификатором; double-modeling.
+- **Альтернативы (для cutoff modifier).**
+  - **(i) sigmoid((Vg - Vc_off) / Vs_off)** — chosen. 2 params,
+    smooth, transitions to 0/1, ngspice-portable.
+  - **(ii) Cohen-Hélie additive cutoff term** — rejected: смещает
+    mid-region Ia, breaks canonical baseline.
+- **Последствия.**
+  - .lib emission точно соответствует Python forward formulas
+    (SC#5 ngspice OP smoke 2026-06-04 confirmed bit-exact match:
+    pentode mod-knee 112.643 mA, triode mod-cutoff 380.934 mA).
+  - Future re-fit / re-emit pipeline backwards-compatible через
+    explicit `fit variant: koren-modified-{knee|cutoff}` marker в
+    comment header `.lib`.
+
 ### 2026-06-03 — T031 ADR-T031a: свой scipy-fitter, не wrap Заславского
 
 - **Контекст.** Для T031 (Tube-curve-fitting) рассматривали готовый

@@ -18,7 +18,23 @@ from pydantic import BaseModel, ConfigDict
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from domain.tube_fitting import AyumiPentodeParams, KorenTriodeParams
+    from domain.tube_fitting import (
+        AyumiPentodeParams,
+        KorenDerkPentodeParams,
+        KorenModifiedCutoffTriodeParams,
+        KorenModifiedKneePentodeParams,
+        KorenReefmanPentodeParams,
+        KorenTriodeParams,
+    )
+
+    TubeParamsForWriter = (
+        KorenTriodeParams
+        | AyumiPentodeParams
+        | KorenModifiedKneePentodeParams
+        | KorenModifiedCutoffTriodeParams
+        | KorenReefmanPentodeParams
+        | KorenDerkPentodeParams
+    )
 
 HeaderTubeType = Literal['triode', 'pentode', 'tetrode']
 
@@ -55,7 +71,7 @@ class TubeLibWriter(Protocol):
         self,
         path: Path,
         spice_name: str,
-        params: KorenTriodeParams | AyumiPentodeParams,
+        params: TubeParamsForWriter,
         *,
         header_tube_type: HeaderTubeType,
         meta: TubeLibMeta,
@@ -68,9 +84,15 @@ class TubeLibWriter(Protocol):
 
         * `spice_name` валидируется по `[A-Z0-9][A-Z0-9_]+`.
         * `header_tube_type` должен соответствовать runtime типу
-          `params` (KorenTriodeParams → 'triode'; AyumiPentodeParams →
-          'pentode'/'tetrode').
+          `params`:
+          - `KorenTriodeParams` / `KorenModifiedCutoffTriodeParams`
+            → `triode`;
+          - `AyumiPentodeParams` / `KorenModifiedKneePentodeParams`
+            → `pentode`/`tetrode`.
         * existing файл при `force=False` → исключение
           (`TubeLibWriteError` или совместимое).
+        * T182: для modified-knee и modified-cutoff variants `.lib`
+          emit-ится в ngspice-portable syntax (`B`-source с
+          `EXP`/`ATAN`).
         """
         ...

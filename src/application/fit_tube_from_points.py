@@ -26,12 +26,31 @@ from pydantic import BaseModel, ConfigDict
 from domain.tube_fitting import (
     AyumiPentodeParams,
     FitResult,
+    FormulaVariant,
     IVDataset,
+    KorenDerkPentodeParams,
+    KorenModifiedCutoffTriodeParams,
+    KorenModifiedKneePentodeParams,
+    KorenReefmanPentodeParams,
     KorenTriodeParams,
     fit_ayumi_pentode,
+    fit_koren_derk_pentode,
+    fit_koren_modified_cutoff_triode,
+    fit_koren_modified_knee_pentode,
+    fit_koren_reefman_pentode,
     fit_koren_triode,
 )
 from ports.outbound.tube_lib_writer import HeaderTubeType, TubeLibMeta
+
+_FittedTubeParams = (
+    KorenTriodeParams
+    | AyumiPentodeParams
+    | KorenModifiedKneePentodeParams
+    | KorenModifiedCutoffTriodeParams
+    | KorenReefmanPentodeParams
+    | KorenDerkPentodeParams
+)
+"""Union всех supported tube param-VO (T031 canonical + T182 + T184)."""
 
 if TYPE_CHECKING:
     from ports.outbound.tube_iv_repository import TubeIVRepository
@@ -75,6 +94,24 @@ class FitTubeFromPointsRequest(BaseModel):
     force: bool = False
     """`--force` — перезаписать existing .lib."""
 
+    formula_variant: FormulaVariant = 'koren-canonical'
+    """T182: choice of forward formula. См. `FormulaVariant` docstring.
+
+    - `koren-canonical` (default): T031 baseline; backward-compat.
+    - `koren-modified-knee`: pentode-only sharper knee.
+    - `koren-modified-cutoff`: triode-only sharper strong cutoff.
+
+    Mismatch variant ↔ tube_type — use case raises FitTubeUseCaseError
+    (A-W5).
+    """
+
+    relative_weights: bool = False
+    """T183: применить relative-error sigma weighting в canonical
+    fitter (σ = max(Ia, 1 mA)). T182 modified fitter'ы используют
+    эту опцию unconditionally; T031 canonical — opt-in для
+    backwards-compat. Без эффекта при formula_variant != 'koren-canonical'.
+    """
+
     n_starts: int = 5
     seed: int = 42
 
@@ -113,7 +150,7 @@ def fit_tube_from_points(
             request, ds, seed_from
         )
         header_tube_type: HeaderTubeType = 'triode'
-        params_for_write: KorenTriodeParams | AyumiPentodeParams = triode_params
+        params_for_write: _FittedTubeParams = triode_params
     else:
         pentode_params, fr, used_joint, kg2_override = _fit_pentode(
             request, ds, seed_from
@@ -167,6 +204,40 @@ def _validate_request_against_dataset(
             f'(got --type {request.tube_type})'
         )
         raise FitTubeUseCaseError(msg)
+    # T182 / T184: variant ↔ tube_type compatibility (A-W5).
+    variant = request.formula_variant
+    if variant == 'koren-modified-knee' and request.tube_type != 'pentode':
+        msg = (
+            '--formula-variant koren-modified-knee requires --type pentode '
+            f'(got --type {request.tube_type})'
+        )
+        raise FitTubeUseCaseError(msg)
+    if variant == 'koren-modified-cutoff' and request.tube_type != 'triode':
+        msg = (
+            '--formula-variant koren-modified-cutoff requires --type triode '
+            f'(got --type {request.tube_type})'
+        )
+        raise FitTubeUseCaseError(msg)
+    if variant == 'koren-reefman-pentode' and request.tube_type != 'pentode':
+        msg = (
+            '--formula-variant koren-reefman-pentode requires --type pentode '
+            f'(got --type {request.tube_type})'
+        )
+        raise FitTubeUseCaseError(msg)
+    if variant == 'koren-derk-pentode' and request.tube_type != 'pentode':
+        msg = (
+            '--formula-variant koren-derk-pentode requires --type pentode '
+            f'(got --type {request.tube_type})'
+        )
+        raise FitTubeUseCaseError(msg)
+    # T182 A-W1: vct и vc_off semantically overlap → mutually exclusive.
+    if request.formula_variant == 'koren-modified-cutoff' and request.include_vct:
+        msg = (
+            '--include-vct mutually exclusive with --formula-variant '
+            'koren-modified-cutoff (both model cathode-side cutoff edge — '
+            'pick one)'
+        )
+        raise FitTubeUseCaseError(msg)
 
 
 def _load_seed_from(
@@ -184,7 +255,19 @@ def _fit_triode(
     request: FitTubeFromPointsRequest,
     ds: IVDataset,
     seed_from: KorenTriodeParams | AyumiPentodeParams | None,
-) -> tuple[KorenTriodeParams, FitResult, bool, bool]:
+) -> tuple[KorenTriodeParams | KorenModifiedCutoffTriodeParams, FitResult, bool, bool]:
+    if request.formula_variant == 'koren-modified-cutoff':
+        # T182: 7-param fit, bump n_starts default if user не настроил
+        # явно (n_starts=5 — T031 canonical default; bump до 8).
+        n_starts = max(request.n_starts, 8)
+        fr = fit_koren_modified_cutoff_triode(
+            ds, n_starts=n_starts, seed=request.seed, seed_from=None
+        )
+        if not isinstance(fr.params, KorenModifiedCutoffTriodeParams):
+            msg = 'fit_koren_modified_cutoff_triode did not return expected params'
+            raise FitTubeUseCaseError(msg)
+        return fr.params, fr, False, False
+
     triode_seed = seed_from if isinstance(seed_from, KorenTriodeParams) else None
     fr = fit_koren_triode(
         ds,
@@ -192,6 +275,7 @@ def _fit_triode(
         n_starts=request.n_starts,
         seed=request.seed,
         seed_from=triode_seed,
+        relative_weights=request.relative_weights,
     )
     if not isinstance(fr.params, KorenTriodeParams):
         msg = 'fit_koren_triode did not return KorenTriodeParams'
@@ -199,17 +283,85 @@ def _fit_triode(
     return fr.params, fr, False, False
 
 
+_MODIFIED_PENTODE_VARIANTS: frozenset[str] = frozenset(
+    {
+        'koren-modified-knee',
+        'koren-reefman-pentode',
+        'koren-derk-pentode',
+    }
+)
+
+
+def _fit_modified_pentode_variant(
+    request: FitTubeFromPointsRequest,
+    ds: IVDataset,
+) -> tuple[
+    KorenModifiedKneePentodeParams | KorenReefmanPentodeParams | KorenDerkPentodeParams,
+    FitResult,
+    bool,
+    bool,
+]:
+    """Dispatch helper для T182/T184/T186 modified pentode variants."""
+    variant = request.formula_variant
+    if variant == 'koren-modified-knee':
+        fr = fit_koren_modified_knee_pentode(
+            ds, n_starts=max(request.n_starts, 8), seed=request.seed
+        )
+        if not isinstance(fr.params, KorenModifiedKneePentodeParams):
+            msg = 'fit_koren_modified_knee_pentode did not return expected params'
+            raise FitTubeUseCaseError(msg)
+        params: (
+            KorenModifiedKneePentodeParams
+            | KorenReefmanPentodeParams
+            | KorenDerkPentodeParams
+        ) = fr.params
+    elif variant == 'koren-reefman-pentode':
+        fr = fit_koren_reefman_pentode(
+            ds, n_starts=max(request.n_starts, 8), seed=request.seed
+        )
+        if not isinstance(fr.params, KorenReefmanPentodeParams):
+            msg = 'fit_koren_reefman_pentode did not return expected params'
+            raise FitTubeUseCaseError(msg)
+        params = fr.params
+    else:  # koren-derk-pentode
+        fr = fit_koren_derk_pentode(
+            ds, n_starts=max(request.n_starts, 10), seed=request.seed
+        )
+        if not isinstance(fr.params, KorenDerkPentodeParams):
+            msg = 'fit_koren_derk_pentode did not return expected params'
+            raise FitTubeUseCaseError(msg)
+        params = fr.params
+    used_joint = bool(ds.screen_curves)
+    if used_joint:
+        return params, fr, True, False
+    fixed = params.model_copy(update={'kg2': request.kg2_ratio * params.kg1})
+    fr_fixed = fr.model_copy(update={'params': fixed})
+    return fixed, fr_fixed, False, True
+
+
 def _fit_pentode(
     request: FitTubeFromPointsRequest,
     ds: IVDataset,
     seed_from: KorenTriodeParams | AyumiPentodeParams | None,
-) -> tuple[AyumiPentodeParams, FitResult, bool, bool]:
+) -> tuple[
+    AyumiPentodeParams
+    | KorenModifiedKneePentodeParams
+    | KorenReefmanPentodeParams
+    | KorenDerkPentodeParams,
+    FitResult,
+    bool,
+    bool,
+]:
+    if request.formula_variant in _MODIFIED_PENTODE_VARIANTS:
+        return _fit_modified_pentode_variant(request, ds)
+
     pentode_seed = seed_from if isinstance(seed_from, AyumiPentodeParams) else None
     fr = fit_ayumi_pentode(
         ds,
         n_starts=request.n_starts,
         seed=request.seed,
         seed_from=pentode_seed,
+        relative_weights=request.relative_weights,
     )
     if not isinstance(fr.params, AyumiPentodeParams):
         msg = 'fit_ayumi_pentode did not return AyumiPentodeParams'

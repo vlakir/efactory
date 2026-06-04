@@ -35,48 +35,6 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      и его обкаткой полным CRUD-набором (T086–T092). Источник —
      ретроспективы milestone'ов в `CHANGELOG.md`. -->
 
-- **T182** — [2026-06-04, discovered during T031 retrospective discussion]
-  **Modified Koren formula с улучшенной knee region точностью
-  (Tier 3 upgrade, no full Cohen-Hélie переезд).**
-
-  Текущая Koren-pentode formula (T031 Phase 1) использует
-  `atan(Va/KVB)` для plate-term, что даёт систематически слишком
-  пологий rise в knee region (Va < KVB). Phase 0 EL34 probe явно
-  это показал: error в knee region до 70% по Ia при Vg<-15V,
-  Va<150V (vs <15% на plateau Va≥200V). Cutoff transition тоже
-  smoothed-out — strong cutoff inaccurate (Phase 4 6P13S получил
-  `KG1=51000` / `EX=2.67` именно как компенсацию formula limit'а).
-
-  Решение — добавить опубликованные refinements в рамках Tier 3
-  simplicity (~5-7 параметров), **без переезда** на full
-  Cohen-Hélie (12-15 params, отдельная задача) или Reefman:
-
-  - Sharper knee transition — например piecewise или sigmoid-
-    modified atan, либо exp-based cutoff smoothing.
-  - Better strong-cutoff behavior (Cohen-Hélie cutoff-only
-    extraction, без полного переезда на их 3/2 power backbone).
-  - Optional `--formula-variant {koren-canonical, koren-modified-knee}`
-    flag в `efactory tube fit-from-points` для backwards-compat;
-    все existing built-in .lib продолжают работать на canonical.
-
-  **Acceptance:**
-  - Phase 0-style cross-check на Mullard EL34: knee region error
-    <30% (vs текущие ~70%) на Vg=-10..-20V, Va=50..150V; plateau
-    region остаётся <15%.
-  - Round-trip-тесты SC#1 сохраняются на синтетике 12AX7: ≤5%
-    MU/KG1/KP/KVB, ≤2% EX (canonical Koren backward-compat).
-  - Новые built-in .lib опционально, не обязательны — pipeline
-    backwards-compat для existing user overlay'ов.
-  - Tier alternative comparison документирована в DECISIONS.md
-    (modified Koren vs Reefman vs Cohen-Hélie ROI matrix).
-
-  **Контекст.** T031 Phase 0 probe `phase-0-probe.md` §3 (knee
-  region analysis); T031 Phase 4 6P13S unusual params как
-  symptom; обсуждение 2026-06-04 про иерархию tube models
-  (Koren Tier 3 vs Reefman Tier 2 vs Cohen-Hélie Tier 1 vs
-  neural Tier 5). Заявлено как «Phase 1 upgrade path» в той
-  сессии — реалистичный ~100-200 строк refactor `_formulas.py`.
-
 - **T171** — [2026-06-03, discovered during T031 Phase 0+4]
   **Re-fit built-in tube models через T031 pipeline.** Phase 0
   cross-check на Mullard EL34 datasheet показал: built-in

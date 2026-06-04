@@ -27,7 +27,14 @@ import math
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
-    from domain.tube_fitting._params import AyumiPentodeParams, KorenTriodeParams
+    from domain.tube_fitting._params import (
+        AyumiPentodeParams,
+        KorenDerkPentodeParams,
+        KorenModifiedCutoffTriodeParams,
+        KorenModifiedKneePentodeParams,
+        KorenReefmanPentodeParams,
+        KorenTriodeParams,
+    )
 
 SOFTPLUS_LARGE_ARG: Final[float] = 50.0
 """arg > этого порога: log1p(exp(arg)) ≈ arg (без exp overflow)."""
@@ -85,3 +92,182 @@ def ayumi_pentode_ia(vg: float, va: float, params: AyumiPentodeParams) -> float:
         return 0.0
     # KG1 в ngspice convention → Ia в Amperes; конвертируем в mA.
     return (2.0 * (e1**params.ex) / params.kg1) * math.atan(va / params.kvb) * 1000.0
+
+
+def koren_modified_knee_pentode_ia(
+    vg: float, va: float, params: KorenModifiedKneePentodeParams
+) -> float:
+    """
+    T182: Modified Koren-pentode Ia (mA) с резче knee region.
+
+    Formula:
+
+        E1 = (Vg2/KP) * ln(1 + exp(KP * (1/MU + Vg/Vg2)))
+        Ia = (2 * E1^EX / KG1) * atan(Va/KVB) * (1 - exp(-Va/Vk))
+
+    при `E1 > 0`; иначе 0. Множитель `(1 - exp(-Va/Vk))` zero-preserving
+    (Va=0 → 0) и plateau-preserving (Va → ∞ → 1). См. spec C1.
+    """
+    arg = params.kp * (1.0 / params.mu + vg / params.screen_v)
+    if arg < SOFTPLUS_DEEP_CUTOFF:
+        return 0.0
+    softplus = arg if arg > SOFTPLUS_LARGE_ARG else math.log1p(math.exp(arg))
+    e1 = (params.screen_v / params.kp) * softplus
+    if e1 <= 0.0:
+        return 0.0
+    knee = 1.0 - math.exp(-va / params.vk)
+    return (
+        (2.0 * (e1**params.ex) / params.kg1)
+        * math.atan(va / params.kvb)
+        * knee
+        * 1000.0
+    )
+
+
+def koren_reefman_pentode_ia(
+    vg: float, va: float, params: KorenReefmanPentodeParams
+) -> float:
+    """
+    T184: Reefman pentode forward Ia (mA). Reefman 2016 Sec 4.2 Eq 14-17.
+
+    Formula:
+        E1 = (Vg2/KP) · ln(1 + exp(KP · (1/MU + Vg/sqrt(KVB+Vg2²))))
+        Ia = (E1^EX / KG1) · atan(Va/KVB)         при E1>0
+
+    Difference vs canonical Ayumi-pentode: denominator под Vg —
+    `sqrt(KVB + Vg2²)` (triode-like form) вместо bare `Vg2`. Numerically
+    near-identical для Vg2 ≫ √KVB (типичный power-pentode), польза —
+    для low-Vg2 small-signal pentode и triode-strapped consistency.
+    """
+    g2_norm = math.sqrt(params.kvb + params.screen_v * params.screen_v)
+    arg = params.kp * (1.0 / params.mu + vg / g2_norm)
+    if arg < SOFTPLUS_DEEP_CUTOFF:
+        return 0.0
+    softplus = arg if arg > SOFTPLUS_LARGE_ARG else math.log1p(math.exp(arg))
+    e1 = (params.screen_v / params.kp) * softplus
+    if e1 <= 0.0:
+        return 0.0
+    # Reefman convention: I_P,Koren = E^x (без 2× factor canonical Koren).
+    return (e1**params.ex / params.kg1) * math.atan(va / params.kvb) * 1000.0
+
+
+def koren_reefman_pentode_ig2(
+    vg: float, va: float, params: KorenReefmanPentodeParams
+) -> float:
+    """
+    T184: Reefman pentode forward Ig2 (mA). Reefman Eq 17.
+
+    Formula:
+        Ig2 = E1^EX / KG2
+
+    Не зависит от Va (как canonical Ayumi Ig2). Параметр `va` принят
+    для unifying signature с другими formulas; формула его не использует.
+    """
+    del va  # not used; signature unified для consistency.
+    g2_norm = math.sqrt(params.kvb + params.screen_v * params.screen_v)
+    arg = params.kp * (1.0 / params.mu + vg / g2_norm)
+    if arg < SOFTPLUS_DEEP_CUTOFF:
+        return 0.0
+    softplus = arg if arg > SOFTPLUS_LARGE_ARG else math.log1p(math.exp(arg))
+    e1 = (params.screen_v / params.kp) * softplus
+    if e1 <= 0.0:
+        return 0.0
+    return (e1**params.ex / params.kg2) * 1000.0
+
+
+def koren_derk_pentode_ia(
+    vg: float, va: float, params: KorenDerkPentodeParams
+) -> float:
+    """
+    T186: Derk pentode forward Ia (mA). Reefman 2016 Sec 4.4 Eq 25.
+
+    Formula:
+        E1 = (Vg2/KP) · ln(1 + exp(KP·(1/MU + Vg/sqrt(KVB+Vg2²))))
+        I_P,Koren = E1^EX
+        α = 1 - (KG1/KG2)(1+α_s)
+        Ia = I_P,Koren · [1/KG1 - 1/KG2 + A·Va/KG1
+              - 1/(1+β·Va) · (α/KG1 + α_s/KG2)]
+
+    Constraint ensures Ia(Va=0) = 0 (zero anode current at zero plate
+    voltage — "knee at zero").
+    """
+    g2_norm = math.sqrt(params.kvb + params.screen_v * params.screen_v)
+    arg = params.kp * (1.0 / params.mu + vg / g2_norm)
+    if arg < SOFTPLUS_DEEP_CUTOFF:
+        return 0.0
+    softplus = arg if arg > SOFTPLUS_LARGE_ARG else math.log1p(math.exp(arg))
+    e1 = (params.screen_v / params.kp) * softplus
+    if e1 <= 0.0:
+        return 0.0
+    ip_koren = e1**params.ex
+    alpha = 1.0 - (params.kg1 / params.kg2) * (1.0 + params.alpha_s)
+    knee_factor = 1.0 / (1.0 + params.beta * va)
+    bracket = (
+        1.0 / params.kg1
+        - 1.0 / params.kg2
+        + params.a_penetration * va / params.kg1
+        - knee_factor * (alpha / params.kg1 + params.alpha_s / params.kg2)
+    )
+    return ip_koren * bracket * 1000.0
+
+
+def koren_derk_pentode_ig2(
+    vg: float, va: float, params: KorenDerkPentodeParams
+) -> float:
+    """
+    T186: Derk pentode forward Ig2 (mA). Reefman 2016 Sec 4.4 Eq 23.
+
+    Formula:
+        Ig2 = (I_P,Koren / KG2) · (1 + α_s/(1+β·Va))
+
+    Зависит от Va (через 1/(1+β·Va) — knee modeling). Это отличает
+    Derk от canonical Koren-pentode + Reefman Sec 4.2 (там Ig2
+    независим от Va).
+    """
+    g2_norm = math.sqrt(params.kvb + params.screen_v * params.screen_v)
+    arg = params.kp * (1.0 / params.mu + vg / g2_norm)
+    if arg < SOFTPLUS_DEEP_CUTOFF:
+        return 0.0
+    softplus = arg if arg > SOFTPLUS_LARGE_ARG else math.log1p(math.exp(arg))
+    e1 = (params.screen_v / params.kp) * softplus
+    if e1 <= 0.0:
+        return 0.0
+    ip_koren = e1**params.ex
+    knee_factor = 1.0 / (1.0 + params.beta * va)
+    return (ip_koren / params.kg2) * (1.0 + params.alpha_s * knee_factor) * 1000.0
+
+
+def koren_modified_cutoff_triode_ia(
+    vg: float, va: float, params: KorenModifiedCutoffTriodeParams
+) -> float:
+    """
+    T182: Modified Koren-triode Ia (mA) с резче strong cutoff.
+
+    Formula:
+
+        E1 = (Va/KP) * ln(1 + exp(KP * (1/MU + (Vg+Vct)/sqrt(KVB+Va²))))
+        Ia_canonical = 2 * E1^EX / KG1
+        sigmoid(x) = 1/(1 + exp(-x))
+        Ia = Ia_canonical * sigmoid((Vg - Vc_off) / Vs_off)
+
+    При `Vg ≫ Vc_off` (mid-region) sigmoid → 1 → канонический Koren.
+    При `Vg ≪ Vc_off` sigmoid → 0 → резкий cutoff floor.
+    """
+    vct = params.vct if params.vct is not None else 0.0
+    plate_norm = math.sqrt(params.kvb + va * va)
+    arg = params.kp * (1.0 / params.mu + (vg + vct) / plate_norm)
+    if arg < SOFTPLUS_DEEP_CUTOFF:
+        return 0.0
+    softplus = arg if arg > SOFTPLUS_LARGE_ARG else math.log1p(math.exp(arg))
+    e1 = (va / params.kp) * softplus
+    if e1 <= 0.0:
+        return 0.0
+    sigmoid_arg = (vg - params.vc_off) / params.vs_off
+    # Numerical guards mirror SOFTPLUS bounds; sigmoid диапазон [0, 1].
+    if sigmoid_arg < SOFTPLUS_DEEP_CUTOFF:
+        return 0.0
+    if sigmoid_arg > SOFTPLUS_LARGE_ARG:
+        sigmoid_val = 1.0
+    else:
+        sigmoid_val = 1.0 / (1.0 + math.exp(-sigmoid_arg))
+    return 2.0 * (e1**params.ex) / params.kg1 * sigmoid_val * 1000.0

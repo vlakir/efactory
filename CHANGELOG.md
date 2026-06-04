@@ -36,6 +36,59 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T182 + T183 + T184 + T185 + T186 — Modified Koren formulations +
+  Reefman + Derk pentodes + σ-weighting + denser EL34 (Tier 3+/Tier
+  2/Tier 1.5 cascade, PR #117).** Расширение T031
+  tube-fitting pipeline тремя opt-in variants + opt-in flag для
+  canonical:
+  - **T182** — `koren-modified-knee` (pentode plate-term ×
+    `(1-exp(-Va/Vk))`) и `koren-modified-cutoff` (triode Ia ×
+    sigmoid((Vg-Vc_off)/Vs_off)).
+  - **T184** — `koren-reefman-pentode` (Reefman 2016 Sec 4.2 Eq 14-17,
+    triode-like E1 form `sqrt(KVB+Vg2²)`, same param count как
+    canonical Ayumi).
+  - **T183** — `--relative-weights` flag для canonical fitter
+    (σ=max(Ia,1mA)) — closes ~80% canonical EL34 knee gap при
+    backwards-compat по умолчанию.
+  - **T185** — denser EL34 vision fixture (Phase 0 36 + 22 new
+    knee-focused points, всего 58 точек; SC#2 knee region покрыт
+    10+ точками вместо 3).
+
+  - **CLI cleanup (T182 ADR-T182d)** — auto-default per tube_type:
+    pentode → `koren-modified-knee`, triode → `koren-canonical`.
+    `--formula-variant auto` новый default; Reefman/Derk/
+    `--relative-weights` убраны из CLI surface (домейн-код остаётся
+    для API/research). KB topic `tubes.formula-variant-choice` с
+    decision tree для агента. Внутренний агент в `efactory:linux`
+    теперь получает optimum-by-default без user override.
+
+  Tests 1962 → 2025 (+63). ADR-T182a (ROI matrix), ADR-T182b
+  (formal modified-knee/cutoff definition), ADR-T182c (Derk Tier
+  1.5 empirical finding), ADR-T182d (CLI cleanup decision)
+  в DECISIONS.md.
+
+  CLI: `--formula-variant {koren-canonical|koren-modified-knee|
+  koren-modified-cutoff|koren-reefman-pentode|koren-derk-pentode}` +
+  `--relative-weights`. Round-trip SC#1 (canonical), SC#3
+  (modified-knee), SC#3b (modified-cutoff), SC#1-equiv (Reefman),
+  Derk-relaxed round-trip — все ✓ на synthetic. ngspice-portable
+  `.lib` emission, SC#5 OP smoke bit-exact match forward formulas
+  для всех 4 modified variants (Derk: i(v3)=-80.15 mA ↔ Python
+  80.15; i(v2)=-11.93 mA ↔ Python 11.93). Phase 4
+  acceptance — PARTIAL: best EL34 knee = 36% (modified-knee, vs
+  target <30%), best 300B cutoff = 12% (modified-cutoff, ✓ target
+  <30%; mid 17%, target <15% NEAR). 6П13С KG1 50965 → 12925
+  (DIRECTIONAL, gap to physical bound <10000). Key findings: (a)
+  σ-weighting closes 5× canonical EL34 gap но degrades plateau 3×
+  (trade-off); (b) modified-knee adds ~20 п.п. structural improvement
+  over canonical+σ; (c) Reefman numerically near-identity к canonical
+  для high-Vg2 power pentodes (T184 value — small-signal +
+  triode-strapped consistency); (d) σ-weighting на 300B degrades
+  performance — conditional improvement, не universal. ADR-T182a
+  (ROI matrix Koren / Reefman / Cohen-Hélie / neural) + ADR-T182b
+  (formal definition variants math + .lib emission) в DECISIONS.md.
+  Tests 1962 → 2010 (+48). Pre-push 5/5 ✓.
+
 - **T031 + T177 — Tube-curve-fitting pipeline + persistent agent
   overlay (Phase 0-7, PR #115).** Полный путь «PDF/PNG datasheet →
   vision JSON IV-точек → собственный scipy-fitter (Koren triode /
