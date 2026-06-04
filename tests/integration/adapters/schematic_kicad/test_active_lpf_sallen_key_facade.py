@@ -137,6 +137,15 @@ def _build_active_lpf_sallen_key(path: Path) -> Path:
     gnd_rload = sch.add_ground(at=_GND_RLOAD_AT)
     gnd_c2 = sch.add_ground(at=_GND_C2_AT)
 
+    # T029 Phase 0: PWR_FLAG on GND net — Simulation_SPICE:OPAMP V+ pin is
+    # `power_in`, so the GND net needs an explicit driver to clear ERC
+    # `power_pin_not_driven`. Anchored next to gnd_vin (5.08 mm west, same Y).
+    flg_gnd = sch.add_pwr_flag(
+        at=(_GND_VIN_AT[0] - 5.08, _GND_VIN_AT[1]),
+        rotation=180,
+    )
+    sch.connect(flg_gnd.pin, gnd_vin.pin)
+
     # === Vin → R1 ===
     sch.connect(v_in.pin_minus, r1.pin_a)
 

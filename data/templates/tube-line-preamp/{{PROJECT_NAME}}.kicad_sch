@@ -1570,7 +1570,7 @@
 	)
 	(wire
 		(pts
-			(xy 119.38 99.06) (xy 119.38 105.41)
+			(xy 114.3 90.17) (xy 114.3 88.9)
 		)
 		(stroke
 			(width 0)
@@ -1580,7 +1580,7 @@
 	)
 	(wire
 		(pts
-			(xy 119.38 105.41) (xy 128.27 105.41)
+			(xy 119.38 99.06) (xy 119.38 105.41)
 		)
 		(stroke
 			(width 0)
@@ -1590,7 +1590,7 @@
 	)
 	(wire
 		(pts
-			(xy 135.89 105.41) (xy 142.24 105.41)
+			(xy 119.38 105.41) (xy 128.27 105.41)
 		)
 		(stroke
 			(width 0)
@@ -1600,7 +1600,7 @@
 	)
 	(wire
 		(pts
-			(xy 142.24 113.03) (xy 142.24 116.84)
+			(xy 135.89 105.41) (xy 142.24 105.41)
 		)
 		(stroke
 			(width 0)
@@ -1610,7 +1610,7 @@
 	)
 	(wire
 		(pts
-			(xy 50.8 68.58) (xy 50.8 73.66)
+			(xy 142.24 113.03) (xy 142.24 116.84)
 		)
 		(stroke
 			(width 0)
@@ -1620,7 +1620,7 @@
 	)
 	(wire
 		(pts
-			(xy 50.8 93.98) (xy 50.8 97.79)
+			(xy 50.8 68.58) (xy 50.8 73.66)
 		)
 		(stroke
 			(width 0)
@@ -1630,7 +1630,7 @@
 	)
 	(wire
 		(pts
-			(xy 78.74 97.79) (xy 78.74 101.6)
+			(xy 50.8 93.98) (xy 50.8 97.79)
 		)
 		(stroke
 			(width 0)
@@ -1640,7 +1640,7 @@
 	)
 	(wire
 		(pts
-			(xy 86.36 109.22) (xy 86.36 113.03)
+			(xy 78.74 97.79) (xy 78.74 101.6)
 		)
 		(stroke
 			(width 0)
@@ -1650,7 +1650,7 @@
 	)
 	(wire
 		(pts
-			(xy 96.52 109.22) (xy 96.52 113.03)
+			(xy 86.36 109.22) (xy 86.36 113.03)
 		)
 		(stroke
 			(width 0)
@@ -1660,7 +1660,7 @@
 	)
 	(wire
 		(pts
-			(xy 114.3 97.79) (xy 114.3 101.6)
+			(xy 96.52 109.22) (xy 96.52 113.03)
 		)
 		(stroke
 			(width 0)
@@ -1670,7 +1670,7 @@
 	)
 	(wire
 		(pts
-			(xy 119.38 113.03) (xy 119.38 116.84)
+			(xy 114.3 97.79) (xy 114.3 101.6)
 		)
 		(stroke
 			(width 0)
@@ -1678,47 +1678,57 @@
 		)
 		(uuid "a4e89b5b-a247-46f8-b6f9-48db429a2a05")
 	)
-	(junction
-		(at 88.9 58.42)
-		(diameter 0)
-		(color 0 0 0 0)
+	(wire
+		(pts
+			(xy 119.38 113.03) (xy 119.38 116.84)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
 		(uuid "af1b6450-dd56-47c1-9e87-284119e0c3e2")
 	)
 	(junction
-		(at 121.92 58.42)
+		(at 88.9 58.42)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "5a0abd3e-ca87-4b32-9ed2-b137c79ec060")
 	)
 	(junction
-		(at 78.74 88.9)
+		(at 121.92 58.42)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "9ed4ce85-0993-4d54-8ee5-a10242e842d4")
 	)
 	(junction
-		(at 88.9 78.74)
+		(at 78.74 88.9)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "59f31baa-e2a4-4aad-b351-edb09845451a")
 	)
 	(junction
-		(at 86.36 101.6)
+		(at 88.9 78.74)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "bc969da1-3605-4533-bf19-1885eb55d101")
 	)
 	(junction
-		(at 114.3 90.17)
+		(at 86.36 101.6)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "fc86b34c-97a1-4bdd-b751-351a89200a4a")
 	)
 	(junction
-		(at 119.38 105.41)
+		(at 114.3 88.9)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "453f128f-45ca-43e9-85e0-d67e4dab05ea")
+	)
+	(junction
+		(at 119.38 105.41)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "8fea0995-c71e-4a8d-b11f-a9eac893b943")
 	)
 	(label "input"
 		(at 50.8 83.82 0)
@@ -1728,7 +1738,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "8fea0995-c71e-4a8d-b11f-a9eac893b943")
+		(uuid "bfd60b88-b5de-48d4-a169-f0f61a15267a")
 	)
 	(label "grid1"
 		(at 81.28 88.9 0)
@@ -1738,7 +1748,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "bfd60b88-b5de-48d4-a169-f0f61a15267a")
+		(uuid "58b3dcc9-ca57-40bb-bba6-b240b9fcdce7")
 	)
 	(label "plate1"
 		(at 88.9 78.74 0)
@@ -1748,7 +1758,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "58b3dcc9-ca57-40bb-bba6-b240b9fcdce7")
+		(uuid "e8710d3d-2aa7-49d8-9191-3179a404d277")
 	)
 	(label "cathode1"
 		(at 86.36 99.06 0)
@@ -1758,7 +1768,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "e8710d3d-2aa7-49d8-9191-3179a404d277")
+		(uuid "dae92854-0e32-43e6-afda-b2b56cee1f7d")
 	)
 	(label "grid2"
 		(at 114.3 88.9 0)
@@ -1768,7 +1778,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "dae92854-0e32-43e6-afda-b2b56cee1f7d")
+		(uuid "a5b50f09-6b57-41e4-9b7c-2b9d813c1387")
 	)
 	(label "plate2"
 		(at 121.92 78.74 0)
@@ -1778,7 +1788,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "a5b50f09-6b57-41e4-9b7c-2b9d813c1387")
+		(uuid "dab81a9c-feb5-4ba9-80de-746fd1f39b4c")
 	)
 	(label "cathode2"
 		(at 119.38 99.06 0)
@@ -1788,7 +1798,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "dab81a9c-feb5-4ba9-80de-746fd1f39b4c")
+		(uuid "922fd069-6e9c-4b1b-b636-4cc89471eeff")
 	)
 	(label "output"
 		(at 135.89 105.41 0)
@@ -1798,7 +1808,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "922fd069-6e9c-4b1b-b636-4cc89471eeff")
+		(uuid "8ab60c12-61a4-4a8b-bd07-b3dfecde928d")
 	)
 	(text ".op"
 		(exclude_from_sim no)
@@ -1809,7 +1819,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "8ab60c12-61a4-4a8b-bd07-b3dfecde928d")
+		(uuid "e852ee70-50aa-43e3-94a0-c814dd627992")
 	)
 	(symbol
 		(lib_id "Simulation_SPICE:VDC")
@@ -1822,7 +1832,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "e852ee70-50aa-43e3-94a0-c814dd627992")
+		(uuid "976f1334-17dc-46e2-b2bf-21daa409f9e0")
 		(property "Reference" "V1"
 			(at 55.88 62.23 0)
 			(show_name no)
@@ -1923,10 +1933,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "976f1334-17dc-46e2-b2bf-21daa409f9e0")
+			(uuid "cb5a8c74-2af7-4a28-a053-9abcec4697a3")
 		)
 		(pin "2"
-			(uuid "cb5a8c74-2af7-4a28-a053-9abcec4697a3")
+			(uuid "a245bc42-988c-4b65-be77-c28dd1ff629d")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -1948,7 +1958,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "a245bc42-988c-4b65-be77-c28dd1ff629d")
+		(uuid "6d20cf0d-a109-4a91-a7c2-952b191aa528")
 		(property "Reference" "V2"
 			(at 55.88 87.63 0)
 			(show_name no)
@@ -2049,10 +2059,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "6d20cf0d-a109-4a91-a7c2-952b191aa528")
+			(uuid "e3ccaf3d-0fb3-4437-922d-2123e0d9ef1d")
 		)
 		(pin "2"
-			(uuid "e3ccaf3d-0fb3-4437-922d-2123e0d9ef1d")
+			(uuid "c48c4b1e-67c9-4cd8-88bc-a82705b00b96")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -2074,7 +2084,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "c48c4b1e-67c9-4cd8-88bc-a82705b00b96")
+		(uuid "f35664c3-6d4c-49ae-9630-bcb33f753736")
 		(property "Reference" "#FLG01"
 			(at 45.72 95.89 0)
 			(hide yes)
@@ -2128,7 +2138,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "f35664c3-6d4c-49ae-9630-bcb33f753736")
+			(uuid "c2626240-345f-4cf3-b3a1-46de19471c7b")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -2150,7 +2160,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "c2626240-345f-4cf3-b3a1-46de19471c7b")
+		(uuid "3075b9ba-8822-4390-81bd-1c7712cb4434")
 		(property "Reference" "C1"
 			(at 64.52 79.25 90)
 			(show_name no)
@@ -2207,10 +2217,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "3075b9ba-8822-4390-81bd-1c7712cb4434")
+			(uuid "3564be19-7ff8-44e1-8aa2-0ea776f75bc4")
 		)
 		(pin "2"
-			(uuid "3564be19-7ff8-44e1-8aa2-0ea776f75bc4")
+			(uuid "f338991a-8d97-49fb-a5f3-189a55357f4a")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -2232,7 +2242,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "f338991a-8d97-49fb-a5f3-189a55357f4a")
+		(uuid "9574d8d4-e0d6-4fa5-95c8-f9ab9923dc2b")
 		(property "Reference" "R1"
 			(at 79.76 89.41 0)
 			(show_name no)
@@ -2289,10 +2299,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "9574d8d4-e0d6-4fa5-95c8-f9ab9923dc2b")
+			(uuid "9e5d330e-1cdd-4106-a32d-5ddd656dca2e")
 		)
 		(pin "2"
-			(uuid "9e5d330e-1cdd-4106-a32d-5ddd656dca2e")
+			(uuid "2bc30397-21e1-456e-a32a-30347f1b6072")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -2314,7 +2324,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "2bc30397-21e1-456e-a32a-30347f1b6072")
+		(uuid "a62a2a0c-d449-426a-a9b3-d9622ffcea86")
 		(property "Reference" "X1"
 			(at 93.98 80.01 0)
 			(show_name no)
@@ -2415,13 +2425,13 @@
 			)
 		)
 		(pin "6"
-			(uuid "a62a2a0c-d449-426a-a9b3-d9622ffcea86")
-		)
-		(pin "7"
 			(uuid "111edadd-06c2-4570-b382-b2ad62cf5188")
 		)
-		(pin "8"
+		(pin "7"
 			(uuid "2d67ed3d-7f8a-41c0-b7c7-cf2b8c126380")
+		)
+		(pin "8"
+			(uuid "222a810a-534c-424a-9249-8b3cb36b1e6c")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -2443,7 +2453,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "222a810a-534c-424a-9249-8b3cb36b1e6c")
+		(uuid "c5856d2f-660d-4f2b-9fec-dd4439263d76")
 		(property "Reference" "R2"
 			(at 89.92 64.01 0)
 			(show_name no)
@@ -2500,10 +2510,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "c5856d2f-660d-4f2b-9fec-dd4439263d76")
+			(uuid "82129a8b-01bf-4096-b34f-883736bd636f")
 		)
 		(pin "2"
-			(uuid "82129a8b-01bf-4096-b34f-883736bd636f")
+			(uuid "035932fc-b9ca-48b8-a5d7-281cfd7a56cc")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -2525,7 +2535,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "035932fc-b9ca-48b8-a5d7-281cfd7a56cc")
+		(uuid "3b880032-1490-4f01-893e-787e47d2706c")
 		(property "Reference" "R3"
 			(at 87.38 100.84 0)
 			(show_name no)
@@ -2582,10 +2592,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "3b880032-1490-4f01-893e-787e47d2706c")
+			(uuid "18498755-f8b4-48bf-b129-755d123f5ddd")
 		)
 		(pin "2"
-			(uuid "18498755-f8b4-48bf-b129-755d123f5ddd")
+			(uuid "f4864d5d-f9db-4f50-acc2-426eda823f88")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -2607,7 +2617,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "f4864d5d-f9db-4f50-acc2-426eda823f88")
+		(uuid "dd648cf5-a73c-46c1-9ce1-f1860c7f831d")
 		(property "Reference" "C2"
 			(at 97.54 100.84 0)
 			(show_name no)
@@ -2664,10 +2674,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "dd648cf5-a73c-46c1-9ce1-f1860c7f831d")
+			(uuid "b6a0d692-6431-4576-b526-0f380356ed52")
 		)
 		(pin "2"
-			(uuid "b6a0d692-6431-4576-b526-0f380356ed52")
+			(uuid "d5a97e40-adbc-443f-8d24-47088bebc7e2")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -2689,7 +2699,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "d5a97e40-adbc-443f-8d24-47088bebc7e2")
+		(uuid "1a8549f9-6fe4-452c-9a78-911c153e5e37")
 		(property "Reference" "C3"
 			(at 105.16 74.17 90)
 			(show_name no)
@@ -2746,10 +2756,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "1a8549f9-6fe4-452c-9a78-911c153e5e37")
+			(uuid "aa50f002-1933-4d9b-80da-b199f3601b83")
 		)
 		(pin "2"
-			(uuid "aa50f002-1933-4d9b-80da-b199f3601b83")
+			(uuid "3da49fcf-fbc7-4b41-b96a-890db67d7b9e")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -2771,7 +2781,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "3da49fcf-fbc7-4b41-b96a-890db67d7b9e")
+		(uuid "ff5438bf-d93e-42d0-9ee2-b2916dd3628a")
 		(property "Reference" "R4"
 			(at 115.32 89.41 0)
 			(show_name no)
@@ -2828,10 +2838,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "ff5438bf-d93e-42d0-9ee2-b2916dd3628a")
+			(uuid "c58024b2-0022-49ec-95cc-2baff625214a")
 		)
 		(pin "2"
-			(uuid "c58024b2-0022-49ec-95cc-2baff625214a")
+			(uuid "0fdc5a10-789c-467f-8d19-0302de101e6c")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -2853,7 +2863,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "0fdc5a10-789c-467f-8d19-0302de101e6c")
+		(uuid "7a62eaf1-abea-4c2f-a098-a9eb0c371ba2")
 		(property "Reference" "X2"
 			(at 127 80.01 0)
 			(show_name no)
@@ -2954,13 +2964,13 @@
 			)
 		)
 		(pin "1"
-			(uuid "7a62eaf1-abea-4c2f-a098-a9eb0c371ba2")
-		)
-		(pin "2"
 			(uuid "b5038af0-bdd1-43fd-bee7-a7e02b6b6198")
 		)
-		(pin "3"
+		(pin "2"
 			(uuid "37085e88-f4f0-4ad6-b4af-5a52a64bae63")
+		)
+		(pin "3"
+			(uuid "cc1792a2-8910-42b9-af42-994fb693e68b")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -2982,7 +2992,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "cc1792a2-8910-42b9-af42-994fb693e68b")
+		(uuid "8c6a8f56-1d1b-4b2e-b83f-a8a3326e2216")
 		(property "Reference" "R5"
 			(at 120.4 104.65 0)
 			(show_name no)
@@ -3039,10 +3049,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "8c6a8f56-1d1b-4b2e-b83f-a8a3326e2216")
+			(uuid "29584a72-210f-450f-9d2b-a26fbc32c67e")
 		)
 		(pin "2"
-			(uuid "29584a72-210f-450f-9d2b-a26fbc32c67e")
+			(uuid "434684e2-a2d6-4181-94eb-6842ce57ce8a")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -3064,7 +3074,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "434684e2-a2d6-4181-94eb-6842ce57ce8a")
+		(uuid "3d05a351-0178-4c3a-baae-bde46df82db4")
 		(property "Reference" "C4"
 			(at 133.1 100.84 90)
 			(show_name no)
@@ -3121,10 +3131,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "3d05a351-0178-4c3a-baae-bde46df82db4")
+			(uuid "4c257cac-d5c7-4407-af00-863461d73032")
 		)
 		(pin "2"
-			(uuid "4c257cac-d5c7-4407-af00-863461d73032")
+			(uuid "36891e2c-2663-4a89-aa0e-2b1d52dd5118")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -3146,7 +3156,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "36891e2c-2663-4a89-aa0e-2b1d52dd5118")
+		(uuid "20888761-7f2a-4351-ad84-da7ebc8cb632")
 		(property "Reference" "R6"
 			(at 143.26 104.65 0)
 			(show_name no)
@@ -3203,10 +3213,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "20888761-7f2a-4351-ad84-da7ebc8cb632")
+			(uuid "0a54a164-6b83-408f-a1f8-a3518acc096e")
 		)
 		(pin "2"
-			(uuid "0a54a164-6b83-408f-a1f8-a3518acc096e")
+			(uuid "4536de46-309d-4b31-a9ac-68423b2b8b9b")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -3228,7 +3238,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "4536de46-309d-4b31-a9ac-68423b2b8b9b")
+		(uuid "8667d524-4771-4c2b-bca2-908d17ea4478")
 		(property "Reference" "#PWR01"
 			(at 50.8 80.01 0)
 			(hide yes)
@@ -3282,7 +3292,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "8667d524-4771-4c2b-bca2-908d17ea4478")
+			(uuid "29640e3a-495e-4d92-a84a-9b1443070503")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -3304,7 +3314,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "29640e3a-495e-4d92-a84a-9b1443070503")
+		(uuid "b879f1bb-3c08-40ba-b931-bf6acb67bb84")
 		(property "Reference" "#PWR02"
 			(at 50.8 104.14 0)
 			(hide yes)
@@ -3358,7 +3368,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "b879f1bb-3c08-40ba-b931-bf6acb67bb84")
+			(uuid "89b46960-3220-4df5-9441-073b89d2700a")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -3380,7 +3390,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "89b46960-3220-4df5-9441-073b89d2700a")
+		(uuid "ec590011-10aa-47cb-963f-929967e81602")
 		(property "Reference" "#PWR03"
 			(at 78.74 107.95 0)
 			(hide yes)
@@ -3434,7 +3444,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "ec590011-10aa-47cb-963f-929967e81602")
+			(uuid "d9675821-a554-4926-826c-bbb4aea6d4d0")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -3456,7 +3466,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "d9675821-a554-4926-826c-bbb4aea6d4d0")
+		(uuid "c9ccb50b-f746-43b1-a5d8-e916bc9ff766")
 		(property "Reference" "#PWR04"
 			(at 86.36 119.38 0)
 			(hide yes)
@@ -3510,7 +3520,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "c9ccb50b-f746-43b1-a5d8-e916bc9ff766")
+			(uuid "ffa1c1ad-9ded-46f3-9d75-8441d06557ac")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -3532,7 +3542,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "ffa1c1ad-9ded-46f3-9d75-8441d06557ac")
+		(uuid "2d455990-141c-4a47-855c-ebe10c1828a6")
 		(property "Reference" "#PWR05"
 			(at 96.52 119.38 0)
 			(hide yes)
@@ -3586,7 +3596,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "2d455990-141c-4a47-855c-ebe10c1828a6")
+			(uuid "1c444af8-ae98-4d80-8f01-9b2802888451")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -3608,7 +3618,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "1c444af8-ae98-4d80-8f01-9b2802888451")
+		(uuid "6264f1fd-a18f-4322-89fa-f9ca9163e599")
 		(property "Reference" "#PWR06"
 			(at 114.3 107.95 0)
 			(hide yes)
@@ -3662,7 +3672,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "6264f1fd-a18f-4322-89fa-f9ca9163e599")
+			(uuid "4935433c-b71d-46af-b067-121e3ac83ae7")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -3684,7 +3694,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "4935433c-b71d-46af-b067-121e3ac83ae7")
+		(uuid "48161b21-86f7-4d07-ab33-5e30a79cb805")
 		(property "Reference" "#PWR07"
 			(at 119.38 123.19 0)
 			(hide yes)
@@ -3738,7 +3748,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "48161b21-86f7-4d07-ab33-5e30a79cb805")
+			(uuid "c2f9e46b-cad2-406c-8a0f-2da296b68436")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"
@@ -3760,7 +3770,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(fields_autoplaced yes)
-		(uuid "c2f9e46b-cad2-406c-8a0f-2da296b68436")
+		(uuid "4ecc25f1-ac91-448e-abd5-52f17a14ae93")
 		(property "Reference" "#PWR08"
 			(at 142.24 123.19 0)
 			(hide yes)
@@ -3814,7 +3824,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "4ecc25f1-ac91-448e-abd5-52f17a14ae93")
+			(uuid "b60d1df7-bd29-4648-8452-2a7adbdfaa57")
 		)
 		(instances
 			(project "tube_line_preamp_6n2p"

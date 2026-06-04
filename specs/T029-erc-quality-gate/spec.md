@@ -206,6 +206,17 @@ Standalone-команды `/design-check <project>` и `efactory design check
   - op-amp-inverting: 1 err (`power_pin_not_driven` на U1 V+).
   - tube-line-preamp: 1 err (`pin_not_connected` на R4 Pin 1 — реальный
     отвязанный пин).
+
+  **Правки выполняются через builders** в
+  `tests/integration/adapters/schematic_kicad/test_<name>_facade.py::_build_<name>`,
+  не прямой правкой `data/templates/*.kicad_sch`. После правки builder'а —
+  `uv run python scripts/regenerate-templates.py --template <name>`
+  пересобирает baked artifact. Прямая правка `data/templates/` отвергнута
+  (2026-06-05, Phase 0 probe): она ломает snapshot-тесты и стирается
+  следующим `regenerate-templates.py`. Снимки/facade-тесты обновляются по
+  необходимости — это ожидаемая стоимость bundled подхода. Probe-результат
+  (прямые правки): все 11 шаблонов = 0 ERC errors, R4→/grid2 canonical
+  grid-leak. Path-of-implementation подтверждён, повторяем через builders.
 - **A2.** KiCad 10.0.3+ (probe-verified). `kicad-cli sch erc` API
   стабилен с KiCad 8.x, `$schema = erc.v1.json` стабилен.
 - **A3.** В `efactory:linux` контейнере `kicad-cli` всегда установлен
