@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from domain.simulation import AnalysisSpec, Simulation
+    from ports.outbound.erc import ErcReportWriter, ErcRunner
     from ports.outbound.project_manifest_repository import (
         ProjectManifestRepository,
     )
@@ -30,6 +31,8 @@ async def edit_and_resim(
     manifest_repo: ProjectManifestRepository,
     exporter: SchematicExporter,
     simulator: Simulator,
+    erc_runner: ErcRunner | None = None,
+    erc_report_writer: ErcReportWriter | None = None,
 ) -> Simulation:
     """
     Применить value-edit'ы к .kicad_sch, затем design_to_sim.
@@ -42,6 +45,11 @@ async def edit_and_resim(
     транзакция. Failure в середине edits оставляет schematic в
     частично-изменённом состоянии (T004b accepted limitation; T021 в
     Phase 2 backlog добавит snapshot/rollback).
+
+    ERC gate (T029): если `erc_runner` задан, schematic после edits
+    проверяется ERC'ом до netlist export. ERC errors блокируют resim
+    через `ErcErrorsFoundError` (test/dev composition может оставить
+    `erc_runner=None` — gate выключен).
     """
     for ref, value in edits.items():
         edit_component_value(schematic, ref, value)
@@ -55,6 +63,8 @@ async def edit_and_resim(
         manifest_repo=manifest_repo,
         exporter=exporter,
         simulator=simulator,
+        erc_runner=erc_runner,
+        erc_report_writer=erc_report_writer,
     )
 
 

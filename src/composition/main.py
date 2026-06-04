@@ -12,6 +12,10 @@ from adapters.inbound.cli.app import build_app
 from adapters.outbound.decision_markdown.decision_repository import (
     FilesystemDecisionRepository,
 )
+from adapters.outbound.erc_kicad_cli.runner import KicadCliErcRunner
+from adapters.outbound.erc_report_markdown.writer import (
+    MarkdownErcReportWriter,
+)
 from adapters.outbound.file_store.project_file_repository import (
     FilesystemProjectFileRepository,
 )
@@ -98,6 +102,8 @@ def build_cli_app() -> typer.Typer:
         app_manager=app_manager,
         schematic_exporter=KicadCliSchematicExporter(app_manager),
         schematic_renderer=KicadCliSchematicRenderer(app_manager),
+        erc_runner=KicadCliErcRunner(),
+        erc_report_writer=MarkdownErcReportWriter(),
         simulator=NgspiceSimulator(app_manager),
         netlist_editor=NgspiceNetlistEditor(),
         injection_patcher=NgspiceInjectionNetlistPatcher(),

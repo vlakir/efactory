@@ -129,6 +129,13 @@ from application.update_project import (
 from application.validate_lib import validate_lib
 from domain.application import ApplicationKind
 from domain.decision import DecisionStatus
+from domain.erc import (
+    ErcErrorsFoundError,
+    ErcParseError,
+    ErcTimeoutError,
+    KiCadCliUnavailableError,
+    SchematicParseError,
+)
 from domain.knowledge_base import KbConflictError, KbEntry, KbParseError
 from domain.phase import PhaseName, PhaseStatus
 from domain.phase_margin import (
@@ -190,6 +197,7 @@ if TYPE_CHECKING:
     from domain.spice_model import SpiceModel
     from ports.outbound.app_manager import AppManager, RunResult
     from ports.outbound.decision_repository import DecisionRepository
+    from ports.outbound.erc import ErcReportWriter, ErcRunner
     from ports.outbound.git_repository import GitRepository
     from ports.outbound.knowledge_base import KbStore
     from ports.outbound.netlist_editor import NetlistEditor
@@ -440,6 +448,8 @@ def build_app(
     app_manager: AppManager,
     schematic_exporter: SchematicExporter,
     schematic_renderer: SchematicRenderer,
+    erc_runner: ErcRunner,
+    erc_report_writer: ErcReportWriter,
     simulator: Simulator,
     netlist_editor: NetlistEditor,
     injection_patcher: InjectionNetlistPatcher,
@@ -1799,6 +1809,8 @@ def build_app(
                 manifest_repo=manifest_repository,
                 exporter=schematic_exporter,
                 simulator=simulator,
+                erc_runner=erc_runner,
+                erc_report_writer=erc_report_writer,
             )
 
         return await _log_command(
@@ -1834,6 +1846,22 @@ def build_app(
                     event,
                 ),
             )
+        except ErcErrorsFoundError as exc:
+            report = exc.report
+            typer.echo(
+                f'ERC errors: {report.error_count} '
+                f'(out/erc/<ts>/report.md) — sim skipped',
+                err=True,
+            )
+            raise typer.Exit(1) from exc
+        except (
+            KiCadCliUnavailableError,
+            ErcParseError,
+            ErcTimeoutError,
+            SchematicParseError,
+        ) as exc:
+            typer.echo(f'ERC infrastructure failure: {exc}', err=True)
+            raise typer.Exit(2) from exc
         except (
             ProjectNotFoundError,
             ProjectManifestMissingError,

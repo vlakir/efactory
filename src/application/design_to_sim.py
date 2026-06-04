@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from application.design_to_netlist import design_to_netlist
+from application.get_project import get_project
+from application.run_erc_check import run_erc_check
 from application.sim_run import sim_run
 from domain.simulation import Simulation, SimulationStatus
 from ports.outbound.simulator import SimulatorUnavailableError
@@ -13,11 +15,18 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from domain.simulation import AnalysisSpec
+    from ports.outbound.erc import ErcReportWriter, ErcRunner
     from ports.outbound.project_manifest_repository import (
         ProjectManifestRepository,
     )
     from ports.outbound.schematic_exporter import SchematicExporter
     from ports.outbound.simulator import Simulator
+
+
+def _resolve_schematic(project_path: Path, schematic: Path) -> Path:
+    if schematic.is_absolute():
+        return schematic
+    return project_path / schematic
 
 
 async def design_to_sim(
@@ -31,8 +40,35 @@ async def design_to_sim(
     manifest_repo: ProjectManifestRepository,
     exporter: SchematicExporter,
     simulator: Simulator,
+    erc_runner: ErcRunner | None = None,
+    erc_report_writer: ErcReportWriter | None = None,
+    erc_timeout_seconds: float = 30.0,
 ) -> Simulation:
-    """KiCad schematic → SPICE netlist → run analysis. Возвращает агрегат."""
+    """
+    KiCad schematic → SPICE netlist → run analysis. Возвращает агрегат.
+
+    Если `erc_runner` задан — перед `design_to_netlist` гоняем ERC по
+    реальному (resolved) `.kicad_sch` пользователя (spec T029 R8). ERC
+    errors блокируют дальнейший pipeline через `ErcErrorsFoundError`.
+    Warnings пропускаются (но рендерятся в отчёт, если задан
+    `erc_report_writer`). Если `erc_runner=None` — gate выключен (этот
+    режим — для тестов; production composition wires the real runner).
+    """
+    if erc_runner is not None:
+        project = await get_project(
+            name=project_name,
+            projects_root=projects_root,
+            manifest_repo=manifest_repo,
+        )
+        schematic_resolved = _resolve_schematic(project.path, schematic)
+        await run_erc_check(
+            schematic=schematic_resolved,
+            project_root=project.path,
+            erc_runner=erc_runner,
+            report_writer=erc_report_writer,
+            timeout_seconds=erc_timeout_seconds,
+        )
+
     sim = await design_to_netlist(
         project_name=project_name,
         schematic=schematic,
