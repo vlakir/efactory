@@ -61,6 +61,20 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T029** — ERC quality gate через `kicad-cli sch erc` в `/sim-run` /
+  новой `/design-check`. Bundled-PR: hard-gate (errors блокируют) +
+  фикс 4 «грязных» шаблонов (`active-lpf-sallen-key`, `bjt-ce-nfb`,
+  `op-amp-inverting`, `tube-line-preamp`) в одном PR. Off-grid warnings
+  отдельная задача T187.
+  Spec: `specs/T029-erc-quality-gate/spec.md`. Ветка:
+  `T029-erc-quality-gate`.
+
+  Acceptance: `/sim-run` блокируется на ERC errors; warnings рендерятся
+  в `out/erc/<ts>/report.md` без блокировки; standalone `/design-check
+  <project>` и CLI `efactory design check <project>` с exit-codes 0/1/2;
+  все 11 шаблонов проходят (error_count=0); coverage ≥80%; pre-push 5/5;
+  KB sync T134 Уровень 1+2.
+
 ## Done
 
 - **T182 + T183 + T184 + T185 + T186** — [closed 2026-06-04, PR #117]
