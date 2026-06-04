@@ -117,6 +117,7 @@ from application.prune_sim_results import (
 from application.reindex_projects import (
     reindex_projects as reindex_projects_use_case,
 )
+from application.run_erc_check import run_erc_check
 from application.schematic_snapshot import SchematicSnapshot
 from application.sim_run import sim_run as sim_run_use_case
 from application.update_project import (
@@ -182,6 +183,7 @@ if TYPE_CHECKING:
     from application.create_project import CreateProjectResult
     from application.reindex_projects import ReindexSummary
     from domain.decision import Decision
+    from domain.erc import ErcReport
     from domain.injection_patcher import InjectionNetlistPatcher
     from domain.measurement import (
         BandwidthMeasurement,
@@ -1493,6 +1495,119 @@ def build_app(
     bridge_app = typer.Typer(no_args_is_help=True, add_completion=False)
     app.add_typer(bridge_app, name='bridge')
 
+    design_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    app.add_typer(design_app, name='design')
+
+    def _resolve_design_check_target(arg: str | None) -> Path:
+        """
+        `efactory design check [<arg>]` target resolution (spec F11/F12/R7).
+
+        - `arg` is a `.kicad_sch` → returned as-is.
+        - `arg` is a directory → first `.kicad_sch` inside, fail on
+          ambiguity.
+        - `arg` is None → auto-detect in cwd (top-level + 1 subdir,
+          excluding dot-dirs), exactly one match required.
+        """
+        if arg is not None:
+            target = Path(arg)
+            if target.is_file() and target.suffix == '.kicad_sch':
+                return target
+            if target.is_dir():
+                matches = sorted(target.glob('*.kicad_sch'))
+                if len(matches) == 1:
+                    return matches[0]
+                msg = f'{target}: expected exactly one .kicad_sch, got {len(matches)}'
+                typer.echo(msg, err=True)
+                raise typer.Exit(2)
+            msg = f'{target}: not a .kicad_sch file or project directory'
+            typer.echo(msg, err=True)
+            raise typer.Exit(2)
+
+        cwd = Path.cwd()
+        max_depth = 2  # top-level + 1 subdir, как у /sim-run (spec R7)
+        matches = [
+            p
+            for p in cwd.rglob('*.kicad_sch')
+            if not any(part.startswith('.') for part in p.relative_to(cwd).parts)
+            and len(p.relative_to(cwd).parts) <= max_depth
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        if not matches:
+            typer.echo(
+                'No .kicad_sch found in cwd (top-level + 1 subdir). '
+                'Pass a path: `efactory design check path/to/sch.kicad_sch`.',
+                err=True,
+            )
+            raise typer.Exit(2)
+        typer.echo(
+            f'Multiple .kicad_sch found ({len(matches)}); pick one:',
+            err=True,
+        )
+        for p in matches:
+            typer.echo(f'  {p}', err=True)
+        raise typer.Exit(2)
+
+    async def _execute_design_check(schematic: Path) -> ErcReport:
+        project_root = schematic.parent
+        return await run_erc_check(
+            schematic=schematic,
+            project_root=project_root,
+            erc_runner=erc_runner,
+            report_writer=erc_report_writer,
+        )
+
+    @design_app.command('check')
+    def design_check(
+        project: Annotated[
+            str | None,
+            typer.Argument(
+                help='Путь к .kicad_sch или к директории проекта '
+                '(default: auto-detect в cwd).',
+            ),
+        ] = None,
+        *,
+        severity: Annotated[
+            str,
+            typer.Option(
+                '--severity',
+                help='Фильтр отчёта (error|warning|all); exit-code не зависит '
+                'от фильтра. Default — all.',
+            ),
+        ] = 'all',
+    ) -> None:
+        """ERC-проверка schematic'а (standalone, без SPICE-симуляции, T029)."""
+        if severity not in {'error', 'warning', 'all'}:
+            typer.echo(
+                f'--severity must be one of error|warning|all, got {severity!r}',
+                err=True,
+            )
+            raise typer.Exit(2)
+
+        schematic = _resolve_design_check_target(project)
+        try:
+            report = asyncio.run(_execute_design_check(schematic))
+        except ErcErrorsFoundError as exc:
+            r = exc.report
+            typer.echo(
+                f'ERC errors: {r.error_count} (see out/erc/<ts>/report.md)',
+                err=True,
+            )
+            raise typer.Exit(1) from exc
+        except (
+            KiCadCliUnavailableError,
+            ErcParseError,
+            ErcTimeoutError,
+            SchematicParseError,
+        ) as exc:
+            typer.echo(f'ERC infrastructure failure: {exc}', err=True)
+            raise typer.Exit(2) from exc
+
+        typer.echo(
+            f'ERC: {report.error_count} errors, '
+            f'{report.warning_count} warnings → out/erc/<ts>/report.md',
+        )
+
     def _exit_on_bridge_error(exc: Exception) -> typer.Exit:
         """Унифицированный маппинг bridge-ошибок в exit-коды."""
         typer.echo(str(exc), err=True)
@@ -1645,6 +1760,10 @@ def build_app(
         enable_op_fallback: bool = False,
     ) -> None:
         netlist_path = _resolve_netlist_path(netlist)
+        # T029 F16: `sim-run` operates on a pre-built netlist — no schematic
+        # means ERC is physically impossible. We surface this so agents can
+        # see the gate was skipped intentionally, not silently bypassed.
+        typer.echo('ERC: skipped (pre-built netlist mode)')
         try:
             asyncio.run(
                 _execute_sim_run(
