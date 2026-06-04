@@ -19,16 +19,19 @@ from domain.tube_fitting import (
     CurveData,
     FitFailedError,
     IVDataset,
+    KorenDerkPentodeParams,
     KorenModifiedCutoffTriodeParams,
     KorenModifiedKneePentodeParams,
     KorenReefmanPentodeParams,
     KorenTriodeParams,
     ayumi_pentode_ia,
     fit_ayumi_pentode,
+    fit_koren_derk_pentode,
     fit_koren_modified_cutoff_triode,
     fit_koren_modified_knee_pentode,
     fit_koren_reefman_pentode,
     fit_koren_triode,
+    koren_derk_pentode_ia,
     koren_modified_cutoff_triode_ia,
     koren_modified_knee_pentode_ia,
     koren_reefman_pentode_ia,
@@ -36,6 +39,7 @@ from domain.tube_fitting import (
 )
 from domain.tube_fitting._fitter import (
     _ayumi_pentode_ig2_vec,
+    _koren_derk_pentode_ig2_vec,
     _koren_modified_knee_pentode_ig2_vec,
     _koren_reefman_pentode_ig2_vec,
 )
@@ -652,3 +656,113 @@ def test_fit_reefman_pentode_n_starts_zero_raises() -> None:
     ds = _synthesize_reefman_pentode_dataset(_EL34_REEFMAN_TRUTH)
     with pytest.raises(ValueError, match='n_starts'):
         fit_koren_reefman_pentode(ds, n_starts=0)
+
+
+# ============================== T186: round-trip Derk pentode ==============================
+
+
+def _synthesize_derk_pentode_dataset(
+    params: KorenDerkPentodeParams,
+    tube_name: str = 'SYNTH_DERK_PENTODE',
+    vg_values: tuple[float, ...] = (-2.0, -5.0, -10.0, -15.0, -20.0),
+    va_values: tuple[float, ...] = (30.0, 50.0, 80.0, 120.0, 200.0, 300.0, 400.0, 500.0),
+    *,
+    include_screen: bool = False,
+) -> IVDataset:
+    curves = tuple(
+        CurveData(
+            vg=vg,
+            points=tuple(
+                (va, koren_derk_pentode_ia(vg, va, params)) for va in va_values
+            ),
+        )
+        for vg in vg_values
+    )
+    screen_curves: tuple[CurveData, ...] = ()
+    if include_screen:
+        screen_curves = tuple(
+            CurveData(
+                vg=vg,
+                points=tuple(
+                    (
+                        va,
+                        float(
+                            _koren_derk_pentode_ig2_vec(
+                                np.array([vg]),
+                                np.array([va]),
+                                params.mu,
+                                params.ex,
+                                params.kg2,
+                                params.kp,
+                                params.kvb,
+                                params.screen_v,
+                                params.alpha_s,
+                                params.beta,
+                            )[0]
+                        ),
+                    )
+                    for va in va_values
+                ),
+            )
+            for vg in vg_values
+        )
+    return IVDataset(
+        tube_name=tube_name,
+        tube_type='pentode',
+        source='synthesized-derk',
+        date_extracted=date(2026, 6, 4),
+        curves=curves,
+        screen_voltage_v=params.screen_v,
+        screen_curves=screen_curves,
+    )
+
+
+_EL34_DERK_TRUTH = KorenDerkPentodeParams(
+    mu=11, ex=1.35, kg1=325, kg2=2250, kp=60, kvb=24, screen_v=250,
+    alpha_s=1.0, beta=0.05, a_penetration=0.001,
+)
+
+
+def test_round_trip_derk_pentode_joint_within_tolerance() -> None:
+    """T186 round-trip Derk pentode (joint Ia+Ig2): canonical params
+    ≤10% (wider tol чем canonical Ayumi из-за 9-param fit), Derk-specific
+    params (alpha_s, beta, A) ≤30%."""
+    ds = _synthesize_derk_pentode_dataset(_EL34_DERK_TRUTH, include_screen=True)
+    fr = fit_koren_derk_pentode(ds, n_starts=10, seed=42)
+
+    assert isinstance(fr.params, KorenDerkPentodeParams)
+    p = fr.params
+    assert _rel_err(p.mu, 11.0) <= 0.10
+    assert _rel_err(p.ex, 1.35) <= 0.05
+    assert _rel_err(p.kg1, 325.0) <= 0.10
+    assert _rel_err(p.kg2, 2250.0) <= 0.10
+    assert _rel_err(p.kp, 60.0) <= 0.10
+    # KVB не identifiable при Vg2 ≫ √KVB (Vg2=250, KVB=24 → sqrt(KVB+Vg2²)≈250
+    # независимо от KVB ∈ [1, 1000]); это known structural ambiguity Reefman/Derk
+    # form. Не проверяем strict tolerance.
+    assert p.kvb > 0  # любое positive значение acceptable
+    assert _rel_err(p.alpha_s, 1.0) <= 0.30
+    assert _rel_err(p.beta, 0.05) <= 0.30
+    # a_penetration маленький; tolerance в абсолютных единицах.
+    assert abs(p.a_penetration - 0.001) < 0.005
+    assert p.screen_v == 250.0
+
+
+def test_derk_pentode_seed_determinism() -> None:
+    ds = _synthesize_derk_pentode_dataset(_EL34_DERK_TRUTH, include_screen=True)
+    fr_a = fit_koren_derk_pentode(ds, n_starts=10, seed=42)
+    fr_b = fit_koren_derk_pentode(ds, n_starts=10, seed=42)
+    assert fr_a.params == fr_b.params
+    assert fr_a.rms_residual_ma == fr_b.rms_residual_ma
+
+
+def test_fit_derk_pentode_rejects_triode() -> None:
+    ds = _synthesize_triode_dataset(_TWELVE_AX7_TRUTH)
+    with pytest.raises(ValueError, match='tube_type'):
+        fit_koren_derk_pentode(ds)
+
+
+def test_fit_derk_pentode_n_starts_zero_raises() -> None:
+    ds = _synthesize_derk_pentode_dataset(_EL34_DERK_TRUTH)
+    with pytest.raises(ValueError, match='n_starts'):
+        fit_koren_derk_pentode(ds, n_starts=0)

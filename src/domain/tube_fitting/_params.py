@@ -36,6 +36,7 @@ FormulaVariant = Literal[
     'koren-modified-knee',
     'koren-modified-cutoff',
     'koren-reefman-pentode',
+    'koren-derk-pentode',
 ]
 """Forward-formula variant (T182, T184).
 
@@ -59,10 +60,19 @@ FormulaVariant = Literal[
   на low-Vg2 small-signal pentodes и triode-strapped configurations.
   Cite: Reefman, "Spice models for vacuum tubes using the uTracer"
   (2016), Sec 4.2.
+* `'koren-derk-pentode'` — pentode-only: Reefman 2016 paper Sec 4.4
+  Eq 23-27 (Derk model). Constant Space Charge + screen scaling +
+  anode penetration. Same backbone E1 как Reefman (`sqrt(kVB+Vg2²)`)
+  + три новых параметра: `alpha_s` (screen current correction),
+  `beta` (knee width 1/(1+βV_a)), `A` (anode penetration linear
+  term). `alpha` derived constraint: α = 1 - (k_g1/k_g2)(1+α_s).
+  Reefman claim: "amazingly accurate" даже для secondary-emission
+  pentodes. EL34 acceptance target — closing knee region <30%.
 
-Совместимость triode/pentode → variant: `koren-modified-knee` и
-`koren-reefman-pentode` ↔ pentode only; `koren-modified-cutoff` ↔
-triode only. Mismatch ловится use case'ом до запуска fitter'а (A-W5).
+Совместимость triode/pentode → variant: `koren-modified-knee` +
+`koren-reefman-pentode` + `koren-derk-pentode` ↔ pentode only;
+`koren-modified-cutoff` ↔ triode only. Mismatch ловится use case'ом
+до запуска fitter'а (A-W5).
 """
 
 
@@ -182,6 +192,55 @@ class KorenReefmanPentodeParams(BaseModel):
     kp: Annotated[float, Field(gt=0)]
     kvb: Annotated[float, Field(gt=0)]
     screen_v: Annotated[float, Field(gt=0)]
+
+
+class KorenDerkPentodeParams(BaseModel):
+    """
+    Derk pentode (T186): Reefman 2016 paper Sec 4.4 Eq 23-27.
+
+    Forward Ia:
+        E1 = (Vg2/KP) · ln(1 + exp(KP · (1/MU + Vg/sqrt(KVB+Vg2²))))
+        I_P,Koren = E1^EX                    (при E1>0; 0 иначе)
+        α = 1 - (KG1/KG2)(1+α_s)             (derived constraint, Eq 27)
+        I_a = I_P,Koren · [
+            1/KG1 - 1/KG2
+            + A·V_a/KG1
+            - 1/(1+β·V_a) · (α/KG1 + α_s/KG2)
+        ]                                    (Eq 25)
+        I_g2 = (I_P,Koren / KG2) · (1 + α_s/(1+β·V_a))  (Eq 23)
+
+    Constraint construction guarantees I_a(V_a=0) = 0 ("knee at zero").
+
+    Params: canonical Reefman 6 (MU/EX/KG1/KG2/KP/KVB/screen_v) +
+    Derk extension 3 (alpha_s, beta, A) = 9 fit params. α derived,
+    не fit.
+
+    Bounds rationale:
+    - `alpha_s`: screen correction at low V_a; typical 0.1-5 для
+      small-signal pentodes, может расти для power tubes.
+    - `beta`: knee width; 1/(1+β·V_a)=0.5 при V_a=1/β; typical
+      0.01-0.1 для V_a~10-100 V knee.
+    - `A`: anode penetration linear coefficient; 0 для "ideal"
+      pentodes, ~0.001-0.01 для power pentodes.
+    """
+
+    model_config = _FROZEN
+
+    mu: Annotated[float, Field(gt=0)]
+    ex: Annotated[float, Field(gt=1.0, lt=3.0)]
+    kg1: Annotated[float, Field(gt=0)]
+    kg2: Annotated[float, Field(gt=0)]
+    kp: Annotated[float, Field(gt=0)]
+    kvb: Annotated[float, Field(gt=0)]
+    screen_v: Annotated[float, Field(gt=0)]
+    alpha_s: Annotated[float, Field(gt=0)]
+    """Reefman Sec 4.4 screen current correction at low V_a."""
+
+    beta: Annotated[float, Field(gt=0)]
+    """Reefman Sec 4.4 knee width param (1/(1+β·V_a))."""
+
+    a_penetration: Annotated[float, Field(ge=0)]
+    """Reefman Sec 4.4 anode penetration linear coefficient."""
 
 
 class KorenModifiedCutoffTriodeParams(BaseModel):
@@ -366,6 +425,7 @@ class FitResult(BaseModel):
         | KorenModifiedKneePentodeParams
         | KorenModifiedCutoffTriodeParams
         | KorenReefmanPentodeParams
+        | KorenDerkPentodeParams
     )
     rms_residual_ma: Annotated[float, Field(ge=0)]
     """RMS residual Ia error по всему датасету (mA)."""

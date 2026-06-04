@@ -20,16 +20,19 @@ from adapters.outbound.spice_models.tube_json import FilesystemTubeIVRepository
 from domain.tube_fitting import (
     AyumiPentodeParams,
     IVDataset,
+    KorenDerkPentodeParams,
     KorenModifiedCutoffTriodeParams,
     KorenModifiedKneePentodeParams,
     KorenReefmanPentodeParams,
     KorenTriodeParams,
     ayumi_pentode_ia,
     fit_ayumi_pentode,
+    fit_koren_derk_pentode,
     fit_koren_modified_cutoff_triode,
     fit_koren_modified_knee_pentode,
     fit_koren_reefman_pentode,
     fit_koren_triode,
+    koren_derk_pentode_ia,
     koren_modified_cutoff_triode_ia,
     koren_modified_knee_pentode_ia,
     koren_reefman_pentode_ia,
@@ -56,6 +59,7 @@ def _errors_pentode(
         AyumiPentodeParams
         | KorenModifiedKneePentodeParams
         | KorenReefmanPentodeParams
+        | KorenDerkPentodeParams
     ),
 ) -> tuple[list[float], list[tuple[float, float, float, float]]]:
     """Возвращает (per-point relative errors, list of (vg, va, ia_obs, ia_pred))."""
@@ -67,6 +71,8 @@ def _errors_pentode(
                 ia_pred = koren_modified_knee_pentode_ia(curve.vg, va, params)
             elif isinstance(params, KorenReefmanPentodeParams):
                 ia_pred = koren_reefman_pentode_ia(curve.vg, va, params)
+            elif isinstance(params, KorenDerkPentodeParams):
+                ia_pred = koren_derk_pentode_ia(curve.vg, va, params)
             else:
                 ia_pred = ayumi_pentode_ia(curve.vg, va, params)
             rel = abs(ia_pred - ia_obs) / ia_obs if ia_obs > 0 else 0.0
@@ -114,7 +120,7 @@ def _region_stats(
 
 
 def el34_acceptance() -> dict[str, Any]:
-    """SC#2: 4-вариантное сравнение на denser EL34 (T185 fixture)."""
+    """SC#2: 5-вариантное сравнение на denser EL34 (T185 fixture)."""
     ds = _load('el34_mullard.json')
     fr_can = fit_ayumi_pentode(ds, n_starts=5, seed=42)
     assert isinstance(fr_can.params, AyumiPentodeParams)
@@ -124,11 +130,14 @@ def el34_acceptance() -> dict[str, Any]:
     assert isinstance(fr_mod.params, KorenModifiedKneePentodeParams)
     fr_reef = fit_koren_reefman_pentode(ds, n_starts=8, seed=42)
     assert isinstance(fr_reef.params, KorenReefmanPentodeParams)
+    fr_derk = fit_koren_derk_pentode(ds, n_starts=10, seed=42)
+    assert isinstance(fr_derk.params, KorenDerkPentodeParams)
 
     errs_can, rows_can = _errors_pentode(ds, fr_can.params)
     errs_can_sigma, rows_can_sigma = _errors_pentode(ds, fr_can_sigma.params)
     errs_mod, rows_mod = _errors_pentode(ds, fr_mod.params)
     errs_reef, rows_reef = _errors_pentode(ds, fr_reef.params)
+    errs_derk, rows_derk = _errors_pentode(ds, fr_derk.params)
 
     knee_pred = lambda vg, va: va < 150 and -20 <= vg <= -10  # noqa: E731
     plateau_pred = lambda vg, va: va >= 200  # noqa: E731
@@ -153,6 +162,7 @@ def el34_acceptance() -> dict[str, Any]:
         'canonical_plus_sigma_T183': variant_metrics(fr_can_sigma, errs_can_sigma, rows_can_sigma),
         'modified_knee_T182': variant_metrics(fr_mod, errs_mod, rows_mod),
         'reefman_T184': variant_metrics(fr_reef, errs_reef, rows_reef),
+        'derk_T186': variant_metrics(fr_derk, errs_derk, rows_derk),
         'sc2_pass': None,
     }
 
@@ -234,16 +244,17 @@ def main() -> None:
     out: dict[str, Any] = {}
     print('=== T182 Phase 4 acceptance ===\n')
 
-    print('-- EL34 (SC#2 4-вариантное сравнение, T185 denser fixture) --')
+    print('-- EL34 (SC#2 5-вариантное сравнение, T185 denser fixture) --')
     el34 = el34_acceptance()
-    for v in ('canonical_T031', 'canonical_plus_sigma_T183', 'modified_knee_T182', 'reefman_T184'):
+    variants_el34 = (
+        'canonical_T031', 'canonical_plus_sigma_T183', 'modified_knee_T182',
+        'reefman_T184', 'derk_T186',
+    )
+    for v in variants_el34:
         s = el34[v]
         print(f'  {v:30s}: knee mean={s["knee"]["mean"]:.3f}, '
               f'plateau mean={s["plateau"]["mean"]:.3f}')
-    best_knee = min(
-        el34[v]['knee']['mean']
-        for v in ('canonical_T031', 'canonical_plus_sigma_T183', 'modified_knee_T182', 'reefman_T184')
-    )
+    best_knee = min(el34[v]['knee']['mean'] for v in variants_el34)
     sc2_pass = best_knee < 0.30
     el34['sc2_pass'] = sc2_pass
     print(f'  Best knee mean: {best_knee:.3f} → SC#2 verdict: {"PASS" if sc2_pass else "FAIL"}\n')

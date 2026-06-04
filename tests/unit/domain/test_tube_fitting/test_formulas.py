@@ -17,11 +17,14 @@ import pytest
 
 from domain.tube_fitting import (
     AyumiPentodeParams,
+    KorenDerkPentodeParams,
     KorenModifiedCutoffTriodeParams,
     KorenModifiedKneePentodeParams,
     KorenReefmanPentodeParams,
     KorenTriodeParams,
     ayumi_pentode_ia,
+    koren_derk_pentode_ia,
+    koren_derk_pentode_ig2,
     koren_modified_cutoff_triode_ia,
     koren_modified_knee_pentode_ia,
     koren_reefman_pentode_ia,
@@ -341,3 +344,83 @@ def test_reefman_pentode_atan_plateau() -> None:
     ia_far = koren_reefman_pentode_ia(vg=-10.0, va=2000.0, params=_EL34_REEFMAN)
     ia_close = koren_reefman_pentode_ia(vg=-10.0, va=400.0, params=_EL34_REEFMAN)
     assert ia_far / ia_close < 1.10
+
+
+# ============================== T186: Derk pentode ==============================
+
+
+_EL34_DERK = KorenDerkPentodeParams(
+    mu=11, ex=1.35, kg1=325, kg2=2250, kp=60, kvb=24, screen_v=250,
+    alpha_s=1.0, beta=0.05, a_penetration=0.001,
+)
+
+
+def test_derk_pentode_zero_va_returns_zero_by_construction() -> None:
+    # Eq 27 constraint guarantees I_a(V_a=0) = 0.
+    ia = koren_derk_pentode_ia(vg=-12.2, va=0.0, params=_EL34_DERK)
+    assert ia == pytest.approx(0.0, abs=1e-9)
+
+
+def test_derk_pentode_at_known_point() -> None:
+    # Hand-calc reference: Vg=-12.2, Va=250 → Ia=80.15 mA.
+    ia = koren_derk_pentode_ia(vg=-12.2, va=250.0, params=_EL34_DERK)
+    assert ia == pytest.approx(80.15, rel=2e-2)
+
+
+def test_derk_pentode_monotonic_in_va() -> None:
+    ias = [
+        koren_derk_pentode_ia(vg=-10.0, va=v, params=_EL34_DERK)
+        for v in (50, 100, 200, 400)
+    ]
+    assert ias[0] < ias[1] < ias[2] < ias[3]
+
+
+def test_derk_pentode_monotonic_in_vg() -> None:
+    ias = [
+        koren_derk_pentode_ia(vg=v, va=250.0, params=_EL34_DERK)
+        for v in (-20.0, -15.0, -10.0, -5.0)
+    ]
+    assert ias[0] < ias[1] < ias[2] < ias[3]
+
+
+def test_derk_pentode_ig2_depends_on_va() -> None:
+    # Eq 23: Ig2 has 1/(1+β·Va) term → должно зависеть от Va.
+    # Это отличает Derk от canonical/Reefman Ig2.
+    ig2_low = koren_derk_pentode_ig2(vg=-5.0, va=50.0, params=_EL34_DERK)
+    ig2_high = koren_derk_pentode_ig2(vg=-5.0, va=500.0, params=_EL34_DERK)
+    assert ig2_low > ig2_high  # При знизком Va, knee_factor больше → больше Ig2.
+
+
+def test_derk_pentode_alpha_derived_correctly() -> None:
+    # α = 1 - (kg1/kg2)(1+α_s); для EL34_DERK kg1=325, kg2=2250, α_s=1.0:
+    # α = 1 - (325/2250)(2) = 1 - 0.2889 = 0.7111.
+    # Не публичный, но через хорошо проверяемое поведение: при α_s=0,
+    # α=1-kg1/kg2 = 0.8556 → Ia(Va=0) всё ещё 0 (constraint design).
+    p_alpha_s_zero = _EL34_DERK.model_copy(update={'alpha_s': 0.0})
+    ia_zero = koren_derk_pentode_ia(vg=-10.0, va=0.0, params=p_alpha_s_zero)
+    assert ia_zero == pytest.approx(0.0, abs=1e-9)
+
+
+def test_derk_pentode_anode_penetration_increases_plateau() -> None:
+    # A·Va/KG1 term — при больших Va даёт линейный рост Ia.
+    p_zero_a = _EL34_DERK.model_copy(update={'a_penetration': 0.0})
+    p_higher_a = _EL34_DERK.model_copy(update={'a_penetration': 0.01})
+    ia_zero = koren_derk_pentode_ia(vg=-5.0, va=400.0, params=p_zero_a)
+    ia_high = koren_derk_pentode_ia(vg=-5.0, va=400.0, params=p_higher_a)
+    assert ia_high > ia_zero
+
+
+def test_derk_pentode_smaller_beta_gives_wider_knee() -> None:
+    # β=0.01 → 1/(1+0.01·100)=0.5 при Va=100 (wider knee).
+    # β=0.1 → 0.091 при Va=100 (sharper knee).
+    p_wide = _EL34_DERK.model_copy(update={'beta': 0.01})
+    p_sharp = _EL34_DERK.model_copy(update={'beta': 0.1})
+    ia_wide = koren_derk_pentode_ia(vg=-5.0, va=50.0, params=p_wide)
+    ia_sharp = koren_derk_pentode_ia(vg=-5.0, va=50.0, params=p_sharp)
+    # Sharper knee при том же Va даёт больший Ia (more "saturation" at knee).
+    assert ia_sharp > ia_wide
+
+
+def test_derk_pentode_cutoff_returns_negligible() -> None:
+    ia = koren_derk_pentode_ia(vg=-50.0, va=250.0, params=_EL34_DERK)
+    assert ia < 0.01

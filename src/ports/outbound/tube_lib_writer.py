@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
     from domain.tube_fitting import (
         AyumiPentodeParams,
+        KorenDerkPentodeParams,
         KorenModifiedCutoffTriodeParams,
         KorenModifiedKneePentodeParams,
         KorenReefmanPentodeParams,
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
         | KorenModifiedKneePentodeParams
         | KorenModifiedCutoffTriodeParams
         | KorenReefmanPentodeParams
+        | KorenDerkPentodeParams
     )
 
 HeaderTubeType = Literal['triode', 'pentode', 'tetrode']

@@ -36,9 +36,9 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
-- **T182 + T183 + T184 + T185 — Modified Koren-pentode + Koren-triode
-  formulas + Reefman pentode + σ-weighting в canonical + denser EL34
-  fixture (Tier 3+/Tier 2 baseline, PR #117).** Расширение T031
+- **T182 + T183 + T184 + T185 + T186 — Modified Koren formulations +
+  Reefman + Derk pentodes + σ-weighting + denser EL34 (Tier 3+/Tier
+  2/Tier 1.5 cascade, PR #117).** Расширение T031
   tube-fitting pipeline тремя opt-in variants + opt-in flag для
   canonical:
   - **T182** — `koren-modified-knee` (pentode plate-term ×
@@ -54,12 +54,19 @@ T-ID между релизами — `CHANGELOG.md` единственное per
     knee-focused points, всего 58 точек; SC#2 knee region покрыт
     10+ точками вместо 3).
 
+  Tests 1962 → 2023 (+61). ADR-T182a (ROI matrix Koren/Reefman/
+  Cohen-Hélie/neural), ADR-T182b (formal variant definitions
+  modified-knee + modified-cutoff), ADR-T182c (Derk Tier 1.5
+  empirical finding) в DECISIONS.md.
+
   CLI: `--formula-variant {koren-canonical|koren-modified-knee|
-  koren-modified-cutoff|koren-reefman-pentode}` + `--relative-weights`.
-  Round-trip SC#1 (canonical), SC#3 (modified-knee), SC#3b
-  (modified-cutoff), SC#1-equiv (Reefman) — все ✓ на synthetic.
-  ngspice-portable `.lib` emission, SC#5 OP smoke bit-exact match
-  forward formulas для всех трёх modified variants. Phase 4
+  koren-modified-cutoff|koren-reefman-pentode|koren-derk-pentode}` +
+  `--relative-weights`. Round-trip SC#1 (canonical), SC#3
+  (modified-knee), SC#3b (modified-cutoff), SC#1-equiv (Reefman),
+  Derk-relaxed round-trip — все ✓ на synthetic. ngspice-portable
+  `.lib` emission, SC#5 OP smoke bit-exact match forward formulas
+  для всех 4 modified variants (Derk: i(v3)=-80.15 mA ↔ Python
+  80.15; i(v2)=-11.93 mA ↔ Python 11.93). Phase 4
   acceptance — PARTIAL: best EL34 knee = 36% (modified-knee, vs
   target <30%), best 300B cutoff = 12% (modified-cutoff, ✓ target
   <30%; mid 17%, target <15% NEAR). 6П13С KG1 50965 → 12925

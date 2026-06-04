@@ -25,6 +25,52 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-04 — T186 ADR-T182c: Derk pentode (Tier 1.5) empirical finding
+
+- **Контекст.** После T182 implementation Vladimir попросил pилотировать
+  «академическую суперформулу» — Derk pentode из Reefman 2016 paper
+  Sec 4.4 Eq 23-27. Имплементация: новый variant `koren-derk-pentode`
+  с 9 fit params (μ, x, kg1, kg2, kp, kvb, α_s, β, A) + derived
+  constraint α = 1 - (kg1/kg2)(1+α_s).
+- **Решение.** Derk variant **ships** в-scope T186 как infrastructure-
+  ready для small-signal pentodes, но **не promoted** как
+  recommended вариант для general pentode fitting.
+- **Phase 4 EL34 result:** Derk knee mean = 61%, **worse чем
+  modified-knee (36%) и canonical+σ (55%)**. Hypothesis "9-param
+  super-formula закроет gap до <30%" — **collapsed**.
+- **Анализ root cause.**
+  - Reefman Fig 4 показывает Derk excellent fit на **PF86**
+    (small-signal pentode) с **joint Ia+Ig2 data**.
+  - Phase 4 EL34 fixture — vision-extracted, plateau-focused, **Ia
+    only** (no screen-current data).
+  - 9-param fit без Ig2 ill-conditioned → fitter сваливается в
+    local minimum overfit'a noise + ничего значимого для knee.
+  - α-constraint (Eq 27) работает корректно (Ia(Va=0) = 0
+    verified в tests + ngspice OP smoke).
+- **Что подтвердилось.**
+  - Math implementation correct: ngspice OP `i(v3)=-80.15 mA` ↔
+    Python `Ia=80.15 mA` (bit-exact).
+  - Round-trip synthetic data ≤10%/≤5%/≤30% tolerance ✓.
+  - `.lib` emission ngspice-portable с правильным multi-B-source
+    decomposition.
+- **Что не подтвердилось.**
+  - Academic «super-formula» hypothesis — 9 params не помогают если
+    data underconstrained.
+  - Reefman claim «amazingly accurate» применим только в его
+    setup (small-signal + joint Ia+Ig2 + low Va knee data).
+- **Последствия.**
+  - **T186 ships infrastructure**, не recommended default. Vladimir
+    может использовать на small-signal pentodes (EF86/PF86/EC86) с
+    Ig2 data — там должно работать.
+  - **modified-knee (T182)** остаётся recommended для general
+    pentode fitting (best result на EL34 = 36%).
+  - Для **further EL34 closure** нужен либо (а) joint Ia+Ig2 data,
+    либо (б) different Tier 1 formulation (Cohen-Hélie 2009), либо
+    (в) tube-specific weighted-region loss function. См. phase-4 §5
+    future work.
+- **Cite:** Reefman, "Spice models for vacuum tubes using the
+  uTracer" (2016), Sec 4.4 Eq 23-27, Fig 4 (PF86 success demo).
+
 ### 2026-06-04 — T182 ADR-T182a: modified Koren (Tier 3+) vs Reefman / Cohen-Hélie / neural
 
 - **Контекст.** Koren-pentode форма `E1^EX/KG1 · atan(Va/KVB)` (T031)

@@ -3759,9 +3759,11 @@ def build_app(
             typer.Option(
                 '--formula-variant',
                 help='Forward-formula variant: koren-canonical (default, T031) | '
-                'koren-modified-knee (pentode-only, T182 sharper knee) | '
-                'koren-modified-cutoff (triode-only, T182 sharper cutoff) | '
-                'koren-reefman-pentode (pentode-only, T184 Reefman 2016 Sec 4.2).',
+                'koren-modified-knee (pentode, T182 sharper knee) | '
+                'koren-modified-cutoff (triode, T182 sharper cutoff) | '
+                'koren-reefman-pentode (pentode, T184 Reefman 2016 Sec 4.2) | '
+                'koren-derk-pentode (pentode, T186 Reefman Sec 4.4 Derk model, '
+                '9 params).',
             ),
         ] = 'koren-canonical',
         relative_weights: Annotated[
@@ -3798,11 +3800,13 @@ def build_app(
             'koren-modified-knee',
             'koren-modified-cutoff',
             'koren-reefman-pentode',
+            'koren-derk-pentode',
         ):
             typer.echo(
                 f'--formula-variant must be one of: koren-canonical, '
                 f'koren-modified-knee, koren-modified-cutoff, '
-                f"koren-reefman-pentode (got '{formula_variant}')",
+                f'koren-reefman-pentode, koren-derk-pentode '
+                f"(got '{formula_variant}')",
                 err=True,
             )
             raise typer.Exit(code=2)

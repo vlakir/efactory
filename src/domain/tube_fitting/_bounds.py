@@ -122,6 +122,33 @@ KOREN_REEFMAN_PENTODE_TYPICAL: Final[dict[str, float]] = {
     'kvb': 20.0,
 }
 
+KOREN_DERK_PENTODE_BOUNDS: Final[KorenTriodeBounds] = {
+    'mu': (1.0, 500.0),
+    'ex': (1.05, 2.95),
+    'kg1': (1.0, 1e8),
+    'kg2': (1.0, 1e8),
+    'kp': (1.0, 5000.0),
+    'kvb': (1.0, 1000.0),
+    'alpha_s': (0.01, 20.0),
+    'beta': (1e-4, 1.0),
+    'a_penetration': (0.0, 0.1),
+}
+"""T186 Derk pentode: 9 params (canonical Reefman 6 + alpha_s/beta/A).
+α=1-(KG1/KG2)(1+α_s) derived constraint, не fit. См. `_formulas.py`
+`koren_derk_pentode_ia` docstring."""
+
+KOREN_DERK_PENTODE_TYPICAL: Final[dict[str, float]] = {
+    'mu': 10.0,
+    'ex': 1.3,
+    'kg1': 500.0,
+    'kg2': 2000.0,
+    'kp': 50.0,
+    'kvb': 20.0,
+    'alpha_s': 1.0,
+    'beta': 0.05,
+    'a_penetration': 0.001,
+}
+
 KOREN_MODIFIED_CUTOFF_TRIODE_POWER_TYPICAL: Final[dict[str, float]] = {
     'mu': 4.0,
     'ex': 1.4,

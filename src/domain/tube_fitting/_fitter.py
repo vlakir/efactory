@@ -24,6 +24,8 @@ from numpy.random import default_rng
 from domain.tube_fitting._bounds import (
     AYUMI_PENTODE_BOUNDS,
     AYUMI_PENTODE_TYPICAL,
+    KOREN_DERK_PENTODE_BOUNDS,
+    KOREN_DERK_PENTODE_TYPICAL,
     KOREN_MODIFIED_CUTOFF_TRIODE_BOUNDS,
     KOREN_MODIFIED_CUTOFF_TRIODE_POWER_TYPICAL,
     KOREN_MODIFIED_CUTOFF_TRIODE_TYPICAL,
@@ -39,6 +41,7 @@ from domain.tube_fitting._params import (
     AyumiPentodeParams,
     FitResult,
     IVDataset,
+    KorenDerkPentodeParams,
     KorenModifiedCutoffTriodeParams,
     KorenModifiedKneePentodeParams,
     KorenReefmanPentodeParams,
@@ -865,6 +868,235 @@ def fit_koren_reefman_pentode(
     fit_dict = dict(zip(keys, popt_best, strict=True))
     fit_dict['screen_v'] = screen_v
     params = KorenReefmanPentodeParams(**fit_dict)  # type: ignore[arg-type]
+    stderr = _diag_stderr(pcov_best, keys)
+
+    return FitResult(
+        params=params,
+        rms_residual_ma=rms_best,
+        per_param_stderr=stderr,
+        n_points=n_points,
+        converged=True,
+        n_starts_tried=len(starts),
+        best_start_index=best_idx,
+    )
+
+
+# ===== T186: Derk pentode =====
+
+
+def _koren_derk_pentode_ia_vec(
+    vgs: NDArray[np.float64],
+    vas: NDArray[np.float64],
+    mu: float,
+    ex: float,
+    kg1: float,
+    kg2: float,
+    kp: float,
+    kvb: float,
+    screen_v: float,
+    alpha_s: float,
+    beta: float,
+    a_penetration: float,
+) -> NDArray[np.float64]:
+    """Vectorized T186 Derk pentode Ia (mA). Reefman 2016 Sec 4.4 Eq 25."""
+    g2_norm = np.sqrt(kvb + screen_v * screen_v)
+    arg = kp * (1.0 / mu + vgs / g2_norm)
+    arg_clipped = np.clip(arg, SOFTPLUS_DEEP_CUTOFF, SOFTPLUS_LARGE_ARG)
+    softplus = np.where(arg > SOFTPLUS_LARGE_ARG, arg, np.log1p(np.exp(arg_clipped)))
+    softplus = np.where(arg < SOFTPLUS_DEEP_CUTOFF, 0.0, softplus)
+    e1 = (screen_v / kp) * softplus
+    e1_pos = np.maximum(e1, 1e-30)
+    ip_koren = e1_pos**ex
+    alpha = 1.0 - (kg1 / kg2) * (1.0 + alpha_s)
+    knee_factor = 1.0 / (1.0 + beta * vas)
+    bracket = (
+        1.0 / kg1
+        - 1.0 / kg2
+        + a_penetration * vas / kg1
+        - knee_factor * (alpha / kg1 + alpha_s / kg2)
+    )
+    ia_a = ip_koren * bracket
+    ia_a = np.where(e1 <= 0.0, 0.0, ia_a)
+    return ia_a * 1000.0
+
+
+def _koren_derk_pentode_ig2_vec(
+    vgs: NDArray[np.float64],
+    vas: NDArray[np.float64],
+    mu: float,
+    ex: float,
+    kg2: float,
+    kp: float,
+    kvb: float,
+    screen_v: float,
+    alpha_s: float,
+    beta: float,
+) -> NDArray[np.float64]:
+    """Vectorized T186 Derk pentode Ig2 (mA). Reefman 2016 Sec 4.4 Eq 23."""
+    g2_norm = np.sqrt(kvb + screen_v * screen_v)
+    arg = kp * (1.0 / mu + vgs / g2_norm)
+    arg_clipped = np.clip(arg, SOFTPLUS_DEEP_CUTOFF, SOFTPLUS_LARGE_ARG)
+    softplus = np.where(arg > SOFTPLUS_LARGE_ARG, arg, np.log1p(np.exp(arg_clipped)))
+    softplus = np.where(arg < SOFTPLUS_DEEP_CUTOFF, 0.0, softplus)
+    e1 = (screen_v / kp) * softplus
+    e1_pos = np.maximum(e1, 1e-30)
+    ip_koren = e1_pos**ex
+    knee_factor = 1.0 / (1.0 + beta * vas)
+    ig2_a = (ip_koren / kg2) * (1.0 + alpha_s * knee_factor)
+    ig2_a = np.where(e1 <= 0.0, 0.0, ig2_a)
+    return ig2_a * 1000.0
+
+
+_DERK_PENTODE_FIT_KEYS = (
+    'mu',
+    'ex',
+    'kg1',
+    'kg2',
+    'kp',
+    'kvb',
+    'alpha_s',
+    'beta',
+    'a_penetration',
+)
+
+
+def _derk_pentode_initial_guesses(
+    n_starts: int,
+    rng: np.random.Generator,
+    *,
+    seed_from: KorenDerkPentodeParams | None,
+) -> list[list[float]]:
+    """T186 multi-start. 9-param fit → n_starts default 10."""
+
+    def _from_dict(d: dict[str, float]) -> list[float]:
+        return [d[k] for k in _DERK_PENTODE_FIT_KEYS]
+
+    starts: list[list[float]] = [_from_dict(KOREN_DERK_PENTODE_TYPICAL)]
+    if seed_from is not None:
+        starts.append(_from_dict(seed_from.model_dump()))
+
+    while len(starts) < n_starts:
+        guess: list[float] = []
+        for k in _DERK_PENTODE_FIT_KEYS:
+            lo, hi = KOREN_DERK_PENTODE_BOUNDS[k]
+            if k in ('kg1', 'kg2', 'kp', 'kvb', 'beta'):
+                guess.append(float(np.exp(rng.uniform(np.log(lo), np.log(hi)))))
+            else:
+                guess.append(float(rng.uniform(lo, hi)))
+        starts.append(guess)
+    return starts
+
+
+def fit_koren_derk_pentode(
+    ds: IVDataset,
+    *,
+    n_starts: int = 10,
+    seed: int = 42,
+    seed_from: KorenDerkPentodeParams | None = None,
+    max_nfev: int = 10000,
+) -> FitResult:
+    """
+    T186: fit Derk pentode (Reefman Sec 4.4 Eq 23-27) по IV-датасету.
+
+    9-параметрический fit + σ-weighting (как все pentode modified
+    fitters). Default `n_starts=10` (vs 8 у T182 modified) — больше
+    parameters требуют больше start'ов. α = 1-(kg1/kg2)(1+α_s)
+    derived constraint, не fit.
+    """
+    if ds.tube_type != 'pentode':
+        msg = f"fit_koren_derk_pentode expects tube_type=pentode, got '{ds.tube_type}'"
+        raise ValueError(msg)
+    if ds.screen_voltage_v is None:
+        msg = 'fit_koren_derk_pentode requires screen_voltage_v'
+        raise ValueError(msg)
+    if n_starts < 1:
+        msg = f'n_starts must be ≥ 1, got {n_starts}'
+        raise ValueError(msg)
+
+    screen_v = ds.screen_voltage_v
+    vgs_ia_t, vas_ia_t, ias_t = ds.flatten()
+    vgs_ig2_t, vas_ig2_t, ig2s_t = ds.flatten_screen()
+    has_screen = bool(ds.screen_curves)
+
+    vgs_ia = np.asarray(vgs_ia_t, dtype=np.float64)
+    vas_ia = np.asarray(vas_ia_t, dtype=np.float64)
+    ias = np.asarray(ias_t, dtype=np.float64)
+
+    if has_screen:
+        vgs_ig2 = np.asarray(vgs_ig2_t, dtype=np.float64)
+        vas_ig2 = np.asarray(vas_ig2_t, dtype=np.float64)
+        ig2s = np.asarray(ig2s_t, dtype=np.float64)
+        vgs_all = np.concatenate([vgs_ia, vgs_ig2])
+        vas_all = np.concatenate([vas_ia, vas_ig2])
+        is_screen = np.concatenate([np.zeros_like(vgs_ia), np.ones_like(vgs_ig2)])
+        y_all = np.concatenate([ias, ig2s])
+        n_points = len(y_all)
+    else:
+        vgs_all = vgs_ia
+        vas_all = vas_ia
+        is_screen = np.zeros_like(vgs_ia)
+        y_all = ias
+        n_points = len(y_all)
+
+    keys = _DERK_PENTODE_FIT_KEYS
+    lower = np.asarray(
+        [KOREN_DERK_PENTODE_BOUNDS[k][0] for k in keys], dtype=np.float64
+    )
+    upper = np.asarray(
+        [KOREN_DERK_PENTODE_BOUNDS[k][1] for k in keys], dtype=np.float64
+    )
+
+    def _callback(x: NDArray[np.float64], *theta: float) -> NDArray[np.float64]:
+        mu, ex, kg1, kg2, kp, kvb, alpha_s, beta, a_pen = theta
+        vgs_x, vas_x, is_screen_x = x[0], x[1], x[2]
+        ia_pred = _koren_derk_pentode_ia_vec(
+            vgs_x, vas_x, mu, ex, kg1, kg2, kp, kvb, screen_v, alpha_s, beta, a_pen
+        )
+        if not has_screen:
+            return ia_pred
+        ig2_pred = _koren_derk_pentode_ig2_vec(
+            vgs_x, vas_x, mu, ex, kg2, kp, kvb, screen_v, alpha_s, beta
+        )
+        return np.where(is_screen_x > _IS_SCREEN_THRESHOLD, ig2_pred, ia_pred)
+
+    xdata = np.vstack([vgs_all, vas_all, is_screen])
+    sigma = np.maximum(y_all, _MODIFIED_RELATIVE_NOISE_FLOOR_MA)
+
+    rng = default_rng(seed)
+    starts = _derk_pentode_initial_guesses(n_starts, rng, seed_from=seed_from)
+
+    best: tuple[float, list[float], NDArray[np.float64], int] | None = None
+    for i, p0 in enumerate(starts):
+        p0_clipped = list(np.clip(p0, lower, upper))
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter('error', scipy_opt.OptimizeWarning)
+                popt, pcov = scipy_opt.curve_fit(
+                    _callback,
+                    xdata,
+                    y_all,
+                    p0=p0_clipped,
+                    bounds=(lower, upper),
+                    method='trf',
+                    sigma=sigma,
+                    absolute_sigma=False,
+                    max_nfev=max_nfev,
+                )
+        except (RuntimeError, scipy_opt.OptimizeWarning, ValueError):
+            continue
+        residuals = y_all - _callback(xdata, *popt)
+        rms = float(np.sqrt(np.mean(residuals * residuals)))
+        if best is None or rms < best[0]:
+            best = (rms, list(popt), pcov, i)
+
+    if best is None:
+        msg = f'All {n_starts} multi-start fits failed for {ds.tube_name}'
+        raise FitFailedError(msg)
+
+    rms_best, popt_best, pcov_best, best_idx = best
+    fit_dict = dict(zip(keys, popt_best, strict=True))
+    fit_dict['screen_v'] = screen_v
+    params = KorenDerkPentodeParams(**fit_dict)  # type: ignore[arg-type]
     stderr = _diag_stderr(pcov_best, keys)
 
     return FitResult(

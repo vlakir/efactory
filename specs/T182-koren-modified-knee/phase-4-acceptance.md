@@ -6,22 +6,30 @@ strict spec-thresholds не закрыты, но direction-of-improvement и
 trade-offs полностью документированы.
 **Артефакт спеки:** §4 (Success Criteria SC#2, SC#4, SC#6).
 
-## 1. Summary table (4-variant comparison)
+## 1. Summary table (5-variant comparison)
 
 ### EL34 SC#2 (T185 denser fixture, 58 points, Vg2=250V)
 
-| Variant | knee mean | plateau mean | overall mean |
-|---------|-----------|--------------|--------------|
-| canonical T031 (no σ) | **286%** | 15% | high |
-| canonical + σ (T183) | 55% | 48% | mid |
-| **modified-knee (T182)** | **36%** | 45% | mid |
-| reefman (T184) | 55% | 48% | mid |
+| Variant | knee mean | plateau mean | params |
+|---------|-----------|--------------|--------|
+| canonical T031 (no σ) | **286%** | 15% | 6 |
+| canonical + σ (T183) | 55% | 48% | 6 |
+| **modified-knee (T182)** | **36%** | 45% | 7 |
+| reefman (T184) | 55% | 48% | 6 |
+| derk (T186) | 61% | 45% | 9 |
 
 **Verdict:** SC#2 target <30% knee NOT MET; best = 36% (modified-knee).
 T185 denser fixture слегка улучшил best (39% → 36%) и **expose'ил**
 что canonical был оптимистично-оценён в первом Phase 4 (146%): со
 denser knee sampling canonical knee error растёт до 286%, что
 показывает истинный structural gap canonical-вариант.
+
+**Derk на EL34 финиширует worse чем modified-knee** (61% vs 36%) —
+9-param fit с только Ia-data overparametrized для power-pentode physics.
+Reefman paper Sec 4.4 specifies Derk model как targeted на
+**small-signal pentodes** (Fig 4 PF86) с screen-current data + знание
+"constant space charge" assumption. EL34 — power pentode, не Derk
+primary target.
 
 ### 300B SC#4 (31 points)
 
@@ -82,6 +90,31 @@ KVB=1.0 (lower bound), EX=1.05 (lower bound), KG1=181 (vs canonical
 
 **Open question:** Может быть, weighted-region loss (knee + plateau
 с custom weights) — лучший подход чем global σ. Но это вне T182 scope.
+
+### C-bis. T186 Derk pentode — overparametrized для EL34
+
+Derk model (Reefman 2016 Sec 4.4 Eq 23-27) добавляет 3 параметра
+(α_s, β, A) к Reefman backbone + derived constraint Eq 27
+`α = 1 - (k_g1/k_g2)(1+α_s)`. Полный fit 9 параметров.
+
+**Phase 4 EL34 result:** Derk knee=61%, **worse чем modified-knee
+(36%) и canonical+σ (55%)**. Hypothesis collapse.
+
+**Анализ.** Reefman Fig 4 показывает Derk excellent fit на PF86
+(small-signal pentode) с **joint Ia+Ig2 data**. Phase 4 EL34 fixture
+(vision-extracted, Va < 500V plateau-focused, Ia only — нет screen
+current data) недостаточно для identifiability 9 params.
+
+**Implications:**
+- Без Ig2 data Derk degrades к over-parameterized canonical
+- α derivation constraint работает (Ia(0)=0 verified в tests)
+- ngspice OP smoke ✓ — math correct
+- Для **EL34 power-pentode** Derk не подходит; для small-signal pentodes
+  (EF86/PF86/EC86) с screen-current data он должен работать
+  (на основе claim из paper, не verified этим Phase 4)
+
+**T186 ship rationale:** infrastructure-ready для small-signal pentode
+acceptance в будущем. EL34 не его target tube.
 
 ### C. T184 Reefman pentode = canonical equivalence для EL34
 

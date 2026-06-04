@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 from domain.tube_fitting import (
     AyumiPentodeParams,
+    KorenDerkPentodeParams,
     KorenModifiedCutoffTriodeParams,
     KorenModifiedKneePentodeParams,
     KorenReefmanPentodeParams,
@@ -103,7 +104,10 @@ def _validate_params_match_header(
         raise TypeError(msg)
     if isinstance(
         params,
-        AyumiPentodeParams | KorenModifiedKneePentodeParams | KorenReefmanPentodeParams,
+        AyumiPentodeParams
+        | KorenModifiedKneePentodeParams
+        | KorenReefmanPentodeParams
+        | KorenDerkPentodeParams,
     ) and header_tube_type not in (
         'pentode',
         'tetrode',
@@ -132,6 +136,10 @@ def _render_lib(
         )
     if isinstance(params, KorenReefmanPentodeParams):
         return _render_reefman_pentode(
+            spice_name, params, header_tube_type=header_tube_type, meta=meta
+        )
+    if isinstance(params, KorenDerkPentodeParams):
+        return _render_derk_pentode(
             spice_name, params, header_tube_type=header_tube_type, meta=meta
         )
     return _render_pentode(
@@ -298,6 +306,53 @@ def _render_reefman_pentode(
         f'G1 P K VALUE={{sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f})/{p.kg1:.4f} '
         f'* ATAN(V(P,K)/{p.kvb:.4f})}}\n'
         f'G2 G2 K VALUE={{sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f})/{p.kg2:.4f}}}\n'
+        f'* Inter-electrode capacitances — typical pentode defaults.\n'
+        f'C1 G K {caps["cgk"]:.1f}p\n'
+        f'C2 G P {caps["cgp"]:.1f}p\n'
+        f'C3 P K {caps["cpk"]:.1f}p\n'
+        f'RGI G K 1MEG\n'
+        f'.ENDS {spice_name}\n'
+    )
+
+
+def _render_derk_pentode(
+    spice_name: str,
+    p: KorenDerkPentodeParams,
+    *,
+    header_tube_type: HeaderTubeType,
+    meta: TubeLibMeta,
+) -> str:
+    """T186: Derk pentode (Reefman 2016 Sec 4.4 Eq 23-27)."""
+    caps = _PENTODE_TYPICAL_CAPS
+    g2_norm = (p.kvb + p.screen_v * p.screen_v) ** 0.5
+    alpha = 1.0 - (p.kg1 / p.kg2) * (1.0 + p.alpha_s)
+    return (
+        f'* {meta.display_name} — fitted by `efactory tube fit-from-points` (T186).\n'
+        f'*\n'
+        f'* Source: {meta.source}\n'
+        f'* IV points extracted: {meta.date_extracted.isoformat()}\n'
+        f'* Fitted:              {meta.date_fitted.isoformat()}\n'
+        f'* RMS residual: {meta.rms_residual_ma:.3f} mA over {meta.n_points} points\n'
+        f'*\n'
+        f'* fit variant: koren-derk-pentode (T186, Reefman 2016 Sec 4.4)\n'
+        f'* tube_type: {header_tube_type}\n'
+        f'* Pins: P (plate), G2 (screen), G (grid 1), K (cathode).\n'
+        f'.SUBCKT {spice_name} P G2 G K\n'
+        f'* Derk-pentode parameters: MU={p.mu:.4f} EX={p.ex:.4f} '
+        f'KG1={p.kg1:.4f} KG2={p.kg2:.4f}\n'
+        f'* KP={p.kp:.4f} KVB={p.kvb:.4f} ALPHA_S={p.alpha_s:.4f} '
+        f'BETA={p.beta:.6f} A={p.a_penetration:.6f}\n'
+        f'* alpha (derived) = 1-(KG1/KG2)(1+ALPHA_S) = {alpha:.6f}\n'
+        f'E1 7 0 VALUE={{V(G2,K)/{p.kp:.4f}*LN(1+EXP({p.kp:.4f}*'
+        f'(1/{p.mu:.4f}+V(G,K)/{g2_norm:.4f})))}}\n'
+        f'* knee_factor: 1/(1+BETA*V(P,K))\n'
+        f'B_KF 8 0 V=1/(1+{p.beta:.6f}*V(P,K))\n'
+        f'* bracket: 1/KG1 - 1/KG2 + A*Va/KG1 - knee_factor*(alpha/KG1 + alpha_s/KG2)\n'
+        f'B_BR 9 0 V=1/{p.kg1:.4f}-1/{p.kg2:.4f}+{p.a_penetration:.6f}*V(P,K)'
+        f'/{p.kg1:.4f}-V(8)*({alpha:.6f}/{p.kg1:.4f}+{p.alpha_s:.4f}/{p.kg2:.4f})\n'
+        f'G1 P K VALUE={{sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f})*V(9)}}\n'
+        f'G2 G2 K VALUE={{sgn(V(7))*pwr(abs(V(7)),{p.ex:.4f})/{p.kg2:.4f}'
+        f'*(1+{p.alpha_s:.4f}*V(8))}}\n'
         f'* Inter-electrode capacitances — typical pentode defaults.\n'
         f'C1 G K {caps["cgk"]:.1f}p\n'
         f'C2 G P {caps["cgp"]:.1f}p\n'

@@ -63,23 +63,28 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
-- **T182 + T183 + T184 + T185** — [closed 2026-06-04, PR #117]
-  **Modified Koren formulations + Reefman pentode + σ-weighting в
-  canonical + denser EL34 fixture.** Vladimir мандат: расширить T182
-  follow-ups в-scope тот же PR.
+- **T182 + T183 + T184 + T185 + T186** — [closed 2026-06-04, PR #117]
+  **Modified Koren + Reefman + Derk pentodes + σ-weighting + denser
+  EL34.** Vladimir мандат: расширить T182 follow-ups + Derk («академ.
+  суперформула») в-scope тот же PR.
   - **T182**: `koren-modified-knee` (pentode `(1−exp(−Va/Vk))`) +
     `koren-modified-cutoff` (triode sigmoid). CLI `--formula-variant`.
   - **T184**: `koren-reefman-pentode` (Reefman 2016 Sec 4.2,
     triode-like E1 form). Same param count canonical.
+  - **T186**: `koren-derk-pentode` (Reefman 2016 Sec 4.4 Eq 23-27,
+    9 params + derived α constraint). На EL34 Ia-only knee=61%
+    (overparametrized без Ig2 data), но math/.lib/ngspice ✓ —
+    infrastructure-ready для small-signal pentodes (EF86/PF86/etc).
   - **T183**: opt-in `--relative-weights` для canonical fitter
     (σ=max(Ia,1mA)).
   - **T185**: EL34 vision fixture 36 → 58 points (22 new knee
     points). SC#2 knee region covered 10+ points (vs 3).
 
-  Round-trip SC#1/SC#3/SC#3b all ✓ (synthetic). Phase 4 acceptance:
-  best EL34 knee = 36% (modified-knee, target <30% — partial), best
-  300B cutoff = 12% modified-cutoff (✓ target 30%; mid 17% near
-  target 15%). Key findings (Phase 4 §2): (a) σ-weighting closes
+  Round-trip SC#1/SC#3/SC#3b + Derk-relaxed all ✓ (synthetic).
+  Phase 4 acceptance: best EL34 knee = **36% (modified-knee, T182)**,
+  target <30% — partial; best 300B cutoff = 12% modified-cutoff (✓
+  target 30%; mid 17% near target 15%). Derk на EL34 не помог
+  (61% — Reefman Sec 4.4 targeted на small-signal pentodes + Ig2 data). Key findings (Phase 4 §2): (a) σ-weighting closes
   5× canonical EL34 gap но degrades plateau 3× (trade-off); (b)
   modified-knee adds ~20 п.п. structural improvement over canonical+σ;
   (c) Reefman near-identity к canonical+σ для EL34 (Vg2≫√KVB →

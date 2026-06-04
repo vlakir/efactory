@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Final
 if TYPE_CHECKING:
     from domain.tube_fitting._params import (
         AyumiPentodeParams,
+        KorenDerkPentodeParams,
         KorenModifiedCutoffTriodeParams,
         KorenModifiedKneePentodeParams,
         KorenReefmanPentodeParams,
@@ -172,6 +173,68 @@ def koren_reefman_pentode_ig2(
     if e1 <= 0.0:
         return 0.0
     return (e1**params.ex / params.kg2) * 1000.0
+
+
+def koren_derk_pentode_ia(
+    vg: float, va: float, params: KorenDerkPentodeParams
+) -> float:
+    """
+    T186: Derk pentode forward Ia (mA). Reefman 2016 Sec 4.4 Eq 25.
+
+    Formula:
+        E1 = (Vg2/KP) · ln(1 + exp(KP·(1/MU + Vg/sqrt(KVB+Vg2²))))
+        I_P,Koren = E1^EX
+        α = 1 - (KG1/KG2)(1+α_s)
+        Ia = I_P,Koren · [1/KG1 - 1/KG2 + A·Va/KG1
+              - 1/(1+β·Va) · (α/KG1 + α_s/KG2)]
+
+    Constraint ensures Ia(Va=0) = 0 (zero anode current at zero plate
+    voltage — "knee at zero").
+    """
+    g2_norm = math.sqrt(params.kvb + params.screen_v * params.screen_v)
+    arg = params.kp * (1.0 / params.mu + vg / g2_norm)
+    if arg < SOFTPLUS_DEEP_CUTOFF:
+        return 0.0
+    softplus = arg if arg > SOFTPLUS_LARGE_ARG else math.log1p(math.exp(arg))
+    e1 = (params.screen_v / params.kp) * softplus
+    if e1 <= 0.0:
+        return 0.0
+    ip_koren = e1**params.ex
+    alpha = 1.0 - (params.kg1 / params.kg2) * (1.0 + params.alpha_s)
+    knee_factor = 1.0 / (1.0 + params.beta * va)
+    bracket = (
+        1.0 / params.kg1
+        - 1.0 / params.kg2
+        + params.a_penetration * va / params.kg1
+        - knee_factor * (alpha / params.kg1 + params.alpha_s / params.kg2)
+    )
+    return ip_koren * bracket * 1000.0
+
+
+def koren_derk_pentode_ig2(
+    vg: float, va: float, params: KorenDerkPentodeParams
+) -> float:
+    """
+    T186: Derk pentode forward Ig2 (mA). Reefman 2016 Sec 4.4 Eq 23.
+
+    Formula:
+        Ig2 = (I_P,Koren / KG2) · (1 + α_s/(1+β·Va))
+
+    Зависит от Va (через 1/(1+β·Va) — knee modeling). Это отличает
+    Derk от canonical Koren-pentode + Reefman Sec 4.2 (там Ig2
+    независим от Va).
+    """
+    g2_norm = math.sqrt(params.kvb + params.screen_v * params.screen_v)
+    arg = params.kp * (1.0 / params.mu + vg / g2_norm)
+    if arg < SOFTPLUS_DEEP_CUTOFF:
+        return 0.0
+    softplus = arg if arg > SOFTPLUS_LARGE_ARG else math.log1p(math.exp(arg))
+    e1 = (params.screen_v / params.kp) * softplus
+    if e1 <= 0.0:
+        return 0.0
+    ip_koren = e1**params.ex
+    knee_factor = 1.0 / (1.0 + params.beta * va)
+    return (ip_koren / params.kg2) * (1.0 + params.alpha_s * knee_factor) * 1000.0
 
 
 def koren_modified_cutoff_triode_ia(
