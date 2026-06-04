@@ -54,10 +54,18 @@ T-ID между релизами — `CHANGELOG.md` единственное per
     knee-focused points, всего 58 точек; SC#2 knee region покрыт
     10+ точками вместо 3).
 
-  Tests 1962 → 2023 (+61). ADR-T182a (ROI matrix Koren/Reefman/
-  Cohen-Hélie/neural), ADR-T182b (formal variant definitions
-  modified-knee + modified-cutoff), ADR-T182c (Derk Tier 1.5
-  empirical finding) в DECISIONS.md.
+  - **CLI cleanup (T182 ADR-T182d)** — auto-default per tube_type:
+    pentode → `koren-modified-knee`, triode → `koren-canonical`.
+    `--formula-variant auto` новый default; Reefman/Derk/
+    `--relative-weights` убраны из CLI surface (домейн-код остаётся
+    для API/research). KB topic `tubes.formula-variant-choice` с
+    decision tree для агента. Внутренний агент в `efactory:linux`
+    теперь получает optimum-by-default без user override.
+
+  Tests 1962 → 2025 (+63). ADR-T182a (ROI matrix), ADR-T182b
+  (formal modified-knee/cutoff definition), ADR-T182c (Derk Tier
+  1.5 empirical finding), ADR-T182d (CLI cleanup decision)
+  в DECISIONS.md.
 
   CLI: `--formula-variant {koren-canonical|koren-modified-knee|
   koren-modified-cutoff|koren-reefman-pentode|koren-derk-pentode}` +

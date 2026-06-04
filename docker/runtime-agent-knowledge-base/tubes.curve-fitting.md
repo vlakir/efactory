@@ -21,6 +21,23 @@ CLI **не трогает KB**: KB topic создаётся slash-командо
 отдельным шагом (Clarify C7 — clear boundary). Это чтобы CLI
 оставался pure-compute и легко testable.
 
+## Default `--formula-variant auto` per tube_type (T182 cleanup 2026-06-04)
+
+CLI выбирает Koren formulation variant по `--type`:
+
+- **`--type pentode`** → `koren-modified-knee` (Phase 4 best 36% knee
+  на Mullard EL34 vs canonical 286%; T182 sharper-knee modifier).
+- **`--type triode`** → `koren-canonical` (T031 baseline; small-signal
+  triodes 12AX7/ECC83 хорошо fits).
+
+Override через explicit `--formula-variant koren-canonical |
+koren-modified-knee | koren-modified-cutoff`. **Power triodes (300B/
+2A3, deep-cutoff focus) → opt-in `koren-modified-cutoff` руками** —
+canonical default не закрывает strong cutoff edge.
+
+Decision tree и empirical evidence — см. KB
+`tubes.formula-variant-choice`.
+
 ## Когда fit `triode` vs `pentode` vs `tetrode`
 
 - **triode** — pins P/G/K, нет screen grid, обычно preamp/line/

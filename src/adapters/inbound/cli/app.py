@@ -3758,23 +3758,13 @@ def build_app(
             str,
             typer.Option(
                 '--formula-variant',
-                help='Forward-formula variant: koren-canonical (default, T031) | '
-                'koren-modified-knee (pentode, T182 sharper knee) | '
-                'koren-modified-cutoff (triode, T182 sharper cutoff) | '
-                'koren-reefman-pentode (pentode, T184 Reefman 2016 Sec 4.2) | '
-                'koren-derk-pentode (pentode, T186 Reefman Sec 4.4 Derk model, '
-                '9 params).',
+                help='Forward-formula variant: auto (default, per tube_type — '
+                'pentode → koren-modified-knee, triode → koren-canonical) | '
+                'koren-canonical (T031 backwards-compat) | koren-modified-knee '
+                '(pentode, T182 sharper knee) | koren-modified-cutoff (triode, '
+                'T182 sharper cutoff — для 300B-style power triodes).',
             ),
-        ] = 'koren-canonical',
-        relative_weights: Annotated[
-            bool,
-            typer.Option(
-                '--relative-weights',
-                help='T183: σ=max(Ia,1mA) relative-error weighting для canonical '
-                'fitter. Без эффекта при --formula-variant != koren-canonical '
-                '(modified variants всегда weighted).',
-            ),
-        ] = False,
+        ] = 'auto',
     ) -> None:
         """T031/T182: fit Koren triode / Ayumi pentode → `.lib` в user overlay."""
         if tube_type not in ('triode', 'pentode'):
@@ -3796,20 +3786,26 @@ def build_app(
             )
             raise typer.Exit(code=2)
         if formula_variant not in (
+            'auto',
             'koren-canonical',
             'koren-modified-knee',
             'koren-modified-cutoff',
-            'koren-reefman-pentode',
-            'koren-derk-pentode',
         ):
             typer.echo(
-                f'--formula-variant must be one of: koren-canonical, '
-                f'koren-modified-knee, koren-modified-cutoff, '
-                f'koren-reefman-pentode, koren-derk-pentode '
-                f"(got '{formula_variant}')",
+                f'--formula-variant must be one of: auto (default), '
+                f'koren-canonical, koren-modified-knee, '
+                f"koren-modified-cutoff (got '{formula_variant}')",
                 err=True,
             )
             raise typer.Exit(code=2)
+        # Auto-default per tube_type (T134 cleanup 2026-06-04):
+        # pentode → modified-knee (Phase 4 best 36% on EL34 vs canonical 286%);
+        # triode → canonical (small-signal default; power triodes opt-in
+        # modified-cutoff manually). См. KB topic tubes.formula-variant-choice.
+        if formula_variant == 'auto':
+            formula_variant = (
+                'koren-modified-knee' if tube_type == 'pentode' else 'koren-canonical'
+            )
         if out is None:
             out = projects_root.parent / 'models' / 'tubes' / 'custom'
         request = FitTubeFromPointsRequest(
@@ -3823,7 +3819,6 @@ def build_app(
             kg2_ratio=kg2_ratio,
             force=force,
             formula_variant=formula_variant,  # type: ignore[arg-type]
-            relative_weights=relative_weights,
         )
         try:
             result = fit_tube_from_points(

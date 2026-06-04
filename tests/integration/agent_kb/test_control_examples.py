@@ -318,6 +318,22 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'tubes.curve-fitting',
         'persistent',
     ),
+    # T182/T184/T186 cleanup — L2 regression: KB topic
+    # tubes.formula-variant-choice содержит decision tree для агента
+    # (когда modified-knee/modified-cutoff/canonical).
+    (
+        'koren modified knee pentode formula variant choice 300B power triode '
+        'cutoff edge',
+        'tubes.formula-variant-choice',
+        'modified-cutoff',
+    ),
+    # T182 cleanup — L2 regression: routing «300B model strong cutoff fit triode»
+    # → efactory tube fit-from-points + --formula-variant koren-modified-cutoff.
+    (
+        '300B model strong cutoff routing slash command',
+        'agent.command-routing',
+        'koren-modified-cutoff',
+    ),
 ]
 
 

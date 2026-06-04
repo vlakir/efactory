@@ -90,10 +90,15 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
   (c) Reefman near-identity к canonical+σ для EL34 (Vg2≫√KVB →
   numerical equivalence), польза проявится на small-signal pentodes;
   (d) σ-weighting на 300B degrades performance — conditional, не
-  universal. ADR-T182a (ROI matrix) + ADR-T182b (formal definition)
-  в DECISIONS. SC#5 ngspice OP smoke bit-exact match для всех трёх
-  modified variants (.lib emission ngspice-portable). Tests
-  1962 → 2010 (+48), coverage ≥80%. Pre-push 5/5 ✓.
+  universal. **Cleanup (Vladimir mandate):** CLI surface trim — auto-
+  default per tube_type (pentode → modified-knee, triode → canonical);
+  Reefman/Derk/relative-weights убраны из CLI (domain code остаётся).
+  KB topic `tubes.formula-variant-choice` decision tree + agent.command-
+  routing update + T134 Уровень 2 regression test. Агент внутри
+  `efactory:linux` теперь optimum-by-default. ADR-T182a/b/c/d (ROI
+  matrix / formal definitions / Derk empirical / CLI cleanup) в
+  DECISIONS. SC#5 ngspice OP smoke bit-exact для всех 4 modified
+  variants. Tests 1962 → 2025 (+63), coverage ≥80%. Pre-push 5/5 ✓.
 
 - **T031** — [closed 2026-06-04, PR #115] **Tube-curve-fitting:
   Koren/Ayumi параметры из даташитов через Claude vision.**

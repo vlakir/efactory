@@ -25,6 +25,66 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-04 — T182 ADR-T182d: CLI cleanup — auto-default per tube_type + Reefman/Derk drop из surface
+
+- **Контекст.** После T182+T183+T184+T186 в CLI surface оказались
+  5 formula variants + `--relative-weights` toggle. Внутренний агент
+  (`efactory:linux` container) без guidance default'ом получал
+  `koren-canonical` — наименее точный fit на real datasheet'ы
+  (Phase 4 EL34 knee mean 286%). KB topic про variant choice не было,
+  агент не знал когда выбрать modified-knee/cutoff.
+- **Решение.** Cleanup CLI surface до 3 published variants + auto-default
+  per tube_type. Reefman + Derk + relative-weights — research-only,
+  доступны через Python API но не через CLI / agent slash.
+  - **`--formula-variant auto`** (default) — resolves to:
+    - `pentode` → `koren-modified-knee` (Phase 4 best 36%);
+    - `triode` → `koren-canonical` (T031 baseline; small-signal).
+  - **Explicit override:** `koren-canonical | koren-modified-knee |
+    koren-modified-cutoff`. Power triodes (300B/2A3) — opt-in
+    `koren-modified-cutoff` руками.
+  - **Removed from CLI:** `koren-reefman-pentode`, `koren-derk-pentode`,
+    `--relative-weights`. Domain code остаётся (round-trip tests +
+    `FormulaVariant` Literal сохраняют все 5 значений).
+- **KB sync (T134 Уровень 1+2).**
+  - **Новый KB topic** `tubes.formula-variant-choice` с decision tree:
+    «pentode → auto = modified-knee; triode → auto = canonical;
+    power triode → modified-cutoff opt-in; Reefman/Derk → research-
+    only, не CLI». Phase 4 empirical numbers в TL;DR.
+  - **Cross-reference** в `tubes.curve-fitting` секция «Default
+    --formula-variant auto».
+  - **`agent.command-routing`** обновлён: line 47 для `efactory tube
+    fit-from-points` теперь упоминает auto-default + новый KB topic;
+    добавлен row для «power triode strong cutoff» → modified-cutoff.
+  - **Уровень 2 deterministic regression** — 2 новых case в
+    `tests/integration/agent_kb/test_control_examples.py`:
+    (a) decision-tree query → `tubes.formula-variant-choice`,
+    (b) routing query → `agent.command-routing` + `koren-modified-cutoff`.
+- **Альтернативы.**
+  - **(A) Без cleanup, default canonical как есть.** Отвергнуто:
+    агент молча выдаёт worst-case fit (286% knee на EL34); user
+    workflow «PDF → .lib → simulate» получает заведомо плохую модель.
+  - **(B) Revert T184/T186 целиком.** Отвергнуто: математика и тесты
+    добротные, ngspice OP smoke bit-exact; убирать code значит терять
+    infrastructure-ready baseline для small-signal pentodes (когда
+    появится joint Ia+Ig2 data). Cheaper держать в API без CLI surface.
+  - **(C) Полная revert до T031.** Отвергнуто: modified-knee daet
+    measurable knee improvement на EL34 (286% → 36%), это реальная
+    польза для production fitting.
+- **Последствия.**
+  - Внутренний агент по умолчанию выбирает оптимальный variant per
+    tube_type без user override.
+  - CLI surface clean: 3 published variants вместо 5.
+  - Reefman/Derk остаются в domain layer как «research baseline» с
+    documented empirical evaluation (ADR-T182c).
+  - Backwards-compat поломки: **есть** для CLI users которые vкс
+    pentode тем не указывали `--formula-variant`. Previously default
+    `koren-canonical`, now `koren-modified-knee`. **Built-in `.lib`
+    файлы не затронуты** (они built'нуты canonical до cleanup
+    и остаются на disk unchanged). Trade-off acceptable: новый
+    default физически точнее, breaking change оправдан.
+- **См. также.** `docker/runtime-agent-knowledge-base/
+  tubes.formula-variant-choice.md` (KB topic с decision tree).
+
 ### 2026-06-04 — T186 ADR-T182c: Derk pentode (Tier 1.5) empirical finding
 
 - **Контекст.** После T182 implementation Vladimir попросил pилотировать
