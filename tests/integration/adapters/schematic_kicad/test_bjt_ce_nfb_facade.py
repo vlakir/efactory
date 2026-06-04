@@ -160,6 +160,14 @@ def _build_bjt_ce_nfb(path: Path) -> Path:  # noqa: PLR0915
 
     # Power flag on B+ rail (ERC requires for un-driven nets).
     flg = sch.add_pwr_flag(at=_FLG_AT, rotation=180)
+    # T029 Phase 0: second PWR_FLAG on GND net — existing flg is on B+
+    # rail, GND lacks an explicit driver (BJT input pins flagged as
+    # power_in). Anchored 5.08 mm west of gnd_vcc.
+    flg_gnd = sch.add_pwr_flag(
+        at=(_GND_VCC_AT[0] - 5.08, _GND_VCC_AT[1]),
+        rotation=180,
+    )
+    sch.connect(flg_gnd.pin, gnd_vcc.pin)
 
     # === Resistors and capacitors ===
     r_s = sch.add_resistor(

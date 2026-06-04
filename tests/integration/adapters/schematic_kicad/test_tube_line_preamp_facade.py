@@ -255,8 +255,12 @@ def _build_tube_line_preamp(path: Path) -> Path:  # noqa: PLR0915
         Position(x_mm=114.3, y_mm=88.9),
         xv1b.pin('G'),
     )
-    sch.connect(r_g2.pin_b, Position(x_mm=114.3, y_mm=90.17))
-    sch.junction(at=(114.3, 90.17))
+    # T029 Phase 0: r_g2.pin_b is at (114.3, 90.17). The grid2 net runs at
+    # Y=88.9 (V1B.G). Previous connect to (114.3, 90.17) was a zero-length
+    # wire → ERC `pin_not_connected`. Extend to (114.3, 88.9) so pin_b lands
+    # on the grid2 net.
+    sch.connect(r_g2.pin_b, Position(x_mm=114.3, y_mm=88.9))
+    sch.junction(at=(114.3, 88.9))
 
     # === Stage 2 cathode (V1B.K → R_k2 → GND; V1B.K → C_out → R_load → GND) ===
     # V1B.K (119.38, 99.06) → cathode2 rail Y=105.41 (lower than Stage 1
@@ -419,7 +423,12 @@ async def test_facade_tube_line_preamp_op_point_active(
         f'V_plate2 (CF — direct supply) not at B+: {v_plate2:.2f} V '
         f'(expected ≈ 250V)'
     )
-    assert 30.0 <= v_cath2 <= 150.0, (
+    # T029 Phase 0: R4 grid-leak fix pins V_grid2 ≈ 0V (DC) via 470k к
+    # GND, so CF bias point shifts low (I_a ~0.1 mA, V_K ~4 V on R_k2=33k).
+    # Pre-T029 schematic had R4.pin_1 floating → SPICE DC initialized
+    # /grid2 unpredictably; baseline 30-150V reflected that ill-defined
+    # state. Window now covers the correctly-biased CF.
+    assert 2.0 <= v_cath2 <= 50.0, (
         f'V_cathode2 (CF auto-bias) out of range: {v_cath2:.2f} V '
-        f'(expected 30-100V for I_a·R_k2 with R_k=33k)'
+        f'(expected 2-50V for grid-leak biased CF with R_k=33k)'
     )

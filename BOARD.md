@@ -63,6 +63,20 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T029** — [closed 2026-06-05, PR #118] **ERC quality gate** через
+  `kicad-cli sch erc` в `design_to_sim` pipeline + standalone
+  `/design-check` / `efactory design check`. Hard-block: ERC errors
+  останавливают ngspice, markdown отчёт в `<project>/out/erc/<ts>/
+  report.md`. Bundled: фикс 4 «грязных» шаблонов через builders
+  (`active-lpf-sallen-key`, `bjt-ce-nfb`, `op-amp-inverting`,
+  `tube-line-preamp`). Все 11 шаблонов ERC-clean. Calibration
+  baseline'ы tube-line-preamp обновлены под скорректированный R4
+  grid-leak (V_cath2 30-150V → 2-50V; gain 64 → 54 V/V, совпадает
+  с analytical hand-calc). KB topic `design.erc-quality-gate` +
+  routing row + 2 deterministic regression cases. ADR-T029a в
+  DECISIONS.md. Coverage 87.03%, pre-push 5/5 ✓, 2086 passed.
+  Off-grid warnings — отдельный T187.
+
 - **T182 + T183 + T184 + T185 + T186** — [closed 2026-06-04, PR #117]
   **Modified Koren + Reefman + Derk pentodes + σ-weighting + denser
   EL34.** Vladimir мандат: расширить T182 follow-ups + Derk («академ.

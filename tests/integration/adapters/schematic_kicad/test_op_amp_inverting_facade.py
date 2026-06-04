@@ -108,6 +108,13 @@ def _build_op_amp_inverting(path: Path) -> Path:
     )
     gnd_opamp = sch.add_ground(at=_GND_OPAMP_AT)
     sch.connect(u1.pin_inp, gnd_opamp.pin)
+    # T029 Phase 0: PWR_FLAG on GND — U1.IN+ is `power_in`, ERC requires
+    # an explicit driver on this net. Anchored 5.08 mm west of gnd_opamp.
+    flg_gnd = sch.add_pwr_flag(
+        at=(_GND_OPAMP_AT[0] - 5.08, _GND_OPAMP_AT[1]),
+        rotation=180,
+    )
+    sch.connect(flg_gnd.pin, gnd_opamp.pin)
     # V+/V- (pins 3/4) — supply pins macromodel'и не используются. Маркер
     # `no_connect` гасит KiCad ERC warning «Pin not connected».
     sch.no_connect(at=u1.pin_vplus)

@@ -973,15 +973,46 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 
 ### Фаза 3 (+2 недели)
 
-- **T029** — [2026-05-15, reformulated 2026-06-03] ERC quality gate
-  через `kicad-cli sch erc` в `/sim-run` / новой `/design-check`.
-  `kicad-mcp-pro` отвергнут (ADR 2026-05-19: no MCP, CLI + filesystem).
-  DRC отложен в Фазу 4 (PCB) — до неё DRC-чекать нечего. Частично
-  уже подготовлено: `facade.py` ставит PWR_FLAG и NoConnect маркеры
-  для прохождения ERC.
-  Acceptance: pipeline блокирует sim-run, если ERC возвращает
-  errors (warnings — допустимы, рендерятся в человеко-читаемый отчёт);
-  есть slash `/design-check <project>` для standalone-запуска.
+<!-- T029 (ERC quality gate) — taken into BOARD → Doing 2026-06-04,
+     spec в specs/T029-erc-quality-gate/spec.md. -->
+
+- **T187** — [2026-06-04, заведено в Phase 0 T029 probe] **Массовая
+  чистка off-grid warnings в шаблонах.** Probe T029 (2026-06-04)
+  обнаружил `endpoint_off_grid` warnings во всех 11 встроенных шаблонах
+  `data/templates/*/`, всего 95 случаев (от 1 до 23 на шаблон). T029
+  ship'ит hard-gate только на errors → warnings не блокируют, но
+  визуально шумят в отчёте.
+
+  **Контекст.** Off-grid — pin / wire-endpoint не на connection grid.
+  Симуляция работает (netlist генерится по uuid'ам, не координатам),
+  но в KiCad GUI выглядит как «компонент чуть-чуть не довинчен», и
+  любая правка вручную имеет шанс развалить connectivity. Источник
+  скорее всего — миграция шаблонов KiCad 8 → 10 (изменился default
+  grid), либо ручная сборка facade.py при которой grid-snapping не
+  применялся.
+
+  **Acceptance.** В каждом из 11 шаблонов `endpoint_off_grid` warning
+  count == 0 после правки. Pre-push hooks 5/5 ✓. Smoke `/sim-run` на
+  3-х представительных шаблонах (op-amp, tube-SE, BJT-CE) даёт
+  идентичные numerical результаты до/после (доказательство, что
+  grid-snapping не сломал connectivity).
+
+  **Подход (выбран 2026-06-04 в T029 clarify R10):** **гибрид —
+  script-detect + manual fix в KiCad GUI**.
+
+  (a) Утилита-детектор (read-only, `efactory schematic check-grid
+  <project>` или подобный CLI): читает `.kicad_sch`, считает endpoint
+  координаты по grid step из `.kicad_pro` (default 50 mil / 1.27 mm
+  KiCad), выводит список off-grid pin/wire endpoints с symbol-ref и
+  pos.
+
+  (b) Для каждого шаблона прогон утилиты → список точек.
+
+  (c) Vladimir вручную в KiCad GUI правит по списку (drag-snap-to-grid
+  per item, проверка connectivity глазами).
+
+  Авто-snap отвергнут: при разном расстоянии до grid разные элементы
+  «прыгнут» в разные стороны и разорвут провод. Manual safer.
 - **T030** — [2026-05-15, reformulated 2026-06-03] Импорт SPICE-моделей
   по URL: slash `/spice-import-url <url>` (primary) и/или CLI
   `efactory spice import-url <url>`. Pipeline: download → классификация

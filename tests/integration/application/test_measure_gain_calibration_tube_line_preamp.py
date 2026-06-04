@@ -12,18 +12,22 @@ fixture при `data/models/tubes/custom/6N2P.lib`. ±15% tolerance ловит
   (CF approaches unity при large R_k2).
 * Total analytical ≈ 55 × 0.98 ≈ 54 V/V (≈ 34.6 dB).
 
-**Ngspice empirical drift:** Koren-style 6Н2П model gives g_m_eff
-выше nominal datasheet g_m=1.6 mA/V при V_a≈150V / I_a≈1mA bias
-point, поэтому effective μ выше и Stage 1 gain >55 V/V. Empirical
-baseline 64 V/V — на 16% выше analytical (приемлемо в рамках model
-parameter uncertainty).
+**Ngspice empirical baseline (после T029 R4 grid-leak fix):**
+В T029 Phase 0 был починен R4 grid-leak (pin_b теперь соединён с
+grid2 net через wire (114.3, 88.9), а не с собственной координатой
+0-length wire'ом). До фикса /grid2 net в DC analysis инициализировался
+SPICE'ом непредсказуемо (R4 floating), gain получался ≈64 V/V на
+ill-defined operating point. После фикса V_grid2 = 0V (DC) через
+R4=470k к GND, R4 ещё и шунтирует C3→V1B coupling на input
+impedance ~470k → empirical gain снижается до ≈54 V/V, что
+совпадает с analytical hand-calc Stage_1 (55) × CF (0.98) = 54 V/V.
 
 **Spec Q5 (Round 2 одобрено Vladimir 2026-06-02):** target ≈ 30-40 V/V
-(~30 dB), ±15% к hand-calc. Hand-calc сам выше 30-40 диапазона — spec
-Q5 имеет внутреннюю math-slip несоответствие (30 dB = 31.6 V/V vs
-formula 55 V/V = 34.6 dB). Empirical 64 V/V — в пределах ±20% к
-hand-calc, разумная calibration baseline. Tolerance ±15% → range
-[54.4, 73.6] V/V (≈ 34.7 – 37.3 dB).
+(~30 dB), ±15% к hand-calc. Spec Q5 имеет внутреннюю math-slip
+несоответствие (30 dB = 31.6 V/V vs formula 55 V/V = 34.6 dB).
+Empirical 54 V/V ≈ analytical 54 V/V — точный match, разумная
+calibration baseline. Tolerance ±15% → range [45.9, 62.1] V/V
+(≈ 33.2 – 35.9 dB).
 """
 
 from __future__ import annotations
@@ -60,7 +64,7 @@ needs_ngspice = pytest.mark.skipif(
     not _NGSPICE_AVAILABLE, reason='ngspice not installed',
 )
 
-_AV_MID_TARGET = 64.0
+_AV_MID_TARGET = 54.0
 _AV_MID_TOL = 0.15
 
 

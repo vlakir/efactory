@@ -128,4 +128,7 @@ def test_design_to_sim_invalid_schematic_returns_export_error(
     )
 
     assert result.exit_code == 2
-    assert 'kicad-cli exit' in result.output
+    # T029: ERC runs first and catches the unparseable schematic before
+    # the SPICE-exporter gets a chance, so the surfaced message reflects
+    # the ERC infrastructure failure path (spec R17).
+    assert 'ERC infrastructure failure' in result.output

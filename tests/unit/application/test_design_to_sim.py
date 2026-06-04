@@ -269,3 +269,117 @@ async def test_design_to_sim_propagates_simulation_failed(tmp_path: Path) -> Non
             exporter=exporter,
             simulator=simulator,
         )
+
+
+# === ERC gate (T029) ===
+
+
+class _FakeErcRunner:
+    def __init__(self, report) -> None:  # noqa: ANN001
+        self._report = report
+        self.calls: list[Path] = []
+
+    async def run(self, schematic: Path, *, timeout_seconds: float):  # noqa: ANN201, ARG002
+        self.calls.append(schematic)
+        return self._report
+
+
+def _make_erc_report(*, with_error: bool = False):  # noqa: ANN202
+    from datetime import UTC, datetime
+
+    from domain.erc import (
+        ErcItem,
+        ErcReport,
+        ErcSeverity,
+        ErcViolation,
+    )
+
+    violations: list[ErcViolation] = []
+    if with_error:
+        violations.append(
+            ErcViolation(
+                severity=ErcSeverity.ERROR,
+                type='power_pin_not_driven',
+                description='d',
+                items=[ErcItem(description='i', pos=(0.0, 0.0), uuid='u')],
+            ),
+        )
+    return ErcReport(
+        kicad_version='10.0.3',
+        schematic_path=Path('/tmp/x.kicad_sch'),
+        timestamp=datetime(2026, 6, 5, tzinfo=UTC),
+        violations=violations,
+        ignored_checks=[],
+    )
+
+
+async def test_design_to_sim_runs_erc_before_exporter_when_runner_provided(
+    tmp_path: Path,
+) -> None:
+    project = _make_project(tmp_path / 'demo')
+    project.path.mkdir(parents=True, exist_ok=True)
+    manifest_repo = FakeManifestRepository(project)
+    exporter = FakeSchematicExporter()
+    simulator = FakeSimulator(raises=SimulatorUnavailableError('stub'))
+    erc_runner = _FakeErcRunner(_make_erc_report())
+
+    await design_to_sim(
+        project_name='demo',
+        analysis=OpAnalysis(),
+        schematic=Path('schematic/rc.kicad_sch'),
+        projects_root=tmp_path,
+        manifest_repo=manifest_repo,
+        exporter=exporter,
+        simulator=simulator,
+        erc_runner=erc_runner,
+    )
+
+    assert erc_runner.calls == [project.path / 'schematic' / 'rc.kicad_sch']
+    assert exporter.calls, 'exporter must still run after clean ERC'
+
+
+async def test_design_to_sim_blocks_exporter_when_erc_errors(tmp_path: Path) -> None:
+    from domain.erc import ErcErrorsFoundError
+
+    project = _make_project(tmp_path / 'demo')
+    project.path.mkdir(parents=True, exist_ok=True)
+    manifest_repo = FakeManifestRepository(project)
+    exporter = FakeSchematicExporter()
+    simulator = FakeSimulator(raises=SimulatorUnavailableError('stub'))
+    erc_runner = _FakeErcRunner(_make_erc_report(with_error=True))
+
+    with pytest.raises(ErcErrorsFoundError):
+        await design_to_sim(
+            project_name='demo',
+            analysis=OpAnalysis(),
+            schematic=Path('schematic/rc.kicad_sch'),
+            projects_root=tmp_path,
+            manifest_repo=manifest_repo,
+            exporter=exporter,
+            simulator=simulator,
+            erc_runner=erc_runner,
+        )
+
+    assert exporter.calls == [], 'exporter must not run when ERC errors block'
+
+
+async def test_design_to_sim_without_erc_runner_skips_gate(tmp_path: Path) -> None:
+    """Test/dev composition pattern — `erc_runner=None` disables gate."""
+    project = _make_project(tmp_path / 'demo')
+    project.path.mkdir(parents=True, exist_ok=True)
+    manifest_repo = FakeManifestRepository(project)
+    exporter = FakeSchematicExporter()
+    simulator = FakeSimulator(raises=SimulatorUnavailableError('stub'))
+
+    sim = await design_to_sim(
+        project_name='demo',
+        analysis=OpAnalysis(),
+        schematic=Path('schematic/rc.kicad_sch'),
+        projects_root=tmp_path,
+        manifest_repo=manifest_repo,
+        exporter=exporter,
+        simulator=simulator,
+        erc_runner=None,
+    )
+
+    assert sim.status is SimulationStatus.NETLIST_READY

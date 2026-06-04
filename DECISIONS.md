@@ -25,6 +25,57 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-05 — T029 ADR-T029a: ERC quality gate как hard-блокер `design_to_sim`
+
+- **Контекст.** До T029 SPICE-pipeline `design_to_sim` мог запускать
+  ngspice на сломанной схеме (плавающий пин, missing power flag,
+  malformed wire). Симуляция падала с криптичным «no operating
+  point» или netlist-stub'ом, debugging — чёрный ящик. Пользователь
+  жаловался: «sim молча запустился на сломанной схеме».
+- **Решение.** Подключить `kicad-cli sch erc --format json
+  --severity-all` как **hard-блокер** перед `design_to_netlist` в
+  `design_to_sim` pipeline. ERC errors → `ErcErrorsFoundError` →
+  exit 1; warnings проходят, но рендерятся в markdown отчёт
+  `<project_root>/out/erc/<UTC-ISO-ts>/report.md` (visibility без
+  блокировки). Standalone-команды `/design-check` + `efactory
+  design check` дают тот же gate без вызова ngspice. **Никакого
+  escape hatch** (`--no-erc` / env-флаг для пропуска gate
+  запрещены): сломали схему — чините схему.
+- **Альтернативы.**
+  - (a) ERC как soft-warning (warnings в stdout, симуляция всё равно
+    идёт). **Отвергнуто.** Пользователь жалуется именно на «молча
+    запустилась» — soft-warning не решает проблему.
+  - (b) ERC внутри `design_to_netlist`. **Отвергнуто.** netlist —
+    pure compile step; gate должен жить отдельно (separation of
+    concerns), плюс `efactory design check` нужен standalone.
+  - (c) Свой s-expr ERC-чекер. **Отвергнуто.** `kicad-cli sch erc`
+    stable since KiCad 8.x, JSON schema `erc.v1.json` — мы
+    переиспользуем upstream правила вместо дублирования.
+  - (d) Прямые правки `data/templates/*.kicad_sch` для acceptance
+    SC1 (4 «грязных» шаблона). **Отвергнуто (Phase 0 probe
+    2026-06-05):** prямые правки ломают snapshot-тесты и стираются
+    следующим `regenerate-templates.py`. Реализация — через
+    builders в `tests/integration/adapters/schematic_kicad/test_
+    <name>_facade.py` + regen.
+- **Последствия.**
+  - + `sim-run` теперь fail-fast на дизайн-уровне: ERC errors
+    catch'ятся до ngspice, с локализацией (symbol, pos, uuid).
+  - + Markdown отчёт даёт agent'у actionable data — какой pin
+    отвязан, на какой координате (KiCad GUI Edit → Find by UUID).
+  - + `/design-check` standalone — полезен после ручной правки
+    `.kicad_sch` в KiCad GUI до коммита.
+  - − ERC ~3-5 секунд оверхеда на каждый `sim-run` (не кешируется,
+    spec N4 — корректно для текущей нагрузки).
+  - − `efactory bridge sim-run --netlist <file>` остаётся без ERC
+    (R12: pre-built netlist mode — power-user shortcut, schematic
+    физически отсутствует). В stdout видна строка `ERC: skipped
+    (pre-built netlist mode)` (F16) для visibility.
+  - − Тестовая calibration tube-line-preamp R4 ранее «работала» на
+    floating-grid схеме; после T029 grid-leak корректно подключён,
+    op-point shift'ит V_cath2 30→4V и gain 64→54 V/V. Baselines
+    обновлены под скорректированную физику (canonical CF без
+    cathode-self-bias trick).
+
 ### 2026-06-04 — T182 ADR-T182d: CLI cleanup — auto-default per tube_type + Reefman/Derk drop из surface
 
 - **Контекст.** После T182+T183+T184+T186 в CLI surface оказались

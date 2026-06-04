@@ -1,0 +1,5 @@
+{
+  "$schema": "https://schemas.kicad.org/erc.v2.json",
+  "sheets": [],
+  "ignored_checks": []
+}

@@ -334,6 +334,17 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         'koren-modified-cutoff',
     ),
+    # T029 Phase 5: ERC quality gate topic + routing.
+    (
+        'erc quality gate kicad schematic check exit codes',
+        'design.erc-quality-gate',
+        'power_pin_not_driven',
+    ),
+    (
+        'check schematic for errors design check ERC',
+        'agent.command-routing',
+        '/design-check',
+    ),
 ]
 
 
