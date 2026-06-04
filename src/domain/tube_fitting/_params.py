@@ -32,9 +32,12 @@ post-fit (Phase 2, A-W1).
 """
 
 FormulaVariant = Literal[
-    'koren-canonical', 'koren-modified-knee', 'koren-modified-cutoff'
+    'koren-canonical',
+    'koren-modified-knee',
+    'koren-modified-cutoff',
+    'koren-reefman-pentode',
 ]
-"""Forward-formula variant (T182).
+"""Forward-formula variant (T182, T184).
 
 * `'koren-canonical'` — оригинальный Koren triode + Ayumi/Koren-pentode
   (T031 baseline). Default. Каноничные `KorenTriodeParams` /
@@ -48,10 +51,18 @@ FormulaVariant = Literal[
   в mid-region. Используется с `KorenModifiedCutoffTriodeParams`
   (+2 параметра `vc_off`, `vs_off` сверх canonical triode). См.
   T182 spec §3.
+* `'koren-reefman-pentode'` — pentode-only: Reefman 2016 paper Sec 4.2
+  Eq 14-17. Same param count как canonical Ayumi, но E1 form
+  использует `sqrt(kVB + Vg2²)` для triode-strapped consistency.
+  Для high-Vg2 power-pentodes (EL34 типичный) numerically near-
+  identical canonical (Vg2 ≫ √kVB → identity). Польза проявляется
+  на low-Vg2 small-signal pentodes и triode-strapped configurations.
+  Cite: Reefman, "Spice models for vacuum tubes using the uTracer"
+  (2016), Sec 4.2.
 
-Совместимость triode/pentode → variant: `koren-modified-knee` ↔
-pentode only; `koren-modified-cutoff` ↔ triode only. Mismatch ловится
-use case'ом до запуска fitter'а (A-W5).
+Совместимость triode/pentode → variant: `koren-modified-knee` и
+`koren-reefman-pentode` ↔ pentode only; `koren-modified-cutoff` ↔
+triode only. Mismatch ловится use case'ом до запуска fitter'а (A-W5).
 """
 
 
@@ -140,6 +151,37 @@ class KorenModifiedKneePentodeParams(BaseModel):
     vk: Annotated[float, Field(gt=0)]
     """Knee voltage scale (V). Typical: 30-100 V для receiving
     pentodes, 50-200 V для power pentodes."""
+
+
+class KorenReefmanPentodeParams(BaseModel):
+    """
+    Reefman pentode (T184): canonical Ayumi-pentode параметры, но E1
+    form использует `sqrt(kVB + Vg2²)` (triode-like).
+
+    Forward Ia:
+        E1 = (Vg2/KP) · ln(1 + exp(KP · (1/MU + Vg/sqrt(KVB+Vg2²))))
+        Ia = (E1^EX / KG1) · atan(Va/KVB)         при E1>0
+        Ig2 = E1^EX / KG2
+
+    Note: Reefman convention НЕ имеет 2× factor в I_{P,Koren} (Eq 14:
+    ½·E^x·(1+sgn(E)) = E^x для E>0). Численно полученные KG1/KG2
+    будут в **2× меньше** канонических Ayumi values для тех же IV-
+    кривых. Это convention-difference, не bug. .lib emission
+    использует Reefman convention.
+
+    Same param count как `AyumiPentodeParams` (mu/ex/kg1/kg2/kp/kvb/
+    screen_v) — никаких новых fit params.
+    """
+
+    model_config = _FROZEN
+
+    mu: Annotated[float, Field(gt=0)]
+    ex: Annotated[float, Field(gt=1.0, lt=3.0)]
+    kg1: Annotated[float, Field(gt=0)]
+    kg2: Annotated[float, Field(gt=0)]
+    kp: Annotated[float, Field(gt=0)]
+    kvb: Annotated[float, Field(gt=0)]
+    screen_v: Annotated[float, Field(gt=0)]
 
 
 class KorenModifiedCutoffTriodeParams(BaseModel):
@@ -323,6 +365,7 @@ class FitResult(BaseModel):
         | AyumiPentodeParams
         | KorenModifiedKneePentodeParams
         | KorenModifiedCutoffTriodeParams
+        | KorenReefmanPentodeParams
     )
     rms_residual_ma: Annotated[float, Field(ge=0)]
     """RMS residual Ia error по всему датасету (mA)."""

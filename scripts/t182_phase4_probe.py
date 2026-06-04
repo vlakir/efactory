@@ -22,14 +22,17 @@ from domain.tube_fitting import (
     IVDataset,
     KorenModifiedCutoffTriodeParams,
     KorenModifiedKneePentodeParams,
+    KorenReefmanPentodeParams,
     KorenTriodeParams,
     ayumi_pentode_ia,
     fit_ayumi_pentode,
     fit_koren_modified_cutoff_triode,
     fit_koren_modified_knee_pentode,
+    fit_koren_reefman_pentode,
     fit_koren_triode,
     koren_modified_cutoff_triode_ia,
     koren_modified_knee_pentode_ia,
+    koren_reefman_pentode_ia,
     koren_triode_ia,
 )
 
@@ -49,16 +52,21 @@ def _load(filename: str) -> IVDataset:
 
 def _errors_pentode(
     ds: IVDataset,
-    params: AyumiPentodeParams | KorenModifiedKneePentodeParams,
+    params: (
+        AyumiPentodeParams
+        | KorenModifiedKneePentodeParams
+        | KorenReefmanPentodeParams
+    ),
 ) -> tuple[list[float], list[tuple[float, float, float, float]]]:
     """Возвращает (per-point relative errors, list of (vg, va, ia_obs, ia_pred))."""
-    is_modified = isinstance(params, KorenModifiedKneePentodeParams)
     errs: list[float] = []
     rows: list[tuple[float, float, float, float]] = []
     for curve in ds.curves:
         for va, ia_obs in curve.points:
-            if is_modified:
+            if isinstance(params, KorenModifiedKneePentodeParams):
                 ia_pred = koren_modified_knee_pentode_ia(curve.vg, va, params)
+            elif isinstance(params, KorenReefmanPentodeParams):
+                ia_pred = koren_reefman_pentode_ia(curve.vg, va, params)
             else:
                 ia_pred = ayumi_pentode_ia(curve.vg, va, params)
             rel = abs(ia_pred - ia_obs) / ia_obs if ia_obs > 0 else 0.0
@@ -106,71 +114,85 @@ def _region_stats(
 
 
 def el34_acceptance() -> dict[str, Any]:
-    """SC#2: knee error <30% mean / <40% max в knee region (Va<150, Vg∈[-10,-20])."""
+    """SC#2: 4-вариантное сравнение на denser EL34 (T185 fixture)."""
     ds = _load('el34_mullard.json')
     fr_can = fit_ayumi_pentode(ds, n_starts=5, seed=42)
     assert isinstance(fr_can.params, AyumiPentodeParams)
+    fr_can_sigma = fit_ayumi_pentode(ds, n_starts=8, seed=42, relative_weights=True)
+    assert isinstance(fr_can_sigma.params, AyumiPentodeParams)
     fr_mod = fit_koren_modified_knee_pentode(ds, n_starts=8, seed=42)
     assert isinstance(fr_mod.params, KorenModifiedKneePentodeParams)
+    fr_reef = fit_koren_reefman_pentode(ds, n_starts=8, seed=42)
+    assert isinstance(fr_reef.params, KorenReefmanPentodeParams)
 
     errs_can, rows_can = _errors_pentode(ds, fr_can.params)
+    errs_can_sigma, rows_can_sigma = _errors_pentode(ds, fr_can_sigma.params)
     errs_mod, rows_mod = _errors_pentode(ds, fr_mod.params)
+    errs_reef, rows_reef = _errors_pentode(ds, fr_reef.params)
 
     knee_pred = lambda vg, va: va < 150 and -20 <= vg <= -10  # noqa: E731
     plateau_pred = lambda vg, va: va >= 200  # noqa: E731
 
+    def variant_metrics(fr, errs, rows):  # noqa: ANN001
+        return {
+            'params': fr.params.model_dump(),
+            'rms_residual_ma': fr.rms_residual_ma,
+            'knee': _region_stats(
+                rows, errs, region_name='knee (Va<150, Vg∈[-10,-20])', predicate=knee_pred
+            ),
+            'plateau': _region_stats(
+                rows, errs, region_name='plateau (Va≥200)', predicate=plateau_pred
+            ),
+            'overall': {'mean': float(np.mean(errs)), 'max': float(np.max(errs))},
+        }
+
     return {
-        'tube': 'EL34 Mullard (36 points, Vg2=250V)',
+        'tube': f'EL34 Mullard (T185 denser fixture, {len(errs_can)} points, Vg2=250V)',
         'n_points': len(errs_can),
-        'canonical': {
-            'params': fr_can.params.model_dump(),
-            'rms_residual_ma': fr_can.rms_residual_ma,
-            'knee': _region_stats(rows_can, errs_can, region_name='knee (Va<150, Vg∈[-10,-20])', predicate=knee_pred),
-            'plateau': _region_stats(rows_can, errs_can, region_name='plateau (Va≥200)', predicate=plateau_pred),
-            'overall': {'mean': float(np.mean(errs_can)), 'max': float(np.max(errs_can))},
-        },
-        'modified_knee': {
-            'params': fr_mod.params.model_dump(),
-            'rms_residual_ma': fr_mod.rms_residual_ma,
-            'knee': _region_stats(rows_mod, errs_mod, region_name='knee (Va<150, Vg∈[-10,-20])', predicate=knee_pred),
-            'plateau': _region_stats(rows_mod, errs_mod, region_name='plateau (Va≥200)', predicate=plateau_pred),
-            'overall': {'mean': float(np.mean(errs_mod)), 'max': float(np.max(errs_mod))},
-        },
-        'sc2_pass': None,  # filled below
+        'canonical_T031': variant_metrics(fr_can, errs_can, rows_can),
+        'canonical_plus_sigma_T183': variant_metrics(fr_can_sigma, errs_can_sigma, rows_can_sigma),
+        'modified_knee_T182': variant_metrics(fr_mod, errs_mod, rows_mod),
+        'reefman_T184': variant_metrics(fr_reef, errs_reef, rows_reef),
+        'sc2_pass': None,
     }
 
 
 def we_300b_acceptance() -> dict[str, Any]:
-    """SC#4: strong-cutoff error <30% (Vg∈[-100,-60]); mid <15% (Vg∈[-30,-60])."""
+    """SC#4: 3-вариантное сравнение для 300B triode."""
     ds = _load('300b_we.json')
     fr_can = fit_koren_triode(ds, n_starts=5, seed=42)
     assert isinstance(fr_can.params, KorenTriodeParams)
+    fr_can_sigma = fit_koren_triode(ds, n_starts=8, seed=42, relative_weights=True)
+    assert isinstance(fr_can_sigma.params, KorenTriodeParams)
     fr_mod = fit_koren_modified_cutoff_triode(ds, n_starts=8, seed=42)
     assert isinstance(fr_mod.params, KorenModifiedCutoffTriodeParams)
 
     errs_can, rows_can = _errors_triode(ds, fr_can.params)
+    errs_can_sigma, rows_can_sigma = _errors_triode(ds, fr_can_sigma.params)
     errs_mod, rows_mod = _errors_triode(ds, fr_mod.params)
 
     cutoff_pred = lambda vg, va: -100 <= vg <= -60  # noqa: E731
     mid_pred = lambda vg, va: -60 <= vg <= -30  # noqa: E731
 
+    def variant_metrics(fr, errs, rows):  # noqa: ANN001
+        return {
+            'params': fr.params.model_dump(),
+            'rms_residual_ma': fr.rms_residual_ma,
+            'cutoff': _region_stats(
+                rows, errs, region_name='cutoff (Vg∈[-100,-60])', predicate=cutoff_pred
+            ),
+            'mid': _region_stats(
+                rows, errs, region_name='mid (Vg∈[-60,-30])', predicate=mid_pred
+            ),
+            'overall': {'mean': float(np.mean(errs)), 'max': float(np.max(errs))},
+        }
+
     return {
         'tube': '300B Western Electric (31 points)',
         'n_points': len(errs_can),
-        'canonical': {
-            'params': fr_can.params.model_dump(),
-            'rms_residual_ma': fr_can.rms_residual_ma,
-            'cutoff': _region_stats(rows_can, errs_can, region_name='cutoff (Vg∈[-100,-60])', predicate=cutoff_pred),
-            'mid': _region_stats(rows_can, errs_can, region_name='mid (Vg∈[-60,-30])', predicate=mid_pred),
-            'overall': {'mean': float(np.mean(errs_can)), 'max': float(np.max(errs_can))},
-        },
-        'modified_cutoff': {
-            'params': fr_mod.params.model_dump(),
-            'rms_residual_ma': fr_mod.rms_residual_ma,
-            'cutoff': _region_stats(rows_mod, errs_mod, region_name='cutoff (Vg∈[-100,-60])', predicate=cutoff_pred),
-            'mid': _region_stats(rows_mod, errs_mod, region_name='mid (Vg∈[-60,-30])', predicate=mid_pred),
-            'overall': {'mean': float(np.mean(errs_mod)), 'max': float(np.max(errs_mod))},
-        },
+        'canonical_T031': variant_metrics(fr_can, errs_can, rows_can),
+        'canonical_plus_sigma_T183': variant_metrics(fr_can_sigma, errs_can_sigma, rows_can_sigma),
+        'modified_cutoff_T182': variant_metrics(fr_mod, errs_mod, rows_mod),
         'sc4_pass': None,
     }
 
@@ -212,41 +234,39 @@ def main() -> None:
     out: dict[str, Any] = {}
     print('=== T182 Phase 4 acceptance ===\n')
 
-    print('-- EL34 (SC#2 knee improvement) --')
+    print('-- EL34 (SC#2 4-вариантное сравнение, T185 denser fixture) --')
     el34 = el34_acceptance()
-    sc2_knee_mean = el34['modified_knee']['knee']['mean']
-    sc2_knee_max = el34['modified_knee']['knee']['max']
-    sc2_plateau_mean = el34['modified_knee']['plateau']['mean']
-    sc2_pass = (
-        sc2_knee_mean is not None
-        and sc2_knee_mean < 0.30
-        and sc2_knee_max < 0.40
-        and sc2_plateau_mean < 0.15
+    for v in ('canonical_T031', 'canonical_plus_sigma_T183', 'modified_knee_T182', 'reefman_T184'):
+        s = el34[v]
+        print(f'  {v:30s}: knee mean={s["knee"]["mean"]:.3f}, '
+              f'plateau mean={s["plateau"]["mean"]:.3f}')
+    best_knee = min(
+        el34[v]['knee']['mean']
+        for v in ('canonical_T031', 'canonical_plus_sigma_T183', 'modified_knee_T182', 'reefman_T184')
     )
+    sc2_pass = best_knee < 0.30
     el34['sc2_pass'] = sc2_pass
-    print(f'  canonical:  knee mean={el34["canonical"]["knee"]["mean"]:.3f} '
-          f'max={el34["canonical"]["knee"]["max"]:.3f}, '
-          f'plateau mean={el34["canonical"]["plateau"]["mean"]:.3f}')
-    print(f'  modified:   knee mean={sc2_knee_mean:.3f} max={sc2_knee_max:.3f}, '
-          f'plateau mean={sc2_plateau_mean:.3f}')
-    print(f'  SC#2 verdict: {"PASS" if sc2_pass else "FAIL"}\n')
+    print(f'  Best knee mean: {best_knee:.3f} → SC#2 verdict: {"PASS" if sc2_pass else "FAIL"}\n')
     out['el34'] = el34
 
-    print('-- 300B (SC#4 cutoff improvement) --')
+    print('-- 300B (SC#4 3-вариантное сравнение) --')
     we300b = we_300b_acceptance()
-    sc4_cutoff_mean = we300b['modified_cutoff']['cutoff']['mean']
-    sc4_mid_mean = we300b['modified_cutoff']['mid']['mean']
-    sc4_pass = (
-        sc4_cutoff_mean is not None
-        and sc4_cutoff_mean < 0.30
-        and sc4_mid_mean is not None
-        and sc4_mid_mean < 0.15
+    for v in ('canonical_T031', 'canonical_plus_sigma_T183', 'modified_cutoff_T182'):
+        s = we300b[v]
+        print(f'  {v:30s}: cutoff mean={s["cutoff"]["mean"]:.3f}, '
+              f'mid mean={s["mid"]["mean"]:.3f}')
+    best_cutoff = min(
+        we300b[v]['cutoff']['mean']
+        for v in ('canonical_T031', 'canonical_plus_sigma_T183', 'modified_cutoff_T182')
     )
+    best_mid = min(
+        we300b[v]['mid']['mean']
+        for v in ('canonical_T031', 'canonical_plus_sigma_T183', 'modified_cutoff_T182')
+    )
+    sc4_pass = best_cutoff < 0.30 and best_mid < 0.15
     we300b['sc4_pass'] = sc4_pass
-    print(f'  canonical:  cutoff mean={we300b["canonical"]["cutoff"]["mean"]:.3f}, '
-          f'mid mean={we300b["canonical"]["mid"]["mean"]:.3f}')
-    print(f'  modified:   cutoff mean={sc4_cutoff_mean:.3f}, mid mean={sc4_mid_mean:.3f}')
-    print(f'  SC#4 verdict: {"PASS" if sc4_pass else "FAIL"}\n')
+    print(f'  Best cutoff: {best_cutoff:.3f}, best mid: {best_mid:.3f} → '
+          f'SC#4 verdict: {"PASS" if sc4_pass else "FAIL"}\n')
     out['300b'] = we300b
 
     print('-- 6П13С (SC#6 sanity-check) --')

@@ -1,6 +1,6 @@
 # Spec: Modified Koren-pentode formula + Koren-triode cutoff modifier
 
-**Статус:** Analyzed
+**Статус:** Done (T182 + T183 + T184 + T185 in-scope per Vladimir mandate 2026-06-04)
 **Дата создания:** 2026-06-04
 **Связанные документы:**
 - `BACKLOG.md` → исходная карточка T182 (перенесена в BOARD Doing).

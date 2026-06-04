@@ -63,23 +63,32 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
-- **T182** — [closed 2026-06-04, PR #117] **Modified Koren-pentode
-  knee + Koren-triode cutoff modifier.** Two opt-in variants:
-  `koren-modified-knee` (pentode, `(1−exp(−Va/Vk))` plate-term
-  multiplier) и `koren-modified-cutoff` (triode, `sigmoid((Vg−Vc_off)/
-  Vs_off)` Ia multiplier). CLI flag `--formula-variant`,
-  backwards-compat `koren-canonical` default. Round-trip SC#3 / SC#3b
-  ≤7%/≤3%/≤15%/≤20%/≤25% ✓. Phase 4 acceptance EL34/300B/6П13С —
-  **PARTIAL**: clear direction-of-improvement (EL34 knee 146% → 39%,
-  300B cutoff 16% → 12%, 6П13С KG1 50965 → 12925), но strict spec
-  thresholds (knee <30%, plateau <15%) не закрыты — структурный
-  ceiling Koren+modifier. Key finding (Phase 4 §2): большая часть
-  улучшения приходит от relative-error σ weighting в modified
-  fitter — BACKLOG T183 для backport в canonical. Tier-сравнение
-  Koren/Reefman/Cohen-Hélie в ADR-T182a. SC#5 ngspice OP smoke
-  bit-exact match. Tests 1962 → 1997 (+35), coverage 87.27%.
-  Pre-push 5/5 ✓. 3 follow-ups: T183 (σ canonical), T184 (Reefman
-  pilot), T185 (denser EL34 vision).
+- **T182 + T183 + T184 + T185** — [closed 2026-06-04, PR #117]
+  **Modified Koren formulations + Reefman pentode + σ-weighting в
+  canonical + denser EL34 fixture.** Vladimir мандат: расширить T182
+  follow-ups в-scope тот же PR.
+  - **T182**: `koren-modified-knee` (pentode `(1−exp(−Va/Vk))`) +
+    `koren-modified-cutoff` (triode sigmoid). CLI `--formula-variant`.
+  - **T184**: `koren-reefman-pentode` (Reefman 2016 Sec 4.2,
+    triode-like E1 form). Same param count canonical.
+  - **T183**: opt-in `--relative-weights` для canonical fitter
+    (σ=max(Ia,1mA)).
+  - **T185**: EL34 vision fixture 36 → 58 points (22 new knee
+    points). SC#2 knee region covered 10+ points (vs 3).
+
+  Round-trip SC#1/SC#3/SC#3b all ✓ (synthetic). Phase 4 acceptance:
+  best EL34 knee = 36% (modified-knee, target <30% — partial), best
+  300B cutoff = 12% modified-cutoff (✓ target 30%; mid 17% near
+  target 15%). Key findings (Phase 4 §2): (a) σ-weighting closes
+  5× canonical EL34 gap но degrades plateau 3× (trade-off); (b)
+  modified-knee adds ~20 п.п. structural improvement over canonical+σ;
+  (c) Reefman near-identity к canonical+σ для EL34 (Vg2≫√KVB →
+  numerical equivalence), польза проявится на small-signal pentodes;
+  (d) σ-weighting на 300B degrades performance — conditional, не
+  universal. ADR-T182a (ROI matrix) + ADR-T182b (formal definition)
+  в DECISIONS. SC#5 ngspice OP smoke bit-exact match для всех трёх
+  modified variants (.lib emission ngspice-portable). Tests
+  1962 → 2010 (+48), coverage ≥80%. Pre-push 5/5 ✓.
 
 - **T031** — [closed 2026-06-04, PR #115] **Tube-curve-fitting:
   Koren/Ayumi параметры из даташитов через Claude vision.**

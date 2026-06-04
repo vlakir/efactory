@@ -1,183 +1,156 @@
-# Phase 4 — Acceptance probe T182
+# Phase 4 — Acceptance probe T182 / T183 / T184 / T185
 
 **Дата:** 2026-06-04
-**Статус:** PARTIAL — modified variants дают чёткое улучшение (3-4× по knee
-mean) над canonical T031, но строгие spec-thresholds (<30% knee mean,
-<15% plateau) не достигнуты. Главное открытие — большая часть улучшения
-приходит от **relative-error sigma weighting** (`σ = max(Ia, 1 mA)`),
-встроенного в modified fitter'ы; structural knee modifier `(1-exp(-Va/Vk))`
-дополнительно помогает в knee, но не закрывает gap.
+**Статус:** PARTIAL — все 4 variant-задачи реализованы и сравнены;
+strict spec-thresholds не закрыты, но direction-of-improvement и
+trade-offs полностью документированы.
 **Артефакт спеки:** §4 (Success Criteria SC#2, SC#4, SC#6).
 
----
+## 1. Summary table (4-variant comparison)
 
-## 1. Summary table
+### EL34 SC#2 (T185 denser fixture, 58 points, Vg2=250V)
 
-| Test | Canonical (T031) | Modified + σ (T182) | Spec target | Verdict |
-|------|------------------|---------------------|-------------|---------|
-| **SC#2 EL34 knee mean** | 1.461 (146%) | **0.390 (39%)** | <0.30 | PARTIAL — 3.7× better, target not hit |
-| SC#2 EL34 knee max | 2.336 (234%) | 0.727 (73%) | <0.40 | PARTIAL |
-| SC#2 EL34 plateau mean | 0.148 (15%) | 0.180 (18%) | <0.15 | NEAR |
-| **SC#4 300B cutoff mean** | 0.162 (16%) | **0.122 (12%)** | <0.30 | PASS (uplift 25%) |
-| SC#4 300B mid mean | 0.174 (17%) | 0.191 (19%) | <0.15 | NEAR |
-| **SC#6 6П13С KG1** | 50965 | **12925** | ∈[500, 10000] | DIRECTIONAL — 3.9× drop, just over upper |
-| SC#6 6П13С EX | 2.673 | 2.400 | ∈[1.0, 2.0] | DIRECTIONAL — closer but >2.0 |
-| SC#6 6П13С mean error | 0.213 (21%) | 0.151 (15%) | n/a | 28% улучшение |
+| Variant | knee mean | plateau mean | overall mean |
+|---------|-----------|--------------|--------------|
+| canonical T031 (no σ) | **286%** | 15% | high |
+| canonical + σ (T183) | 55% | 48% | mid |
+| **modified-knee (T182)** | **36%** | 45% | mid |
+| reefman (T184) | 55% | 48% | mid |
 
-**Net verdict.** SC#2/SC#4 не PASS по строгим thresholds, но
-**direction-of-improvement демонстрирована** на каждом метрике для
-каждой тубы. T182 ships как improvement, не как closure. Strict
-target closure требует Tier-2 (Reefman) или Tier-1 (Cohen-Hélie)
-formulations — отдельная T-задача (см. ADR-T182a ROI matrix).
+**Verdict:** SC#2 target <30% knee NOT MET; best = 36% (modified-knee).
+T185 denser fixture слегка улучшил best (39% → 36%) и **expose'ил**
+что canonical был оптимистично-оценён в первом Phase 4 (146%): со
+denser knee sampling canonical knee error растёт до 286%, что
+показывает истинный structural gap canonical-вариант.
 
-## 2. Key finding: relative-error weighting vs knee modifier
+### 300B SC#4 (31 points)
 
-В ходе Phase 4 эксперимента было обнаружено, что **большая часть
-улучшения на EL34 приходит от `σ = max(Ia, 1 mA)` relative-error
-weighting**, встроенного в modified fitter, а не от
-`(1-exp(-Va/Vk))` knee modifier как такового.
+| Variant | cutoff mean | mid mean |
+|---------|-------------|----------|
+| canonical T031 (no σ) | 16% | 17% |
+| canonical + σ (T183) | 21% | 29% |
+| **modified-cutoff (T182)** | **12%** | 19% |
 
-Сравнение «canonical + sigma» (без modifier) vs «modified + sigma»
-(с modifier) на EL34 даёт почти идентичные результаты:
+**Verdict:** SC#4 cutoff target <30% MET (best 12% modified-cutoff);
+SC#4 mid target <15% NOT MET (best 17% canonical). Sigma weighting
+**degrades** performance на 300B (~17% noise vision data с wide Ia
+range), что contradicts EL34 finding — sigma optimum зависит от
+data quality + Ia range.
 
-| Fit variant | EL34 knee mean | plateau mean |
-|-------------|-----------------|---------------|
-| canonical, abs SSE (T031 default) | 1.461 | 0.148 |
-| canonical + σ-weighting (probe) | 0.388 | 0.178 |
-| modified-knee + σ-weighting (T182) | 0.390 | 0.180 |
+### 6П13С SC#6 (19 points, sanity-check)
 
-**Интерпретация.** Knee modifier добавляет 1 параметр (`Vk`) — structural
-gain в форме plate-term, но он *избыточен* на этой конкретной EL34
-fixture, где KVB сам по себе (через `atan(Va/KVB)` с small KVB) уже
-способен описать knee shape; не хватало правильной loss-функции.
+| Variant | KG1 | EX | Vk | mean err |
+|---------|-----|-----|----|----|
+| canonical T031 | 50965 | 2.67 | — | 21% |
+| modified-knee (T182) | **12925** | 2.40 | 70 | 15% |
 
-**Implication для будущей работы.** σ-weighting может быть добавлен и
-в canonical T031 fitter — это закроет большую часть EL34 knee gap
-**без** перехода на modified variant. Однако это вне scope T182
-(BACKLOG candidate, см. §6 follow-ups).
+KG1 target ∈ [500, 10000]: FAIL (12925 just above). EX ∈ [1.0, 2.0]:
+FAIL (2.40). DIRECTIONAL improvement holds: KG1 dropped 3.9×, EX
+dropped 0.27, mean err improved 28%.
 
-## 3. EL34 detail (SC#2)
+## 2. Key findings
 
-Fixture: `el34_mullard.json` — 36 vision-extracted точек из Mullard
-EL34 1962 datasheet (Vg2=250V), copy из T031 Phase 0 §4.
+### A. Sigma weighting закрывает большую часть canonical gap, но trade-offs
 
-### Canonical T031 fit (absolute SSE, без modifier)
+**EL34 finding:** canonical+σ улучшает knee 286% → 55% (5× drop), но
+plateau 15% → 48% (3× degradation). Sigma re-distributes weight от
+high-Ia plateau к low-Ia knee — фундаментальный trade-off для wide-
+range data.
 
-- params: `MU=14.65, EX=1.05 (lower bound!), KG1=162.6, KP=64.1, KVB=66.7`
-- knee region (Va<150, Vg∈[-10,-20], n=3): **mean 146%, max 234%**
-- plateau region (Va≥200, n=25): mean 15%
-- **Symptom:** EX hits lower bound (1.05), KG1 small — fitter
-  компенсирует absolute SSE доминированием high-Ia plateau точек.
+**300B finding:** canonical+σ **ухудшает** оба cutoff (16% → 21%) и
+mid (17% → 29%). Возможные причины:
+- 300B vision-extracted noise хуже EL34 (1962 vs 1950 datasheet quality);
+- triode формула без modifier'а уже балансирует σ-effect через `sqrt(KVB+Va²)` term;
+- σ amplifies noise points при low Ia → шумная convergence.
 
-### Modified-knee T182 fit (relative-error sigma + (1-exp(-Va/Vk)) modifier)
+**Conclusion:** σ weighting — **conditional improvement**, не universal
+panacea. Default `relative_weights=False` остаётся правильным для
+backwards-compat T031 acceptance. Opt-in flag даёт пользователю выбор.
 
-- params: `MU=14.60, EX=1.05 (still hits bound), KG1=181.3, KG2=2.4,
-  KP=64.8, KVB=1.0 (hits bound), Vk=86.5`
-- knee region: **mean 39%, max 73%** — 3.7× улучшение vs canonical
-- plateau region: mean 18% — лёгкая деградация vs canonical (15%)
-- **Symptom:** EX и KVB всё ещё на bounds; Vk нашёлся в физическом
-  диапазоне 50-100 V.
+### B. Modified-knee всё ещё лучший для EL34 knee
 
-### Spec target gap
+T182 modified-knee variant даёт best knee mean = 36% на denser fixture,
+тогда как canonical+σ и Reefman оба сидят на 55%. Это означает что
+`(1-exp(-Va/Vk))` modifier **structurally** добавляет ~20 п.п. к knee
+улучшению, что и было целью T182.
 
-- knee mean: 39% (target <30%) → **9 п.п. от target**.
-- knee max: 73% (target <40%) → **33 п.п. от target**.
-- plateau mean: 18% (target <15%) → 3 п.п. от target.
+Однако plateau (45%) хуже canonical-T031 (15%) — modified-knee
+жертвует plateau accuracy за knee. Это видно в fitted parameters:
+KVB=1.0 (lower bound), EX=1.05 (lower bound), KG1=181 (vs canonical
+1000s). Fitter ищет local minimum который over-fits knee region при
+заплате plateau.
 
-## 4. 300B detail (SC#4)
+**Open question:** Может быть, weighted-region loss (knee + plateau
+с custom weights) — лучший подход чем global σ. Но это вне T182 scope.
 
-Fixture: `300b_we.json` — 31 vision-extracted точек из Western Electric
-300B 1950 datasheet (Page 3 top, Ef=5.0V). Calibrated against published
-op-point Eb=350V, Ec=-74V → Ia=60mA (Page 2): vision interp gives
-59.5mA → 0.8% accuracy.
+### C. T184 Reefman pentode = canonical equivalence для EL34
 
-### Canonical T031 triode fit (absolute SSE)
+Reefman model (Sec 4.2 Eq 14-17) использует triode-like E1 form
+`sqrt(KVB + Vg2²)` вместо bare `Vg2`. Для EL34 (Vg2=250, KVB~24):
 
-- params: `MU=3.95 (≈ published 3.9 ✓), EX=1.98, KG1=11594, KP=152, KVB=5000 (hits bound)`
-- cutoff region (Vg∈[-100,-60], n=11): mean 16%
-- mid region (Vg∈[-60,-30], n=8): mean 17%
+```
+ratio = sqrt(24 + 250²) / 250 = 1.000192
+```
 
-### Modified-cutoff T182 fit (relative-error sigma + sigmoid cutoff)
+→ Numerically identical к canonical (delta < 0.02%). Phase 4 results
+confirm: Reefman knee=55%, canonical+σ=55%, Reefman plateau=48%,
+canonical+σ=48% — bit-exact match.
 
-- params: `MU=3.76, EX=2.14, KG1=23496, KP=222, KVB=3296, Vc_off=-155.3, Vs_off=30.0 (hits bound)`
-- cutoff region: **mean 12%** — 25% улучшение
-- mid region: mean 19% — лёгкая деградация
+**Theoretical value:** Reefman даёт **strict consistency** между
+pentode и triode-strapped pentode mode (см. Reefman paper Sec 3.4.2).
+Для low-Vg2 small-signal pentodes (Vg2 ≤ 100V) Reefman E1 substantially
+diverges от canonical, что должно дать measurable improvement.
 
-### Notes
+**Practical T184 status:** реализация ngspice-portable, bit-exact match
+Python forward formula (`ngspice OP i(v3)=-113.44 mA` vs Python
+`113.438 mA`). EL34 acceptance — no improvement (expected). Польза
+проявится на other tubes (small-signal pentodes + triode-strapped).
 
-- Vc_off found at **-155 V** — far below the published cutoff knee
-  (~-110V for Va=100). Это означает, что sigmoid модификатор сидит
-  ниже data range и слабо влияет на cutoff region. Эффект приходит от
-  σ-weighting, не от modifier.
-- Vs_off=30 hits upper bound — sigmoid максимально мягкий, что
-  подтверждает: modifier не активен.
-- Cutoff уже <30% у canonical (16%), запас улучшения мал; модификатор
-  не показал structural benefit на этой fixture.
+### D. T185 denser EL34 fixture закрывает sampling gap
 
-## 5. 6П13С detail (SC#6 sanity-check)
+Phase 4 первого захода имело только 3 точки в SC#2 knee region
+(Va<150, Vg∈[-10,-20]) → статистически слабо.
 
-Fixture: `6p13s_iv.json` — 19 vision-extracted точек, copy из T031
-Phase 4 `/tmp/t031-probe/6P13S_iv.json` (Vg2=150V).
+T185 добавил 22 точки в knee-Va range (Va ∈ [20, 175]) — теперь
+knee region покрыт 10+ точками. Это:
+- Поднял истинный canonical-T031 knee error с 146% → 286% (true
+  reflection of structural limit).
+- Дал stable метрику для variant сравнения.
+- Acceptance verdict (best=36% modified-knee) теперь statistically
+  defensible.
 
-### Canonical T031 (T031 baseline на этой fixture)
+## 3. Acceptance verdicts (по spec §4)
 
-- params: `MU=50.0, EX=2.673, KG1=50965 (!), KG2=10000, KP=37.0, KVB=8.6`
-- mean error: 21%
-- **Phase 4 T031 acceptance verdict** была ✓ (control point error
-  4.5%), но params значения unusual — задача T182 проверяет, физичнее
-  ли modified-knee.
+| SC | Target | Best result | Verdict |
+|----|--------|-------------|---------|
+| SC#1 round-trip 12AX7/Ayumi-EL34 synthetic | ≤5%/≤2% | passes all variants | ✓ PASS |
+| SC#2 EL34 knee mean <30%, max <40%, plateau <15% | 30%/40%/15% | **36%/72%/45%** | ✗ PARTIAL — modified-knee best |
+| SC#3 modified-knee round-trip | ≤7%/≤3%/≤15% | passes (synthetic) | ✓ PASS |
+| SC#3b modified-cutoff round-trip | ≤7%/≤3%/≤20%/≤25% | passes (synthetic) | ✓ PASS |
+| SC#4 300B cutoff <30%, mid <15% | 30%/15% | **12%/17%** | ✗ PARTIAL — cutoff ✓, mid ✗ |
+| SC#5 ngspice OP smoke | bit-exact | passes for all variants | ✓ PASS |
+| SC#6 6П13С KG1 ∈ [500, 10000], EX ∈ [1.0, 2.0] | bounds | **12925/2.40** | ✗ DIRECTIONAL |
+| SC#7 DECISIONS ROI matrix | ADR-T182a/b | written | ✓ PASS |
 
-### Modified-knee T182
+**Net:** 5/8 PASS, 3/8 PARTIAL/DIRECTIONAL — T182 ships как
+substantial improvement-with-honest-gaps, not as full closure.
 
-- params: `MU=39.8, EX=2.400, KG1=12925 (3.9× меньше!), KG2=10000, KP=44.4, KVB=33.7, Vk=70.0`
-- mean error: 15% — 28% улучшение
-- **KG1 ∈ [500, 10000]**: 12925 — just over upper (target failed).
-- **EX ∈ [1.0, 2.0]**: 2.400 — over (target failed).
-- **Directional sanity ✓.** KG1 dropped 4× toward physical range,
-  EX dropped 0.27 toward physical, mean error улучшен.
+## 4. Artifacts
 
-**Interpretation:** modified-knee частично корректирует
-"off-physics" компенсацию canonical на 6П13С. Полная коррекция
-(`KG1 < 10000`) требует sharper cutoff modifier или Tier-2 formula.
-
-## 6. Follow-ups (BACKLOG candidates)
-
-Из Phase 4 выделились новые задачи для BACKLOG:
-
-- **T183 (candidate)** — добавить `σ = max(Ia, ε)` relative-error
-  weighting в canonical T031 fitter (`fit_koren_triode`,
-  `fit_ayumi_pentode`). Phase 4 показал — большая часть EL34
-  улучшения приходит от σ, не от knee modifier. Должен проверить
-  SC#1 round-trip не сломан.
-
-- **T184 (candidate)** — Reefman / Cohen-Hélie pilot. Phase 4 EL34
-  knee mean застрял на 39% (target 30%); Koren+modifier hit
-  structural ceiling. Tier-2/Tier-1 pilot покажет, можно ли
-  закрыть gap до <20% при приемлемом param count (Reefman ~8
-  params).
-
-- **T185 (candidate)** — improved EL34 fixture с более плотным knee
-  sampling. Текущие 3 точки в Va<150 / Vg∈[-10,-20] недостаточны
-  для статистики SC#2. Re-vision Mullard EL34 Page C2 с focus на
-  knee.
-
-## 7. Artefacts
-
-- `fixtures/el34_mullard.json` — 36 точек, source T031 Phase 0 §4.
-- `fixtures/300b_we.json` — 31 точка, vision-extracted T182 Phase 4
-  из `frank.pocnet.net/sheets/084/3/300B.pdf`.
-- `fixtures/6p13s_iv.json` — 19 точек, copy из T031 Phase 4
-  `/tmp/t031-probe/`.
-- `scripts/t182_phase4_probe.py` — probe runner (standalone, не unit-test;
-  лежит в `scripts/` per ruff convention для one-off tooling).
-  Запуск: `PYTHONPATH=src uv run python scripts/t182_phase4_probe.py`.
+- `fixtures/el34_mullard.json` — 58 точек (Phase 0 36 + T185 22), Mullard EL34 1960.
+- `fixtures/300b_we.json` — 31 точка, Western Electric 300B 1950.
+- `fixtures/6p13s_iv.json` — 19 точек, USSR 6П13С handbook.
+- `scripts/t182_phase4_probe.py` — 4-variant comparison probe runner.
 - `phase-4-results.json` — machine-readable acceptance metrics.
 
-## 8. Phase 4 closure
+## 5. Future work (не блокеры T182)
 
-Phase 4 **не блокер merge T182** (spec §4 SC#6 footnote: «не блокер
-если хотя бы один bound не выполняется — требует разбора в Phase
-4»). Закрываем с PARTIAL verdict и тремя BACKLOG candidates на
-будущее.
-
-Next: Phase 5 (DECISIONS + CHANGELOG + pre-push gates + PR).
+- **T184 follow-up** — Reefman improvement пилот на small-signal pentode
+  (low Vg2). EL34 не показал benefit; lo-Vg2 EF86/PF86 должны.
+- **Derk pentode model** (Reefman paper Sec 4.4, Eq 23-25) — 3 extra
+  params (α_s, β, A) для knee modeling. Может закрыть EL34 knee gap
+  если modified-knee не хватает. Открыть отдельной T-задачей если
+  понадобится.
+- **Per-region weighted loss** — gradient-aware loss с разными
+  weights для knee/plateau regions (вместо global σ). Возможный путь
+  закрыть SC#2 target <30%.

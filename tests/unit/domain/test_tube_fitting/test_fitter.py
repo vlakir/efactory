@@ -21,19 +21,23 @@ from domain.tube_fitting import (
     IVDataset,
     KorenModifiedCutoffTriodeParams,
     KorenModifiedKneePentodeParams,
+    KorenReefmanPentodeParams,
     KorenTriodeParams,
     ayumi_pentode_ia,
     fit_ayumi_pentode,
     fit_koren_modified_cutoff_triode,
     fit_koren_modified_knee_pentode,
+    fit_koren_reefman_pentode,
     fit_koren_triode,
     koren_modified_cutoff_triode_ia,
     koren_modified_knee_pentode_ia,
+    koren_reefman_pentode_ia,
     koren_triode_ia,
 )
 from domain.tube_fitting._fitter import (
     _ayumi_pentode_ig2_vec,
     _koren_modified_knee_pentode_ig2_vec,
+    _koren_reefman_pentode_ig2_vec,
 )
 
 
@@ -537,3 +541,114 @@ def test_fit_modified_cutoff_triode_forces_vct_to_none() -> None:
     fr = fit_koren_modified_cutoff_triode(ds, n_starts=8, seed=42)
     assert isinstance(fr.params, KorenModifiedCutoffTriodeParams)
     assert fr.params.vct is None
+
+
+# ============================== T184: round-trip Reefman pentode ==============================
+
+
+def _synthesize_reefman_pentode_dataset(
+    params: KorenReefmanPentodeParams,
+    tube_name: str = 'SYNTH_REEFMAN_PENTODE',
+    vg_values: tuple[float, ...] = (-2.0, -5.0, -10.0, -15.0, -20.0),
+    va_values: tuple[float, ...] = (50.0, 100.0, 200.0, 300.0, 400.0, 500.0),
+    *,
+    include_screen: bool = False,
+) -> IVDataset:
+    curves = tuple(
+        CurveData(
+            vg=vg,
+            points=tuple(
+                (va, koren_reefman_pentode_ia(vg, va, params)) for va in va_values
+            ),
+        )
+        for vg in vg_values
+    )
+    screen_curves: tuple[CurveData, ...] = ()
+    if include_screen:
+        screen_curves = tuple(
+            CurveData(
+                vg=vg,
+                points=tuple(
+                    (
+                        va,
+                        float(
+                            _koren_reefman_pentode_ig2_vec(
+                                np.array([vg]),
+                                params.mu,
+                                params.ex,
+                                params.kg2,
+                                params.kp,
+                                params.kvb,
+                                params.screen_v,
+                            )[0]
+                        ),
+                    )
+                    for va in va_values
+                ),
+            )
+            for vg in vg_values
+        )
+    return IVDataset(
+        tube_name=tube_name,
+        tube_type='pentode',
+        source='synthesized-reefman',
+        date_extracted=date(2026, 6, 4),
+        curves=curves,
+        screen_voltage_v=params.screen_v,
+        screen_curves=screen_curves,
+    )
+
+
+_EL34_REEFMAN_TRUTH = KorenReefmanPentodeParams(
+    mu=11, ex=1.35, kg1=325, kg2=2250, kp=60, kvb=24, screen_v=250
+)
+
+
+def test_round_trip_reefman_pentode_joint_within_sc1_tolerance() -> None:
+    """Same SC#1 tolerance как canonical Ayumi: MU/KG1/KG2/KP/KVB ≤5%, EX ≤2%."""
+    ds = _synthesize_reefman_pentode_dataset(_EL34_REEFMAN_TRUTH, include_screen=True)
+    fr = fit_koren_reefman_pentode(ds, n_starts=8, seed=42)
+
+    assert isinstance(fr.params, KorenReefmanPentodeParams)
+    p = fr.params
+    assert _rel_err(p.mu, 11.0) <= 0.05
+    assert _rel_err(p.ex, 1.35) <= 0.02
+    assert _rel_err(p.kg1, 325.0) <= 0.05
+    assert _rel_err(p.kg2, 2250.0) <= 0.05
+    assert _rel_err(p.kp, 60.0) <= 0.05
+    assert _rel_err(p.kvb, 24.0) <= 0.05
+    assert p.screen_v == 250.0
+
+
+def test_round_trip_reefman_pentode_ia_only_within_sc1_tolerance() -> None:
+    """Ia-only: KG2 не identifiable, остальные ≤5%/≤2%."""
+    ds = _synthesize_reefman_pentode_dataset(_EL34_REEFMAN_TRUTH)
+    fr = fit_koren_reefman_pentode(ds, n_starts=8, seed=42)
+
+    assert isinstance(fr.params, KorenReefmanPentodeParams)
+    p = fr.params
+    assert _rel_err(p.mu, 11.0) <= 0.05
+    assert _rel_err(p.ex, 1.35) <= 0.02
+    assert _rel_err(p.kg1, 325.0) <= 0.05
+    assert _rel_err(p.kp, 60.0) <= 0.05
+    assert _rel_err(p.kvb, 24.0) <= 0.05
+
+
+def test_reefman_pentode_seed_determinism() -> None:
+    ds = _synthesize_reefman_pentode_dataset(_EL34_REEFMAN_TRUTH, include_screen=True)
+    fr_a = fit_koren_reefman_pentode(ds, n_starts=8, seed=42)
+    fr_b = fit_koren_reefman_pentode(ds, n_starts=8, seed=42)
+    assert fr_a.params == fr_b.params
+    assert fr_a.rms_residual_ma == fr_b.rms_residual_ma
+
+
+def test_fit_reefman_pentode_rejects_triode() -> None:
+    ds = _synthesize_triode_dataset(_TWELVE_AX7_TRUTH)
+    with pytest.raises(ValueError, match='tube_type'):
+        fit_koren_reefman_pentode(ds)
+
+
+def test_fit_reefman_pentode_n_starts_zero_raises() -> None:
+    ds = _synthesize_reefman_pentode_dataset(_EL34_REEFMAN_TRUTH)
+    with pytest.raises(ValueError, match='n_starts'):
+        fit_koren_reefman_pentode(ds, n_starts=0)

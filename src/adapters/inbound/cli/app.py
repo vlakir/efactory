@@ -3758,11 +3758,21 @@ def build_app(
             str,
             typer.Option(
                 '--formula-variant',
-                help='Forward-formula variant (T182): '
-                'koren-canonical (default) | koren-modified-knee (pentode-only, '
-                'sharper knee) | koren-modified-cutoff (triode-only, sharper cutoff).',
+                help='Forward-formula variant: koren-canonical (default, T031) | '
+                'koren-modified-knee (pentode-only, T182 sharper knee) | '
+                'koren-modified-cutoff (triode-only, T182 sharper cutoff) | '
+                'koren-reefman-pentode (pentode-only, T184 Reefman 2016 Sec 4.2).',
             ),
         ] = 'koren-canonical',
+        relative_weights: Annotated[
+            bool,
+            typer.Option(
+                '--relative-weights',
+                help='T183: σ=max(Ia,1mA) relative-error weighting для canonical '
+                'fitter. Без эффекта при --formula-variant != koren-canonical '
+                '(modified variants всегда weighted).',
+            ),
+        ] = False,
     ) -> None:
         """T031/T182: fit Koren triode / Ayumi pentode → `.lib` в user overlay."""
         if tube_type not in ('triode', 'pentode'):
@@ -3787,10 +3797,12 @@ def build_app(
             'koren-canonical',
             'koren-modified-knee',
             'koren-modified-cutoff',
+            'koren-reefman-pentode',
         ):
             typer.echo(
                 f'--formula-variant must be one of: koren-canonical, '
-                f"koren-modified-knee, koren-modified-cutoff (got '{formula_variant}')",
+                f'koren-modified-knee, koren-modified-cutoff, '
+                f"koren-reefman-pentode (got '{formula_variant}')",
                 err=True,
             )
             raise typer.Exit(code=2)
@@ -3807,6 +3819,7 @@ def build_app(
             kg2_ratio=kg2_ratio,
             force=force,
             formula_variant=formula_variant,  # type: ignore[arg-type]
+            relative_weights=relative_weights,
         )
         try:
             result = fit_tube_from_points(

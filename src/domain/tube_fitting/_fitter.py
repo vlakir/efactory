@@ -29,6 +29,8 @@ from domain.tube_fitting._bounds import (
     KOREN_MODIFIED_CUTOFF_TRIODE_TYPICAL,
     KOREN_MODIFIED_KNEE_PENTODE_BOUNDS,
     KOREN_MODIFIED_KNEE_PENTODE_TYPICAL,
+    KOREN_REEFMAN_PENTODE_BOUNDS,
+    KOREN_REEFMAN_PENTODE_TYPICAL,
     KOREN_TRIODE_BOUNDS,
     KOREN_TRIODE_TYPICAL,
 )
@@ -39,6 +41,7 @@ from domain.tube_fitting._params import (
     IVDataset,
     KorenModifiedCutoffTriodeParams,
     KorenModifiedKneePentodeParams,
+    KorenReefmanPentodeParams,
     KorenTriodeParams,
 )
 
@@ -186,6 +189,7 @@ def fit_koren_triode(
     seed: int = 42,
     seed_from: KorenTriodeParams | None = None,
     max_nfev: int = 5000,
+    relative_weights: bool = False,
 ) -> FitResult:
     """
     Fit Koren triode формулы по IV-датасету.
@@ -193,6 +197,11 @@ def fit_koren_triode(
     Multi-start (A-C2): `n_starts` initial guesses (типовой + опц.
     seed_from + randomized в bounds через seeded RNG); выбирается start
     с минимальным RMS residual.
+
+    `relative_weights` (T183): если True — σ = max(Ia, 1 mA) → relative-
+    error loss (high-Ia plateau не доминирует low-Ia knee/cutoff). T031
+    SC#1 round-trip проходит при обоих режимах (синтетические residuals
+    ≈ 0). Default False для backwards-compat T031 acceptance baseline.
     """
     if ds.tube_type != 'triode':
         msg = f"fit_koren_triode expects tube_type='triode', got '{ds.tube_type}'"
@@ -221,6 +230,9 @@ def fit_koren_triode(
         return _koren_triode_ia_vec(x[0], x[1], mu, ex, kg1, kp, kvb, vct=vct)
 
     xdata = np.vstack([vgs, vas])
+    sigma = (
+        np.maximum(ias, _MODIFIED_RELATIVE_NOISE_FLOOR_MA) if relative_weights else None
+    )
 
     rng = default_rng(seed)
     starts = _triode_initial_guesses(
@@ -242,6 +254,8 @@ def fit_koren_triode(
                     p0=p0_clipped,
                     bounds=(lower, upper),
                     method='trf',  # A-C1
+                    sigma=sigma,
+                    absolute_sigma=not sigma is not None,
                     max_nfev=max_nfev,
                 )
         except (RuntimeError, scipy_opt.OptimizeWarning, ValueError):
@@ -312,12 +326,16 @@ def fit_ayumi_pentode(
     seed: int = 42,
     seed_from: AyumiPentodeParams | None = None,
     max_nfev: int = 5000,
+    relative_weights: bool = False,
 ) -> FitResult:
     """
     Fit Ayumi-style pentode (Koren-pentode form) по IV-датасету.
 
     `screen_voltage_v` берётся из `ds`, **не** fit'ится — это known input.
     Fit'ятся 6 параметров: mu, ex, kg1, kg2, kp, kvb.
+
+    `relative_weights` (T183): см. `fit_koren_triode` docstring; default
+    False для T031 backwards-compat.
 
     Два режима, выбираются автоматически по `ds.screen_curves`:
 
@@ -382,6 +400,11 @@ def fit_ayumi_pentode(
         return np.where(is_screen_x > _IS_SCREEN_THRESHOLD, ig2_pred, ia_pred)
 
     xdata = np.vstack([vgs_all, vas_all, is_screen])
+    sigma = (
+        np.maximum(y_all, _MODIFIED_RELATIVE_NOISE_FLOOR_MA)
+        if relative_weights
+        else None
+    )
 
     rng = default_rng(seed)
     starts = _pentode_initial_guesses(n_starts, rng, seed_from=seed_from)
@@ -399,6 +422,8 @@ def fit_ayumi_pentode(
                     p0=p0_clipped,
                     bounds=(lower, upper),
                     method='trf',
+                    sigma=sigma,
+                    absolute_sigma=not sigma is not None,
                     max_nfev=max_nfev,
                 )
         except (RuntimeError, scipy_opt.OptimizeWarning, ValueError):
@@ -635,6 +660,211 @@ def fit_koren_modified_knee_pentode(
     fit_dict = dict(zip(keys, popt_best, strict=True))
     fit_dict['screen_v'] = screen_v
     params = KorenModifiedKneePentodeParams(**fit_dict)  # type: ignore[arg-type]
+    stderr = _diag_stderr(pcov_best, keys)
+
+    return FitResult(
+        params=params,
+        rms_residual_ma=rms_best,
+        per_param_stderr=stderr,
+        n_points=n_points,
+        converged=True,
+        n_starts_tried=len(starts),
+        best_start_index=best_idx,
+    )
+
+
+# ===== T184: Reefman pentode =====
+
+
+def _koren_reefman_pentode_ia_vec(
+    vgs: NDArray[np.float64],
+    vas: NDArray[np.float64],
+    mu: float,
+    ex: float,
+    kg1: float,
+    kp: float,
+    kvb: float,
+    screen_v: float,
+) -> NDArray[np.float64]:
+    """Vectorized T184 Reefman pentode Ia (mA)."""
+    g2_norm = np.sqrt(kvb + screen_v * screen_v)
+    arg = kp * (1.0 / mu + vgs / g2_norm)
+    arg_clipped = np.clip(arg, SOFTPLUS_DEEP_CUTOFF, SOFTPLUS_LARGE_ARG)
+    softplus = np.where(arg > SOFTPLUS_LARGE_ARG, arg, np.log1p(np.exp(arg_clipped)))
+    softplus = np.where(arg < SOFTPLUS_DEEP_CUTOFF, 0.0, softplus)
+    e1 = (screen_v / kp) * softplus
+    e1_pos = np.maximum(e1, 1e-30)
+    # Reefman convention: no 2× factor.
+    ia_a = (e1_pos**ex / kg1) * np.arctan(vas / kvb)
+    ia_a = np.where(e1 <= 0.0, 0.0, ia_a)
+    return ia_a * 1000.0
+
+
+def _koren_reefman_pentode_ig2_vec(
+    vgs: NDArray[np.float64],
+    mu: float,
+    ex: float,
+    kg2: float,
+    kp: float,
+    kvb: float,
+    screen_v: float,
+) -> NDArray[np.float64]:
+    """Vectorized T184 Reefman pentode Ig2 (mA)."""
+    g2_norm = np.sqrt(kvb + screen_v * screen_v)
+    arg = kp * (1.0 / mu + vgs / g2_norm)
+    arg_clipped = np.clip(arg, SOFTPLUS_DEEP_CUTOFF, SOFTPLUS_LARGE_ARG)
+    softplus = np.where(arg > SOFTPLUS_LARGE_ARG, arg, np.log1p(np.exp(arg_clipped)))
+    softplus = np.where(arg < SOFTPLUS_DEEP_CUTOFF, 0.0, softplus)
+    e1 = (screen_v / kp) * softplus
+    e1_pos = np.maximum(e1, 1e-30)
+    ig2_a = e1_pos**ex / kg2
+    ig2_a = np.where(e1 <= 0.0, 0.0, ig2_a)
+    return ig2_a * 1000.0
+
+
+_REEFMAN_PENTODE_FIT_KEYS = ('mu', 'ex', 'kg1', 'kg2', 'kp', 'kvb')
+
+
+def _reefman_pentode_initial_guesses(
+    n_starts: int,
+    rng: np.random.Generator,
+    *,
+    seed_from: KorenReefmanPentodeParams | None,
+) -> list[list[float]]:
+    """Multi-start: typical + opt. seed_from + N randomized."""
+
+    def _from_dict(d: dict[str, float]) -> list[float]:
+        return [d[k] for k in _REEFMAN_PENTODE_FIT_KEYS]
+
+    starts: list[list[float]] = [_from_dict(KOREN_REEFMAN_PENTODE_TYPICAL)]
+    if seed_from is not None:
+        starts.append(_from_dict(seed_from.model_dump()))
+
+    while len(starts) < n_starts:
+        guess: list[float] = []
+        for k in _REEFMAN_PENTODE_FIT_KEYS:
+            lo, hi = KOREN_REEFMAN_PENTODE_BOUNDS[k]
+            if k in ('kg1', 'kg2', 'kp', 'kvb'):
+                guess.append(float(np.exp(rng.uniform(np.log(lo), np.log(hi)))))
+            else:
+                guess.append(float(rng.uniform(lo, hi)))
+        starts.append(guess)
+    return starts
+
+
+def fit_koren_reefman_pentode(
+    ds: IVDataset,
+    *,
+    n_starts: int = 8,
+    seed: int = 42,
+    seed_from: KorenReefmanPentodeParams | None = None,
+    max_nfev: int = 5000,
+) -> FitResult:
+    """
+    T184: fit Reefman pentode по IV-датасету.
+
+    6-параметрический fit (same как canonical Ayumi): mu, ex, kg1,
+    kg2, kp, kvb. `screen_v` — known input. Default `n_starts=8` для
+    consistency с другими T182/T184 modified fitters.
+
+    Применяет relative-error σ weighting (same как modified variants
+    T182) — этот fit предназначен для real datasheet data с wide Ia
+    range.
+    """
+    if ds.tube_type != 'pentode':
+        msg = (
+            f"fit_koren_reefman_pentode expects tube_type=pentode, got '{ds.tube_type}'"
+        )
+        raise ValueError(msg)
+    if ds.screen_voltage_v is None:
+        msg = 'fit_koren_reefman_pentode requires screen_voltage_v'
+        raise ValueError(msg)
+    if n_starts < 1:
+        msg = f'n_starts must be ≥ 1, got {n_starts}'
+        raise ValueError(msg)
+
+    screen_v = ds.screen_voltage_v
+    vgs_ia_t, vas_ia_t, ias_t = ds.flatten()
+    vgs_ig2_t, vas_ig2_t, ig2s_t = ds.flatten_screen()
+    has_screen = bool(ds.screen_curves)
+
+    vgs_ia = np.asarray(vgs_ia_t, dtype=np.float64)
+    vas_ia = np.asarray(vas_ia_t, dtype=np.float64)
+    ias = np.asarray(ias_t, dtype=np.float64)
+
+    if has_screen:
+        vgs_ig2 = np.asarray(vgs_ig2_t, dtype=np.float64)
+        vas_ig2 = np.asarray(vas_ig2_t, dtype=np.float64)
+        ig2s = np.asarray(ig2s_t, dtype=np.float64)
+        vgs_all = np.concatenate([vgs_ia, vgs_ig2])
+        vas_all = np.concatenate([vas_ia, vas_ig2])
+        is_screen = np.concatenate([np.zeros_like(vgs_ia), np.ones_like(vgs_ig2)])
+        y_all = np.concatenate([ias, ig2s])
+        n_points = len(y_all)
+    else:
+        vgs_all = vgs_ia
+        vas_all = vas_ia
+        is_screen = np.zeros_like(vgs_ia)
+        y_all = ias
+        n_points = len(y_all)
+
+    keys = _REEFMAN_PENTODE_FIT_KEYS
+    lower = np.asarray(
+        [KOREN_REEFMAN_PENTODE_BOUNDS[k][0] for k in keys], dtype=np.float64
+    )
+    upper = np.asarray(
+        [KOREN_REEFMAN_PENTODE_BOUNDS[k][1] for k in keys], dtype=np.float64
+    )
+
+    def _callback(x: NDArray[np.float64], *theta: float) -> NDArray[np.float64]:
+        mu, ex, kg1, kg2, kp, kvb = theta
+        vgs_x, vas_x, is_screen_x = x[0], x[1], x[2]
+        ia_pred = _koren_reefman_pentode_ia_vec(
+            vgs_x, vas_x, mu, ex, kg1, kp, kvb, screen_v
+        )
+        if not has_screen:
+            return ia_pred
+        ig2_pred = _koren_reefman_pentode_ig2_vec(vgs_x, mu, ex, kg2, kp, kvb, screen_v)
+        return np.where(is_screen_x > _IS_SCREEN_THRESHOLD, ig2_pred, ia_pred)
+
+    xdata = np.vstack([vgs_all, vas_all, is_screen])
+    sigma = np.maximum(y_all, _MODIFIED_RELATIVE_NOISE_FLOOR_MA)
+
+    rng = default_rng(seed)
+    starts = _reefman_pentode_initial_guesses(n_starts, rng, seed_from=seed_from)
+
+    best: tuple[float, list[float], NDArray[np.float64], int] | None = None
+    for i, p0 in enumerate(starts):
+        p0_clipped = list(np.clip(p0, lower, upper))
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter('error', scipy_opt.OptimizeWarning)
+                popt, pcov = scipy_opt.curve_fit(
+                    _callback,
+                    xdata,
+                    y_all,
+                    p0=p0_clipped,
+                    bounds=(lower, upper),
+                    method='trf',
+                    sigma=sigma,
+                    absolute_sigma=False,
+                    max_nfev=max_nfev,
+                )
+        except (RuntimeError, scipy_opt.OptimizeWarning, ValueError):
+            continue
+        residuals = y_all - _callback(xdata, *popt)
+        rms = float(np.sqrt(np.mean(residuals * residuals)))
+        if best is None or rms < best[0]:
+            best = (rms, list(popt), pcov, i)
+
+    if best is None:
+        msg = f'All {n_starts} multi-start fits failed for {ds.tube_name}'
+        raise FitFailedError(msg)
+
+    rms_best, popt_best, pcov_best, best_idx = best
+    fit_dict = dict(zip(keys, popt_best, strict=True))
+    fit_dict['screen_v'] = screen_v
+    params = KorenReefmanPentodeParams(**fit_dict)  # type: ignore[arg-type]
     stderr = _diag_stderr(pcov_best, keys)
 
     return FitResult(

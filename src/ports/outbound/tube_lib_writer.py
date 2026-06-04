@@ -22,6 +22,7 @@ if TYPE_CHECKING:
         AyumiPentodeParams,
         KorenModifiedCutoffTriodeParams,
         KorenModifiedKneePentodeParams,
+        KorenReefmanPentodeParams,
         KorenTriodeParams,
     )
 
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
         | AyumiPentodeParams
         | KorenModifiedKneePentodeParams
         | KorenModifiedCutoffTriodeParams
+        | KorenReefmanPentodeParams
     )
 
 HeaderTubeType = Literal['triode', 'pentode', 'tetrode']

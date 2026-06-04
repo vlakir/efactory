@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         AyumiPentodeParams,
         KorenModifiedCutoffTriodeParams,
         KorenModifiedKneePentodeParams,
+        KorenReefmanPentodeParams,
         KorenTriodeParams,
     )
 
@@ -120,6 +121,57 @@ def koren_modified_knee_pentode_ia(
         * knee
         * 1000.0
     )
+
+
+def koren_reefman_pentode_ia(
+    vg: float, va: float, params: KorenReefmanPentodeParams
+) -> float:
+    """
+    T184: Reefman pentode forward Ia (mA). Reefman 2016 Sec 4.2 Eq 14-17.
+
+    Formula:
+        E1 = (Vg2/KP) · ln(1 + exp(KP · (1/MU + Vg/sqrt(KVB+Vg2²))))
+        Ia = (E1^EX / KG1) · atan(Va/KVB)         при E1>0
+
+    Difference vs canonical Ayumi-pentode: denominator под Vg —
+    `sqrt(KVB + Vg2²)` (triode-like form) вместо bare `Vg2`. Numerically
+    near-identical для Vg2 ≫ √KVB (типичный power-pentode), польза —
+    для low-Vg2 small-signal pentode и triode-strapped consistency.
+    """
+    g2_norm = math.sqrt(params.kvb + params.screen_v * params.screen_v)
+    arg = params.kp * (1.0 / params.mu + vg / g2_norm)
+    if arg < SOFTPLUS_DEEP_CUTOFF:
+        return 0.0
+    softplus = arg if arg > SOFTPLUS_LARGE_ARG else math.log1p(math.exp(arg))
+    e1 = (params.screen_v / params.kp) * softplus
+    if e1 <= 0.0:
+        return 0.0
+    # Reefman convention: I_P,Koren = E^x (без 2× factor canonical Koren).
+    return (e1**params.ex / params.kg1) * math.atan(va / params.kvb) * 1000.0
+
+
+def koren_reefman_pentode_ig2(
+    vg: float, va: float, params: KorenReefmanPentodeParams
+) -> float:
+    """
+    T184: Reefman pentode forward Ig2 (mA). Reefman Eq 17.
+
+    Formula:
+        Ig2 = E1^EX / KG2
+
+    Не зависит от Va (как canonical Ayumi Ig2). Параметр `va` принят
+    для unifying signature с другими formulas; формула его не использует.
+    """
+    del va  # not used; signature unified для consistency.
+    g2_norm = math.sqrt(params.kvb + params.screen_v * params.screen_v)
+    arg = params.kp * (1.0 / params.mu + vg / g2_norm)
+    if arg < SOFTPLUS_DEEP_CUTOFF:
+        return 0.0
+    softplus = arg if arg > SOFTPLUS_LARGE_ARG else math.log1p(math.exp(arg))
+    e1 = (params.screen_v / params.kp) * softplus
+    if e1 <= 0.0:
+        return 0.0
+    return (e1**params.ex / params.kg2) * 1000.0
 
 
 def koren_modified_cutoff_triode_ia(

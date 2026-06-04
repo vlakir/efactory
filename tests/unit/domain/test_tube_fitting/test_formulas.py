@@ -19,10 +19,13 @@ from domain.tube_fitting import (
     AyumiPentodeParams,
     KorenModifiedCutoffTriodeParams,
     KorenModifiedKneePentodeParams,
+    KorenReefmanPentodeParams,
     KorenTriodeParams,
     ayumi_pentode_ia,
     koren_modified_cutoff_triode_ia,
     koren_modified_knee_pentode_ia,
+    koren_reefman_pentode_ia,
+    koren_reefman_pentode_ig2,
     koren_triode_ia,
 )
 
@@ -266,3 +269,75 @@ def test_modified_cutoff_triode_handles_extreme_sigmoid_no_overflow() -> None:
     # формула должна возвращать finite значение, не NaN/inf.
     ia = koren_modified_cutoff_triode_ia(vg=-150.0, va=300.0, params=_300B_LIKE)
     assert ia == 0.0  # глубокий cutoff — sigmoid_arg ниже SOFTPLUS_DEEP_CUTOFF
+
+
+# ============================== T184: Reefman pentode ==============================
+
+
+# EL34-like Reefman params (KG1=325 — half of Ayumi convention 650).
+_EL34_REEFMAN = KorenReefmanPentodeParams(
+    mu=11, ex=1.35, kg1=325, kg2=2250, kp=60, kvb=24, screen_v=250
+)
+
+
+def test_reefman_pentode_el34_at_known_point() -> None:
+    # Hand-calc: Vg=-12.2, Va=250 → 113.44 mA (Reefman convention, KG1=325).
+    ia = koren_reefman_pentode_ia(vg=-12.2, va=250.0, params=_EL34_REEFMAN)
+    assert ia == pytest.approx(113.44, rel=1e-2)
+
+
+def test_reefman_pentode_near_identical_to_canonical_at_high_vg2() -> None:
+    # Для Vg2=250 ≫ √KVB=√24≈4.9, Reefman E1 ≈ canonical E1.
+    # Reefman convention KG1=325, canonical KG1=650 (2× factor).
+    ia_reef = koren_reefman_pentode_ia(vg=-12.2, va=250.0, params=_EL34_REEFMAN)
+    ia_canon = ayumi_pentode_ia(
+        vg=-12.2,
+        va=250.0,
+        params=AyumiPentodeParams(
+            mu=11, ex=1.35, kg1=650, kg2=4500, kp=60, kvb=24, screen_v=250
+        ),
+    )
+    # При rendered identity Reefman ratio ~ 1.0002 → < 0.5% delta.
+    assert abs(ia_reef - ia_canon) / ia_canon < 5e-3
+
+
+def test_reefman_pentode_monotonic_in_va() -> None:
+    ias = [
+        koren_reefman_pentode_ia(vg=-10.0, va=v, params=_EL34_REEFMAN)
+        for v in (50, 100, 200, 400)
+    ]
+    assert ias[0] < ias[1] < ias[2] < ias[3]
+
+
+def test_reefman_pentode_monotonic_in_vg() -> None:
+    ias = [
+        koren_reefman_pentode_ia(vg=v, va=250.0, params=_EL34_REEFMAN)
+        for v in (-20.0, -15.0, -10.0, -5.0)
+    ]
+    assert ias[0] < ias[1] < ias[2] < ias[3]
+
+
+def test_reefman_pentode_cutoff_returns_negligible() -> None:
+    ia = koren_reefman_pentode_ia(vg=-50.0, va=250.0, params=_EL34_REEFMAN)
+    assert ia < 0.01
+
+
+def test_reefman_pentode_ig2_independent_of_va() -> None:
+    # Ig2 (Eq 17) не зависит от Va — vacuum-tube pentode-model property.
+    ig2_a = koren_reefman_pentode_ig2(vg=-5.0, va=100.0, params=_EL34_REEFMAN)
+    ig2_b = koren_reefman_pentode_ig2(vg=-5.0, va=500.0, params=_EL34_REEFMAN)
+    assert ig2_a == pytest.approx(ig2_b, rel=1e-9)
+
+
+def test_reefman_pentode_ig2_monotonic_in_vg() -> None:
+    ig2s = [
+        koren_reefman_pentode_ig2(vg=v, va=250.0, params=_EL34_REEFMAN)
+        for v in (-15.0, -10.0, -5.0, 0.0)
+    ]
+    assert ig2s[0] < ig2s[1] < ig2s[2] < ig2s[3]
+
+
+def test_reefman_pentode_atan_plateau() -> None:
+    ia_far = koren_reefman_pentode_ia(vg=-10.0, va=2000.0, params=_EL34_REEFMAN)
+    ia_close = koren_reefman_pentode_ia(vg=-10.0, va=400.0, params=_EL34_REEFMAN)
+    assert ia_far / ia_close < 1.10
