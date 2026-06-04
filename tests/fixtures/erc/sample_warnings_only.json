@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schemas.kicad.org/erc.v1.json",
+  "source": "warn.kicad_sch",
+  "date": "2026-06-05T00:00:00",
+  "kicad_version": "10.0.3",
+  "coordinate_units": "mm",
+  "included_severities": [
+    "error",
+    "warning",
+    "exclusion"
+  ],
+  "sheets": [
+    {
+      "path": "/",
+      "uuid_path": "/abc",
+      "violations": [
+        {
+          "type": "endpoint_off_grid",
+          "description": "Wire endpoint off grid",
+          "severity": "warning",
+          "items": [
+            {
+              "description": "Wire endpoint",
+              "pos": {
+                "x": 1.0,
+                "y": 2.0
+              },
+              "uuid": "a-b-c"
+            },
+            {
+              "description": "Wire endpoint 2",
+              "pos": {
+                "x": 3.0,
+                "y": 4.0
+              },
+              "uuid": "d-e-f"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "ignored_checks": [
+    {
+      "key": "single_global_label",
+      "description": "Global label only appears once."
+    }
+  ]
+}
