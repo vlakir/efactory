@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from domain.simulation import AcAnalysis, DcSweepAnalysis, TranAnalysis
+    from ports.outbound.magnetic_results import MagneticResultsRepository
     from ports.outbound.project_manifest_repository import (
         ProjectManifestRepository,
     )
@@ -64,6 +65,7 @@ async def compose_sim_results_bundle(
     simulator: Simulator,
     raw_waveform_repo: RawWaveformRepository,
     sim_results_writer: SimResultsRepository | None = None,
+    magnetics_results_repo: MagneticResultsRepository | None = None,
 ) -> SimulationResultsBundle:
     """
     T191 + T188: build `SimulationResultsBundle` for `/export-sim-report`.
@@ -162,6 +164,15 @@ async def compose_sim_results_bundle(
     else:
         dc_signals_resolved = ()
 
+    # T189: подтянуть latest magnetics summary, если он есть на диске.
+    # `project_obj` уже разрешён в no-rerun ветке; для rerun project_root
+    # = projects_root / project_name (та же конвенция, что у design_to_sim
+    # → не дёргаем второй get_project, чтобы тест-стэбы не падали).
+    magnetics_path: Path | None = None
+    if magnetics_results_repo is not None:
+        target_root = projects_root / project_name if rerun else project_obj.path
+        magnetics_path = magnetics_results_repo.find_latest(project_root=target_root)
+
     return SimulationResultsBundle(
         project=project_name,
         efactory_version=efactory_version,
@@ -173,6 +184,7 @@ async def compose_sim_results_bundle(
         ac_signals=ac_signals_resolved,
         dc_sweep=dc_data,
         dc_signals=dc_signals_resolved,
+        magnetics_summary_path=magnetics_path,
     )
 
 

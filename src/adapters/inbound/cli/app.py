@@ -234,6 +234,7 @@ if TYPE_CHECKING:
     from ports.outbound.git_repository import GitRepository
     from ports.outbound.grid import GridReportWriter
     from ports.outbound.knowledge_base import KbStore
+    from ports.outbound.magnetic_results import MagneticResultsRepository
     from ports.outbound.netlist_editor import NetlistEditor
     from ports.outbound.project_file_repository import ProjectFileRepository
     from ports.outbound.project_manifest_repository import (
@@ -505,6 +506,7 @@ def build_app(
     kb_store: KbStore,
     sim_results_repo: SimResultsRepository,
     raw_waveform_repo: RawWaveformRepository,
+    magnetics_results_repo: MagneticResultsRepository,
     lock_detector: LockDetector,
     staged_scanner: PendingStagedScanner,
     tube_iv_repository: TubeIVRepository,
@@ -4671,6 +4673,7 @@ def build_app(
                 simulator=simulator,
                 raw_waveform_repo=raw_waveform_repo,
                 sim_results_writer=sim_results_repo,
+                magnetics_results_repo=magnetics_results_repo,
             )
             return await run_export_sim_report(
                 sim_results=bundle_data,
