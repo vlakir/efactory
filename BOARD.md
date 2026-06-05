@@ -61,6 +61,26 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T030** — [taken 2026-06-05] **Импорт SPICE-моделей по URL.**
+  Slash `/spice-import-url <url>` + CLI `efactory spice import-url
+  <url>` / `import-file <path>`. Pipeline: download (direct-URL only)
+  → classify (`.SUBCKT` heuristics + `.MODEL` type-mapping для BJT/
+  JFET/MOSFET/DIODE/OPAMP) → PWRS-конверсия (reuse T168) → install в
+  `<user_library_root>/<category>/<vendor>/<PART>.lib` с inline
+  headers (vendor, source_url, sha256, imported_at, subcategory) →
+  per-class ngspice smoke → KB topic `spice.<vendor>.<part>` (T134
+  Уровень 1). Atomic через staging. Spec: `specs/T030-spice-import-
+  url/spec.md`, ветка `T030-spice-import-url`.
+
+  Расширение `ComponentCategory`: BJT/JFET/MOSFET (новые) + расширение
+  scanner `FilesystemSpiceModelLibrary` до `.MODEL` cards — обоснование
+  в ADR-T030a (часть acceptance).
+
+  Acceptance: SC1-SC14 в spec — synthetic fixtures + duplicate handling
+  + atomicity + dry-run + KB sync + T134 L2 regression + ADR. Manual
+  acceptance SC14 (Vladimir, real-URL TI/Vishay/ON Semi) не блокирует
+  PR.
+
 ## Done
 
 - **T187** — [closed 2026-06-05, PR #119] **Off-grid cleanup в
