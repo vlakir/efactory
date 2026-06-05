@@ -25,6 +25,74 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-05 — T187 ADR-T187a: snap-on-write в facade + diagnostic CLI (Plan B)
+
+- **Контекст.** Probe T029 Phase 0 (2026-06-04) обнаружил `endpoint_
+  off_grid` warnings в 6 из 11 built-in шаблонов (`data/templates/*/`)
+  — 81 случай. Симуляция работала (netlist по uuid'ам), но в KiCad
+  GUI компоненты «чуть-чуть не довинчены», и ручная правка имеет
+  шанс развалить connectivity. Root cause: `Schematic` facade не
+  применял snap к connection grid (1.27 mm = 50 mil), builders
+  передавали off-grid координаты вроде `(80.5, 100.0)`.
+- **Решение (Plan B).** Двухслойный фикс:
+  - **Слой 1 — preventive (snap-on-write).** В facade `_to_position`
+    silently snap'ит координаты к 1.27 mm для tuple-input И
+    Position-input (idempotent для уже on-grid). `connect(start,
+    end)` тоже snap'ит. `EFACTORY_STRICT_GRID=1` — opt-in strict
+    mode (raise `OffGridPositionError`), default — silent для UX.
+    FP-jitter (Δ ≤ 1e-6 mm) всегда тихо snap'ится.
+  - **Слой 2 — diagnostic CLI.** `efactory design check-grid` (slash
+    `/grid-check`) — read-only off-grid detector. Reuses
+    `KicadCliErcRunner` (T029), фильтрует violations по `type ==
+    "endpoint_off_grid"`, рендерит markdown report в `<project>/
+    out/grid-check/<ts>/report.md`, sorted by |Δ| descending. Не
+    gate, не блокирует `/sim-run`.
+  - **Слой 3 — регенерация.** Восстановлены builders для 3 T031
+    builderless шаблонов (`6p13s-se-resistive` / `6zh32p-mic-preamp`
+    / `6zh38p-if-amp`), которые исторически builded one-shot
+    скриптом `/tmp/build_t031_templates.py` (не committed) — как
+    параметрический Python builder с 3 wrappers в
+    `test_pentode_se_resistive_facade.py`. Все 11 шаблонов после
+    regen: 0 off-grid + 0 errors.
+- **Альтернативы.**
+  - **(Plan A) Manual GUI fix per BACKLOG.** Detector CLI пишется,
+    но fix — Vladimir вручную в KiCad. **Отвергнуто.** Curative,
+    не preventive: regression возможна при следующем builder-changes.
+    Не масштабируется на нынешний TDD-цикл efactory.
+  - **(b) Auto-snap fix на baked `.kicad_sch`.** Read template files,
+    snap координаты, write back. **Отвергнуто** (BACKLOG rationale,
+    подтверждено T187 probe): разные endpoints с разной |Δ| прыгают
+    в разные стороны и рвут wires (например, `bjt-ce-nfb` R_in
+    +0.612 mm vs остальные +0.500 mm — per-endpoint snap разорвал бы
+    R_in↔wire).
+  - **(c) Strict-default mode** (raise on off-grid, opt-out via env).
+    **Отвергнуто** для current ship: ломает существующие builders
+    до полного fix-up. Strict оставлен как `EFACTORY_STRICT_GRID=1`
+    opt-in для CI / pre-push safety-net (BACKLOG candidate для
+    интеграции в pre-push hook).
+  - **(d) Парсинг `.kicad_pro` для grid-step.** **Отвергнуто.** KiCad
+    ≥ 8 connection-grid жёстко 1.27 mm; hardcoded достаточно +
+    `--grid-step <mm>` CLI flag для imperial-only legacy схем.
+- **Последствия.**
+  - + Все 11 built-in шаблонов ship'ятся on-grid (0 off-grid, 0 errors).
+  - + Builders могут продолжать передавать «удобные» координаты —
+    facade auto-snap'ит. UX-friendly.
+  - + `EFACTORY_STRICT_GRID=1` ловит regressions в новых builders.
+  - + `/grid-check` diagnostic полезен для hand-edited / legacy
+    schematics (пользовательские проекты, T031 mod в KiCad GUI).
+  - + 3 T031 builderless шаблонов теперь имеют proper Python builder
+    (preventive — future regen работает).
+  - − Builders должны учитывать, что snap может слегка сместить
+    компоненты — Manhattan-routing через `connect()` может попасть
+    на pin position (3-wire endpoint coincidence → short). Для V_BB
+    /V_G2 в pentode SE-resistive потребовался explicit horizontal-
+    first routing, чтобы избежать V_BB.pin_plus midpoint collision.
+    Edge case задокументирован в `test_pentode_se_resistive_facade
+    .py` builder.
+  - − Existing facade unit tests с off-grid координатами (типа
+    `at=(100.0, 50.0)`) обновлены на on-grid эквиваленты
+    (`at=(101.6, 50.8)`) — small one-time test refactor.
+
 ### 2026-06-05 — T029 ADR-T029a: ERC quality gate как hard-блокер `design_to_sim`
 
 - **Контекст.** До T029 SPICE-pipeline `design_to_sim` мог запускать

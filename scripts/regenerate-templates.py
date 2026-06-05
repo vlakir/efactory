@@ -124,6 +124,14 @@ _ACTIVE_LPF_SALLEN_KEY_BUILDER_PATH = (
     / 'schematic_kicad'
     / 'test_active_lpf_sallen_key_facade.py'
 )
+_PENTODE_SE_RESISTIVE_BUILDER_PATH = (
+    _REPO_ROOT
+    / 'tests'
+    / 'integration'
+    / 'adapters'
+    / 'schematic_kicad'
+    / 'test_pentode_se_resistive_facade.py'
+)
 
 
 def _import_builder(builder_path: Path, attr: str) -> object:
@@ -184,6 +192,27 @@ def _import_active_lpf_sallen_key_builder() -> object:
     return _import_builder(
         _ACTIVE_LPF_SALLEN_KEY_BUILDER_PATH,
         '_build_active_lpf_sallen_key',
+    )
+
+
+def _import_6p13s_se_resistive_builder() -> object:
+    return _import_builder(
+        _PENTODE_SE_RESISTIVE_BUILDER_PATH,
+        '_build_6p13s_se_resistive',
+    )
+
+
+def _import_6zh32p_mic_preamp_builder() -> object:
+    return _import_builder(
+        _PENTODE_SE_RESISTIVE_BUILDER_PATH,
+        '_build_6zh32p_mic_preamp',
+    )
+
+
+def _import_6zh38p_if_amp_builder() -> object:
+    return _import_builder(
+        _PENTODE_SE_RESISTIVE_BUILDER_PATH,
+        '_build_6zh38p_if_amp',
     )
 
 
@@ -1039,6 +1068,141 @@ def _bake_active_lpf_sallen_key(target_dir: Path) -> None:
     )
 
 
+def _bake_pentode_se_resistive(
+    target_dir: Path,
+    *,
+    template_name: str,
+    tube_id: str,
+    lib_filename: str,
+    builder: object,
+    template_yaml: str,
+) -> None:
+    """Shared baker для 3 T187 pentode SE-resistive templates.
+
+    Снап координат в facade автоматически фиксит off-grid R3/C2
+    (T187 Phase 4). Pattern по канве `_bake_se_amp`.
+    """
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    sch_path = target_dir / f'{PROJECT_NAME_PLACEHOLDER}.kicad_sch'
+    builder(sch_path)  # type: ignore[operator]
+
+    # Builder embeds абсолютный путь `<repo>/data/models/tubes/custom/
+    # <ID>.lib`. Заменяем на relative `models/...` для shipping.
+    sch_text = sch_path.read_text(encoding='utf-8')
+    sch_text = sch_text.replace(
+        str(_MODELS_DIR / 'tubes' / 'custom' / lib_filename),
+        f'models/{lib_filename}',
+    )
+    sch_path.write_text(sch_text, encoding='utf-8')
+
+    pro_name = f'{PROJECT_NAME_PLACEHOLDER}.kicad_pro'
+    pro_path = target_dir / pro_name
+    pro_path.write_text(
+        json.dumps(
+            {
+                'board': {'design_settings': {}},
+                'meta': {'filename': pro_name, 'version': 3},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+
+    models_target = target_dir / 'models'
+    models_target.mkdir(exist_ok=True)
+    shutil.copy(
+        _MODELS_DIR / 'tubes' / 'custom' / lib_filename,
+        models_target / lib_filename,
+    )
+
+    (target_dir / 'template.yaml').write_text(template_yaml, encoding='utf-8')
+
+    (target_dir / 'README.md').write_text(
+        f'# {template_name} template\n\n'
+        f'Single-stage class-A pentode SE-amp на {tube_id} с резистивной\n'
+        f'нагрузкой Ra (без OPT). Pattern T031 Phase 5; builder восстановлен\n'
+        f'в T187 Phase 4 как proper Python (`test_pentode_se_resistive_facade.py`).\n\n'
+        '## Файлы\n\n'
+        '- `{{PROJECT_NAME}}.kicad_sch` — схема.\n'
+        '- `{{PROJECT_NAME}}.kicad_pro` — KiCad project.\n'
+        f'- `models/{lib_filename}` — fitted Koren-pentode model.\n\n'
+        '## Запуск симуляции\n\n'
+        '    /sim-run\n',
+        encoding='utf-8',
+    )
+
+
+_PENTODE_TEMPLATE_YAMLS: dict[str, str] = {
+    '6p13s-se-resistive': (
+        'name: 6p13s-se-resistive\n'
+        'description: |\n'
+        '  6П13С (Soviet beam tetrode, 14W Pa, TV line scan output) — SE-amp\n'
+        '  с резистивной нагрузкой 5kΩ вместо OPT (per T031 spec A-W3).\n'
+        '  Vbb=250V, Vg2=200V fixed, Rk=470Ω+bypass (T173 refined bias).\n'
+        '  Typical op-point: Ia ≈ 25-30 mA, screen dissipation in bounds.\n'
+        'summary: 6П13С SE-amp с резистивной нагрузкой (no OPT).\n'
+    ),
+    '6zh32p-mic-preamp': (
+        'name: 6zh32p-mic-preamp\n'
+        'description: |\n'
+        '  Микрофонный преамп на 6Ж32П (Soviet low-noise audio pentode, '
+        'аналог EF86).\n'
+        '  Class A common-cathode pentode stage, gain ≈40 dB (×100) @ 1 kHz,\n'
+        '  bandwidth 9.5 Hz – 87 kHz (flat 20-20k ±0.3 dB), питание 250 V.\n'
+        '  Self-bias через Rk=2.7k‖100µF. EF86 noval pinout (2=K, 3=G, '
+        '6=P, 8=G2)\n'
+        '  — готов к разводке PCB. T031 Phase 6 agent-built (test scenario).\n'
+        'summary: 6Ж32П микрофонный preamp 40 dB / 20-20k Hz, class A pentode.\n'
+    ),
+    '6zh38p-if-amp': (
+        'name: 6zh38p-if-amp\n'
+        'description: |\n'
+        '  6Ж38П (= 6BH6 / EF190 western eq.) — resistance-coupled '
+        'small-signal\n'
+        '  pentode preamp. Vbb=150V, Vg2=150V fixed, Rp=10k, Rk=1k+bypass.\n'
+        '  Typical op-point Vg=-1V: Ia ≈ 7 mA, Va_anode ≈ 80V, gain ≈ 100.\n'
+        '  Pattern: GE 6BH6 datasheet ET-T525B Class A resistance-coupled amp.\n'
+        'summary: 6Ж38П class A IF/AF preamp с резистивной нагрузкой.\n'
+    ),
+}
+
+
+def _bake_6p13s_se_resistive(target_dir: Path) -> None:
+    _bake_pentode_se_resistive(
+        target_dir,
+        template_name='6p13s-se-resistive',
+        tube_id='6P13S',
+        lib_filename='6P13S.lib',
+        builder=_import_6p13s_se_resistive_builder(),
+        template_yaml=_PENTODE_TEMPLATE_YAMLS['6p13s-se-resistive'],
+    )
+
+
+def _bake_6zh32p_mic_preamp(target_dir: Path) -> None:
+    _bake_pentode_se_resistive(
+        target_dir,
+        template_name='6zh32p-mic-preamp',
+        tube_id='6ZH32P',
+        lib_filename='6ZH32P.lib',
+        builder=_import_6zh32p_mic_preamp_builder(),
+        template_yaml=_PENTODE_TEMPLATE_YAMLS['6zh32p-mic-preamp'],
+    )
+
+
+def _bake_6zh38p_if_amp(target_dir: Path) -> None:
+    _bake_pentode_se_resistive(
+        target_dir,
+        template_name='6zh38p-if-amp',
+        tube_id='6ZH38P',
+        lib_filename='6ZH38P.lib',
+        builder=_import_6zh38p_if_amp_builder(),
+        template_yaml=_PENTODE_TEMPLATE_YAMLS['6zh38p-if-amp'],
+    )
+
+
 _BAKERS: dict[str, object] = {
     'se-amp': _bake_se_amp,
     'nfb-se-amp': _bake_nfb_se_amp,
@@ -1048,6 +1212,9 @@ _BAKERS: dict[str, object] = {
     'tube-line-preamp': _bake_tube_line_preamp,
     'tube-phono-riaa': _bake_tube_phono_riaa,
     'active-lpf-sallen-key': _bake_active_lpf_sallen_key,
+    '6p13s-se-resistive': _bake_6p13s_se_resistive,
+    '6zh32p-mic-preamp': _bake_6zh32p_mic_preamp,
+    '6zh38p-if-amp': _bake_6zh38p_if_amp,
 }
 
 

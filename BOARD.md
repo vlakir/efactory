@@ -63,6 +63,30 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T187** — [closed 2026-06-05, PR #119] **Off-grid cleanup в
+  шаблонах + snap-on-write facade + `/grid-check` CLI.** Plan B
+  двухслойный фикс (ADR-T187a):
+  - **Layer 1 — preventive snap.** `domain/grid.py` (snap_to_grid /
+    OffGridEndpoint / OffGridReport / OffGridPositionError). Facade
+    snap'ит координаты к 1.27 mm grid на всех entry-points. Silent
+    default, `EFACTORY_STRICT_GRID=1` opt-in strict mode для
+    safety-net.
+  - **Layer 2 — diagnostic CLI.** `application/run_grid_check.py`
+    reuses T029 `KicadCliErcRunner`, фильтрует `endpoint_off_grid`,
+    маппит в OffGridReport с per-endpoint nearest_grid + delta_mm +
+    kind classification. `efactory design check-grid` + slash
+    `/grid-check`. Exit 0/1/2 = clean/has-off-grid/infrastructure.
+  - **Layer 3 — регенерация.** 8 buildered + 3 T031 builderless
+    шаблоны. Восстановил Python builder для 3-х T031
+    (test_pentode_se_resistive_facade.py) — parametric + 3 wrappers
+    + _BAKERS entries. Routing edge case: V_BB/V_G2 short avoided
+    через explicit horizontal-first Manhattan.
+  - **KB sync (T134 Уровень 1+2).** New topic `design.grid-check` +
+    routing row + 2 L2 regression cases.
+  - Tests 2130 → 2140 (+10), coverage 87.07%. Pre-push 5/5 ✓.
+    All 11 templates: 0 endpoint_off_grid + 0 errors. T031 Phase 5
+    numerical acceptance preserved.
+
 - **T029** — [closed 2026-06-05, PR #118] **ERC quality gate** через
   `kicad-cli sch erc` в `design_to_sim` pipeline + standalone
   `/design-check` / `efactory design check`. Hard-block: ERC errors

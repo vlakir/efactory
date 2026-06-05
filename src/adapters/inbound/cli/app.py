@@ -118,6 +118,7 @@ from application.reindex_projects import (
     reindex_projects as reindex_projects_use_case,
 )
 from application.run_erc_check import run_erc_check
+from application.run_grid_check import run_grid_check
 from application.schematic_snapshot import SchematicSnapshot
 from application.sim_run import sim_run as sim_run_use_case
 from application.update_project import (
@@ -184,6 +185,7 @@ if TYPE_CHECKING:
     from application.reindex_projects import ReindexSummary
     from domain.decision import Decision
     from domain.erc import ErcReport
+    from domain.grid import OffGridReport
     from domain.injection_patcher import InjectionNetlistPatcher
     from domain.measurement import (
         BandwidthMeasurement,
@@ -201,6 +203,7 @@ if TYPE_CHECKING:
     from ports.outbound.decision_repository import DecisionRepository
     from ports.outbound.erc import ErcReportWriter, ErcRunner
     from ports.outbound.git_repository import GitRepository
+    from ports.outbound.grid import GridReportWriter
     from ports.outbound.knowledge_base import KbStore
     from ports.outbound.netlist_editor import NetlistEditor
     from ports.outbound.project_file_repository import ProjectFileRepository
@@ -452,6 +455,7 @@ def build_app(
     schematic_renderer: SchematicRenderer,
     erc_runner: ErcRunner,
     erc_report_writer: ErcReportWriter,
+    grid_report_writer: GridReportWriter,
     simulator: Simulator,
     netlist_editor: NetlistEditor,
     injection_patcher: InjectionNetlistPatcher,
@@ -1607,6 +1611,53 @@ def build_app(
             f'ERC: {report.error_count} errors, '
             f'{report.warning_count} warnings → out/erc/<ts>/report.md',
         )
+
+    async def _execute_grid_check(schematic: Path) -> OffGridReport:
+        return await run_grid_check(
+            schematic=schematic,
+            project_root=schematic.parent,
+            erc_runner=erc_runner,
+            report_writer=grid_report_writer,
+        )
+
+    @design_app.command('check-grid')
+    def design_check_grid(
+        project: Annotated[
+            str | None,
+            typer.Argument(
+                help='Путь к .kicad_sch или к директории проекта '
+                '(default: auto-detect в cwd).',
+            ),
+        ] = None,
+    ) -> None:
+        """
+        Off-grid endpoint diagnostic (T187, не gate — visibility only).
+
+        Exit-codes: 0 — clean; 1 — есть off-grid endpoints; 2 — kicad-
+        cli infrastructure fail. Markdown отчёт в
+        ``<project>/out/grid-check/<ts>/report.md``.
+        """
+        schematic = _resolve_design_check_target(project)
+        try:
+            report = asyncio.run(_execute_grid_check(schematic))
+        except (
+            KiCadCliUnavailableError,
+            ErcParseError,
+            ErcTimeoutError,
+            SchematicParseError,
+        ) as exc:
+            typer.echo(f'grid-check infrastructure failure: {exc}', err=True)
+            raise typer.Exit(2) from exc
+
+        if report.count == 0:
+            typer.echo('grid-check: 0 off-grid endpoints. ✓')
+            return
+
+        typer.echo(
+            f'grid-check: {report.count} off-grid endpoint(s) → '
+            f'out/grid-check/<ts>/report.md',
+        )
+        raise typer.Exit(1)
 
     def _exit_on_bridge_error(exc: Exception) -> typer.Exit:
         """Унифицированный маппинг bridge-ошибок в exit-коды."""

@@ -345,6 +345,17 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         '/design-check',
     ),
+    # T187 Phase 3: off-grid endpoint diagnostic topic + routing.
+    (
+        'off-grid endpoint diagnostic kicad connection grid 1.27 mm',
+        'design.grid-check',
+        'endpoint_off_grid',
+    ),
+    (
+        'check schematic grid alignment components off grid',
+        'agent.command-routing',
+        '/grid-check',
+    ),
 ]
 
 

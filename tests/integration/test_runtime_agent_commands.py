@@ -33,6 +33,7 @@ _EXPECTED_COMMANDS = {
     'schematic-apply',  # T026 Phase 2
     'tube-add-from-datasheet',  # T031 Phase 3
     'design-check',  # T029 Phase 5
+    'grid-check',  # T187 Phase 3
 }
 _REQUIRED_FRONTMATTER = {'description', 'argument-hint', 'allowed-tools'}
 

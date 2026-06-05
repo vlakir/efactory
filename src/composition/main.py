@@ -22,6 +22,9 @@ from adapters.outbound.file_store.project_file_repository import (
 from adapters.outbound.git_subprocess.git_repository import (
     SubprocessGitRepository,
 )
+from adapters.outbound.grid_report_markdown.writer import (
+    MarkdownGridReportWriter,
+)
 from adapters.outbound.kicad_cli.schematic_exporter import (
     KicadCliSchematicExporter,
 )
@@ -104,6 +107,7 @@ def build_cli_app() -> typer.Typer:
         schematic_renderer=KicadCliSchematicRenderer(app_manager),
         erc_runner=KicadCliErcRunner(),
         erc_report_writer=MarkdownErcReportWriter(),
+        grid_report_writer=MarkdownGridReportWriter(),
         simulator=NgspiceSimulator(app_manager),
         netlist_editor=NgspiceNetlistEditor(),
         injection_patcher=NgspiceInjectionNetlistPatcher(),
