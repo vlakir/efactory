@@ -25,6 +25,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from domain.simulation import AcSweep, TimeSeries
+
 
 class PublicationLang(StrEnum):
     RU = 'ru'
@@ -167,6 +169,143 @@ class PublicationBundle(BaseModel):
         return self
 
 
+class MeasurementSummary(BaseModel):
+    """
+    Одна метрика для секции 'Сводка измерений' sim-report (T035 Phase 2.3+).
+
+    `name` — машинно-читаемый ключ (например, `gain_v_per_v`); `description`
+    — человекочитаемое имя для презентации; `unit` — SI-обозначение либо
+    пустая строка для безразмерных. `value` — числовое значение метрики.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str = Field(min_length=1)
+    value: float
+    unit: str = ''
+    description: str = ''
+
+
+class ParametricSweepPoint(BaseModel):
+    """
+    Один (parameters, values) ряд parametric-sweep'а (T035 Phase 2.3+).
+
+    Domain-уровневая замена `application.bridge_sweep.SweepRun` для
+    публикационного отчёта: без `error` и `result` полей (caller
+    заранее отфильтровывает failed combinations).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    parameters: dict[str, str] = Field(min_length=1)
+    values: dict[str, float] = Field(min_length=1)
+
+
+class ParametricSweepSection(BaseModel):
+    """
+    Одна parametric-sweep секция в publication-report (T035 Phase 2.3+).
+
+    `name` — короткое описание свипа (например, 'gain vs R1');
+    `x_param`/`y_field` — ключи для оси X / Y из `rows`;
+    `group_by` — optional ключ для multi-line plot.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str = Field(min_length=1)
+    x_param: str = Field(min_length=1)
+    y_field: str = Field(min_length=1)
+    group_by: str | None = None
+    rows: tuple[ParametricSweepPoint, ...] = Field(min_length=1)
+
+
+class SimulationResultsBundle(BaseModel):
+    """
+    Гетерогенный набор данных для одного `report.md` (T035 Phase 2.3+).
+
+    Все аналитические поля optional — пустые секции опускаются в
+    отчёте (FR §3 «МОЖЕТ генерировать пустые секции»).
+    `tran_signals` / `ac_signals` — список trace-имён для рендера
+    (caller сам решает, какие сигналы показать; пустой list →
+    секция отсутствует).
+
+    M-thin режим: `magnetics_summary_path` — путь к T113 summary JSON.
+    Writer делает graceful skip если путь None / файл отсутствует /
+    JSON не парсится (T189 BACKLOG addresses persistence).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    project: str = Field(min_length=1)
+    efactory_version: str = Field(min_length=1)
+    publication_timestamp: datetime
+    source_simulation_timestamp: datetime | None = None
+
+    tran: TimeSeries | None = None
+    tran_signals: tuple[str, ...] = ()
+
+    ac_sweep: AcSweep | None = None
+    ac_signals: tuple[str, ...] = ()
+
+    parametric_sweeps: tuple[ParametricSweepSection, ...] = ()
+
+    magnetics_summary_path: Path | None = None
+
+    measurements: tuple[MeasurementSummary, ...] = ()
+
+    @model_validator(mode='after')
+    def _check_publication_ts_is_utc_aware(self) -> Self:
+        ts = self.publication_timestamp
+        if ts.tzinfo is None:
+            msg = (
+                'SimulationResultsBundle.publication_timestamp должен быть '
+                'timezone-aware (UTC).'
+            )
+            raise ValueError(msg)
+        if ts.utcoffset() != UTC.utcoffset(None):
+            msg = (
+                f'SimulationResultsBundle.publication_timestamp должен быть в '
+                f'UTC; получен offset {ts.utcoffset()}.'
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode='after')
+    def _check_source_simulation_ts_is_utc_aware(self) -> Self:
+        ts = self.source_simulation_timestamp
+        if ts is None:
+            return self
+        if ts.tzinfo is None:
+            msg = (
+                'SimulationResultsBundle.source_simulation_timestamp должен '
+                'быть timezone-aware (UTC).'
+            )
+            raise ValueError(msg)
+        if ts.utcoffset() != UTC.utcoffset(None):
+            msg = (
+                f'SimulationResultsBundle.source_simulation_timestamp должен '
+                f'быть в UTC; получен offset {ts.utcoffset()}.'
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode='after')
+    def _check_signals_have_backing_analysis(self) -> Self:
+        if self.tran_signals and self.tran is None:
+            msg = (
+                'SimulationResultsBundle: tran_signals задан '
+                f'({list(self.tran_signals)!r}), но tran=None.'
+            )
+            raise ValueError(msg)
+        if self.ac_signals and self.ac_sweep is None:
+            msg = (
+                'SimulationResultsBundle: ac_signals задан '
+                f'({list(self.ac_signals)!r}), но ac_sweep=None.'
+            )
+            raise ValueError(msg)
+        return self
+
+
 _TS_FORMAT = '%Y%m%dT%H%M%SZ'
 
 
@@ -201,11 +340,15 @@ def publication_timestamp_dirname(timestamp: datetime) -> str:
 
 
 __all__ = [
+    'MeasurementSummary',
     'MultiSheetMode',
+    'ParametricSweepPoint',
+    'ParametricSweepSection',
     'PublicationBundle',
     'PublicationLang',
     'SchematicPublicationArtifacts',
     'SheetArtifactSet',
     'SimReportArtifacts',
+    'SimulationResultsBundle',
     'publication_timestamp_dirname',
 ]

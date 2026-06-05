@@ -9,14 +9,19 @@ import pytest
 from pydantic import ValidationError
 
 from domain.publication import (
+    MeasurementSummary,
     MultiSheetMode,
+    ParametricSweepPoint,
+    ParametricSweepSection,
     PublicationBundle,
     PublicationLang,
     SchematicPublicationArtifacts,
     SheetArtifactSet,
     SimReportArtifacts,
+    SimulationResultsBundle,
     publication_timestamp_dirname,
 )
+from domain.simulation import AcSweep, TimeSeries
 
 
 # ────────────────────── enums ──────────────────────
@@ -343,3 +348,232 @@ def test_publication_timestamp_dirname_rejects_non_utc() -> None:
     moscow = timezone(timedelta(hours=3))
     with pytest.raises(ValueError, match='UTC'):
         publication_timestamp_dirname(datetime(2026, 6, 5, 18, 45, tzinfo=moscow))
+
+
+# ────────────────────── MeasurementSummary ──────────────────────
+
+
+def test_measurement_summary_minimum_fields() -> None:
+    m = MeasurementSummary(name='gain_v_per_v', value=12.5)
+    assert m.unit == ''
+    assert m.description == ''
+
+
+def test_measurement_summary_full_fields() -> None:
+    m = MeasurementSummary(
+        name='bandwidth_3db_hz', value=24000.0, unit='Hz', description='-3 dB полоса',
+    )
+    assert m.unit == 'Hz'
+    assert m.description == '-3 dB полоса'
+
+
+def test_measurement_summary_is_frozen() -> None:
+    m = MeasurementSummary(name='x', value=1.0)
+    with pytest.raises(ValidationError):
+        m.value = 2.0  # type: ignore[misc]
+
+
+def test_measurement_summary_rejects_empty_name() -> None:
+    with pytest.raises(ValidationError):
+        MeasurementSummary(name='', value=1.0)
+
+
+# ────────────────────── ParametricSweepPoint ──────────────────────
+
+
+def test_parametric_sweep_point_valid() -> None:
+    p = ParametricSweepPoint(
+        parameters={'R1': '1k'},
+        values={'gain_v_per_v': 10.0},
+    )
+    assert p.parameters == {'R1': '1k'}
+    assert p.values == {'gain_v_per_v': 10.0}
+
+
+def test_parametric_sweep_point_is_frozen() -> None:
+    p = ParametricSweepPoint(parameters={'R': '1k'}, values={'g': 1.0})
+    with pytest.raises(ValidationError):
+        p.parameters = {'R': '2k'}  # type: ignore[misc]
+
+
+def test_parametric_sweep_point_rejects_empty_parameters() -> None:
+    with pytest.raises(ValidationError):
+        ParametricSweepPoint(parameters={}, values={'g': 1.0})
+
+
+def test_parametric_sweep_point_rejects_empty_values() -> None:
+    with pytest.raises(ValidationError):
+        ParametricSweepPoint(parameters={'R': '1k'}, values={})
+
+
+# ────────────────────── ParametricSweepSection ──────────────────────
+
+
+def _point(r: str = '1k', g: float = 10.0) -> ParametricSweepPoint:
+    return ParametricSweepPoint(parameters={'R1': r}, values={'gain': g})
+
+
+def test_parametric_sweep_section_valid_single_param() -> None:
+    s = ParametricSweepSection(
+        name='gain vs R1',
+        x_param='R1',
+        y_field='gain',
+        rows=(_point('1k', 10.0), _point('2k', 12.0)),
+    )
+    assert s.group_by is None
+    assert len(s.rows) == 2
+
+
+def test_parametric_sweep_section_with_group_by() -> None:
+    s = ParametricSweepSection(
+        name='gain vs R1 grouped by C1',
+        x_param='R1',
+        y_field='gain',
+        group_by='C1',
+        rows=(_point(),),
+    )
+    assert s.group_by == 'C1'
+
+
+def test_parametric_sweep_section_rejects_empty_rows() -> None:
+    with pytest.raises(ValidationError):
+        ParametricSweepSection(
+            name='x', x_param='X', y_field='Y', rows=(),
+        )
+
+
+def test_parametric_sweep_section_is_frozen() -> None:
+    s = ParametricSweepSection(
+        name='s', x_param='X', y_field='Y', rows=(_point(),),
+    )
+    with pytest.raises(ValidationError):
+        s.group_by = 'B'  # type: ignore[misc]
+
+
+# ────────────────────── SimulationResultsBundle ──────────────────────
+
+
+def _utc(year: int = 2026, month: int = 6, day: int = 5, hour: int = 18) -> datetime:
+    return datetime(year, month, day, hour, 0, 0, tzinfo=UTC)
+
+
+def _ts(*, signal: str = 'v(load)') -> TimeSeries:
+    return TimeSeries(time=(0.0, 1e-6, 2e-6), traces={signal: (0.0, 0.5, 1.0)})
+
+
+def _ac(*, signal: str = 'v(load)') -> AcSweep:
+    return AcSweep(
+        frequency=(1.0, 10.0, 100.0),
+        traces_real={signal: (1.0, 0.95, 0.9)},
+        traces_imag={signal: (0.0, 0.0, 0.0)},
+    )
+
+
+def test_bundle_minimum_required_fields() -> None:
+    bundle = SimulationResultsBundle(
+        project='se-amp',
+        efactory_version='0.3.0-dev',
+        publication_timestamp=_utc(),
+    )
+    assert bundle.tran is None
+    assert bundle.ac_sweep is None
+    assert bundle.parametric_sweeps == ()
+    assert bundle.magnetics_summary_path is None
+    assert bundle.measurements == ()
+    assert bundle.source_simulation_timestamp is None
+
+
+def test_bundle_with_full_payload() -> None:
+    bundle = SimulationResultsBundle(
+        project='se-amp',
+        efactory_version='0.3.0-dev',
+        publication_timestamp=_utc(),
+        source_simulation_timestamp=_utc(hour=17),
+        tran=_ts(),
+        tran_signals=('v(load)',),
+        ac_sweep=_ac(),
+        ac_signals=('v(load)',),
+        parametric_sweeps=(
+            ParametricSweepSection(
+                name='gain vs R1',
+                x_param='R1',
+                y_field='gain',
+                rows=(_point(),),
+            ),
+        ),
+        magnetics_summary_path=Path('/tmp/se-amp/out/fem/ts/summary.json'),
+        measurements=(MeasurementSummary(name='gain', value=12.5),),
+    )
+    assert bundle.tran is not None
+    assert bundle.tran_signals == ('v(load)',)
+
+
+def test_bundle_is_frozen() -> None:
+    bundle = SimulationResultsBundle(
+        project='x',
+        efactory_version='0.0.1',
+        publication_timestamp=_utc(),
+    )
+    with pytest.raises(ValidationError):
+        bundle.project = 'y'  # type: ignore[misc]
+
+
+def test_bundle_rejects_naive_publication_timestamp() -> None:
+    with pytest.raises(ValidationError, match='timezone-aware'):
+        SimulationResultsBundle(
+            project='x',
+            efactory_version='0.0.1',
+            publication_timestamp=datetime(2026, 6, 5, 18, 0, 0),
+        )
+
+
+def test_bundle_rejects_non_utc_publication_timestamp() -> None:
+    moscow = timezone(timedelta(hours=3))
+    with pytest.raises(ValidationError, match='UTC'):
+        SimulationResultsBundle(
+            project='x',
+            efactory_version='0.0.1',
+            publication_timestamp=datetime(2026, 6, 5, 18, 0, 0, tzinfo=moscow),
+        )
+
+
+def test_bundle_rejects_naive_source_simulation_timestamp() -> None:
+    with pytest.raises(ValidationError, match='timezone-aware'):
+        SimulationResultsBundle(
+            project='x',
+            efactory_version='0.0.1',
+            publication_timestamp=_utc(),
+            source_simulation_timestamp=datetime(2026, 6, 5, 17, 0, 0),
+        )
+
+
+def test_bundle_rejects_tran_signals_without_tran() -> None:
+    with pytest.raises(ValidationError, match='tran_signals'):
+        SimulationResultsBundle(
+            project='x',
+            efactory_version='0.0.1',
+            publication_timestamp=_utc(),
+            tran_signals=('v(load)',),
+        )
+
+
+def test_bundle_rejects_ac_signals_without_ac_sweep() -> None:
+    with pytest.raises(ValidationError, match='ac_signals'):
+        SimulationResultsBundle(
+            project='x',
+            efactory_version='0.0.1',
+            publication_timestamp=_utc(),
+            ac_signals=('v(load)',),
+        )
+
+
+def test_bundle_accepts_tran_without_signals_empty_tran_section() -> None:
+    """tran present + tran_signals=() — валидно, секция отсутствует в report."""
+    bundle = SimulationResultsBundle(
+        project='x',
+        efactory_version='0.0.1',
+        publication_timestamp=_utc(),
+        tran=_ts(),
+    )
+    assert bundle.tran is not None
+    assert bundle.tran_signals == ()
