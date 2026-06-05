@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from domain.simulation import (
     AcAnalysis,
+    DcSweepAnalysis,
     FourierAnalysis,
     OpAnalysis,
     TranAnalysis,
@@ -105,6 +106,11 @@ def _format_directive(analysis: AnalysisSpec) -> str:
         # `.control` блока с `run` — Fourier эмитим как interactive команду
         # `fourier <fund> <signal>` после `run` (см. `_format_control_blocks`).
         return _format_tran(analysis.tran)
+    if isinstance(analysis, DcSweepAnalysis):
+        return (
+            f'.DC {analysis.source} {_num(analysis.start)} '
+            f'{_num(analysis.stop)} {_num(analysis.step)}'
+        )
     msg = f'Unsupported analysis: {type(analysis).__name__}'
     raise TypeError(msg)
 

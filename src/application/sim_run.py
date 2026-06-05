@@ -10,6 +10,7 @@ from domain.raw_waveform import RawWaveform, WaveformAnalysisType
 from domain.sim_results import AnalysisType, SimResult
 from domain.simulation import (
     AcAnalysis,
+    DcSweepAnalysis,
     OpAnalysis,
     SimulationResult,
     TranAnalysis,
@@ -34,6 +35,7 @@ _ANALYSIS_TYPE_MAP: dict[str, AnalysisType] = {
     'tran': AnalysisType.TRAN,
     'ac': AnalysisType.AC,
     'four': AnalysisType.FOUR,
+    'dc': AnalysisType.DC,
 }
 
 
@@ -224,6 +226,16 @@ def _build_waveform(
             traces=dict(ac.traces_real),
             traces_imag=dict(ac.traces_imag),
         )
+    if isinstance(analysis, DcSweepAnalysis) and sim_result.dc_sweep is not None:
+        dc = sim_result.dc_sweep
+        return RawWaveform(
+            timestamp=timestamp,
+            analysis_type=WaveformAnalysisType.DC,
+            source_netlist=source_netlist,
+            x_axis_name=dc.sweep_variable,
+            x_axis=dc.sweep_values,
+            traces=dict(dc.traces),
+        )
     return None
 
 
@@ -266,6 +278,17 @@ def _render_summary(*, analysis: AnalysisSpec, sim_result: SimulationResult) -> 
         return (
             f'fourier @ {analysis.fundamental_hz} Hz: '
             f'THD={fr.thd_percent:.3f}%, {len(fr.harmonics)} harmonics'
+        )
+    if (
+        analysis.type == 'dc'
+        and sim_result.dc_sweep is not None
+        and isinstance(analysis, DcSweepAnalysis)
+    ):
+        dc = sim_result.dc_sweep
+        return (
+            f'DC sweep {analysis.source} {analysis.start}..{analysis.stop} '
+            f'step {analysis.step}, {len(dc.traces)} traces, '
+            f'{len(dc.sweep_values)} points'
         )
     return f'{analysis.type} completed'
 

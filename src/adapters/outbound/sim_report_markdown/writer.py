@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 
 from adapters.inbound.cli.publication_plots import (
     render_ac_sweep_publication_png,
+    render_dc_sweep_publication_png,
     render_sweep_plot_publication_png,
     render_time_series_publication_png,
 )
@@ -45,7 +46,7 @@ if TYPE_CHECKING:
         ParametricSweepPoint,
         SimulationResultsBundle,
     )
-    from domain.simulation import AcSweep, TimeSeries
+    from domain.simulation import AcSweep, DcSweep, TimeSeries
 
 
 _REPORT_LABELS: dict[PublicationLang, dict[str, str]] = {
@@ -60,6 +61,7 @@ _REPORT_LABELS: dict[PublicationLang, dict[str, str]] = {
         'lang': 'Язык отчёта',
         'tran_h2': 'Анализ переходных процессов (TRAN)',
         'ac_h2': 'Малосигнальный анализ (AC sweep)',
+        'dc_h2': 'DC-развёртка (transfer characteristic)',
         'sweep_h2': 'Параметрические свипы',
         'magnetics_h2': 'Магнитные компоненты',
         'magnetics_missing': (
@@ -95,6 +97,7 @@ _REPORT_LABELS: dict[PublicationLang, dict[str, str]] = {
         'lang': 'Report language',
         'tran_h2': 'Transient analysis (TRAN)',
         'ac_h2': 'Small-signal analysis (AC sweep)',
+        'dc_h2': 'DC sweep (transfer characteristic)',
         'sweep_h2': 'Parametric sweeps',
         'magnetics_h2': 'Magnetic components',
         'magnetics_missing': (
@@ -180,6 +183,19 @@ class MarkdownSimReportWriter:
                 _render_ac_section(
                     bundle.ac_sweep,
                     bundle.ac_signals,
+                    plots_dir,
+                    out_dir,
+                    labels,
+                    lang,
+                    plot_paths,
+                ),
+            )
+
+        if bundle.dc_sweep is not None and bundle.dc_signals:
+            lines.extend(
+                _render_dc_section(
+                    bundle.dc_sweep,
+                    bundle.dc_signals,
                     plots_dir,
                     out_dir,
                     labels,
@@ -289,6 +305,31 @@ def _render_ac_section(
         png_path = plots_dir / f'ac-{_safe_filename(signal)}.png'
         render_ac_sweep_publication_png(
             ac_sweep,
+            signal=signal,
+            output=png_path,
+            lang=lang,
+        )
+        accumulated_plots.append(png_path)
+        rel = png_path.relative_to(out_dir).as_posix()
+        lines.append(f'![{signal}]({rel})')
+        lines.append('')
+    return lines
+
+
+def _render_dc_section(
+    dc_sweep: DcSweep,
+    signals: tuple[str, ...],
+    plots_dir: Path,
+    out_dir: Path,
+    labels: dict[str, str],
+    lang: PublicationLang,
+    accumulated_plots: list[Path],
+) -> list[str]:
+    lines = [f'## {labels["dc_h2"]}', '']
+    for signal in signals:
+        png_path = plots_dir / f'dc-{_safe_filename(signal)}.png'
+        render_dc_sweep_publication_png(
+            dc_sweep,
             signal=signal,
             output=png_path,
             lang=lang,

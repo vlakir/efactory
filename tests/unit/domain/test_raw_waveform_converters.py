@@ -8,9 +8,10 @@ from domain.raw_waveform import (
     RawWaveform,
     WaveformAnalysisType,
     waveform_to_ac_sweep,
+    waveform_to_dc_sweep,
     waveform_to_time_series,
 )
-from domain.simulation import AcSweep, TimeSeries
+from domain.simulation import AcSweep, DcSweep, TimeSeries
 
 
 def _tran_waveform() -> RawWaveform:
@@ -43,16 +44,33 @@ def test_tran_to_time_series() -> None:
     assert ts.traces == {'v(out)': (0.0, 0.5, 1.0)}
 
 
-def test_dc_to_time_series() -> None:
-    wf = _tran_waveform()
-    wf = wf.model_copy(update={'analysis_type': WaveformAnalysisType.DC})
-    ts = waveform_to_time_series(wf)
-    assert isinstance(ts, TimeSeries)
+def test_dc_to_time_series_rejected() -> None:
+    """DC теперь использует свой конвертер (T188)."""
+    wf = _tran_waveform().model_copy(
+        update={'analysis_type': WaveformAnalysisType.DC, 'x_axis_name': 'V1'}
+    )
+    with pytest.raises(ValueError, match='expected TRAN'):
+        waveform_to_time_series(wf)
 
 
 def test_ac_to_time_series_rejected() -> None:
-    with pytest.raises(ValueError, match='cannot convert AC waveform'):
+    with pytest.raises(ValueError, match='expected TRAN'):
         waveform_to_time_series(_ac_waveform())
+
+
+def test_dc_to_dc_sweep() -> None:
+    wf = _tran_waveform().model_copy(
+        update={'analysis_type': WaveformAnalysisType.DC, 'x_axis_name': 'V1'}
+    )
+    dc = waveform_to_dc_sweep(wf)
+    assert isinstance(dc, DcSweep)
+    assert dc.sweep_variable == 'V1'
+    assert dc.sweep_values == (0.0, 1e-6, 2e-6)
+
+
+def test_tran_to_dc_sweep_rejected() -> None:
+    with pytest.raises(ValueError, match='expected DC waveform'):
+        waveform_to_dc_sweep(_tran_waveform())
 
 
 def test_ac_to_ac_sweep() -> None:

@@ -25,7 +25,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from domain.simulation import AcSweep, TimeSeries
+from domain.simulation import AcSweep, DcSweep, TimeSeries
 
 
 class PublicationLang(StrEnum):
@@ -247,6 +247,9 @@ class SimulationResultsBundle(BaseModel):
     ac_sweep: AcSweep | None = None
     ac_signals: tuple[str, ...] = ()
 
+    dc_sweep: DcSweep | None = None
+    dc_signals: tuple[str, ...] = ()
+
     parametric_sweeps: tuple[ParametricSweepSection, ...] = ()
 
     magnetics_summary_path: Path | None = None
@@ -301,6 +304,12 @@ class SimulationResultsBundle(BaseModel):
             msg = (
                 'SimulationResultsBundle: ac_signals задан '
                 f'({list(self.ac_signals)!r}), но ac_sweep=None.'
+            )
+            raise ValueError(msg)
+        if self.dc_signals and self.dc_sweep is None:
+            msg = (
+                'SimulationResultsBundle: dc_signals задан '
+                f'({list(self.dc_signals)!r}), но dc_sweep=None.'
             )
             raise ValueError(msg)
         return self
