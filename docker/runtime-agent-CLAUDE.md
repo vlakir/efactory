@@ -57,6 +57,20 @@ Source — `docker/runtime-agent-commands/*.md`. Source-of-truth для
   (T187 snap-on-write); юзкейс — hand-edited / legacy schematics. KB:
   `design.grid-check`.
 
+- **`/spice-import-url <URL> [--vendor NAME] [--force] [--skip-smoke]
+  [--dry-run] [--json] [--category CAT --subcategory SUB] [--insecure]
+  [--timeout SEC] [--max-bytes N]`** — (T030) импорт SPICE-моделей
+  semiconductor компонентов (BJT/JFET/MOSFET/diode/op-amp) из
+  публичного URL в `<user_library_root>`. Pipeline: download (direct-
+  URL HTTP/HTTPS, no auth/cookies) → classify (`.MODEL TYPE` или
+  `.SUBCKT` 5+ pin op-amp heuristics) → PWRS conversion (T168) →
+  install в `<root>/<category>/<vendor>/<PART>.lib` с inline headers
+  → per-class ngspice OP smoke → KB topic `spice.<vendor>.<part>`.
+  Exit 0/1/2 = ok/domain-fail (4xx, duplicate, smoke-fail, encrypted/
+  HTML) / infra-fail (network, TLS, scheme). Auth-walled vendors (TI
+  PSpice .zip за SSO): `efactory spice import-file <path> --vendor=ti`
+  — тот же pipeline, bypass download. KB: `spice.import-pipeline`.
+
 **Simulation & measurement**
 
 - **`/sim-run [SCHEMATIC] [--analysis op|tran|ac]`** — запустить

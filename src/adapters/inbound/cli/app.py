@@ -119,6 +119,7 @@ from application.reindex_projects import (
 )
 from application.run_erc_check import run_erc_check
 from application.run_grid_check import run_grid_check
+from application.run_spice_import import run_spice_import
 from application.schematic_snapshot import SchematicSnapshot
 from application.sim_run import sim_run as sim_run_use_case
 from application.update_project import (
@@ -160,6 +161,17 @@ from domain.simulation import (
     AcAnalysis,
     OpAnalysis,
     TranAnalysis,
+)
+from domain.spice_import import (
+    ClassificationAmbiguousError,
+    ContentRejectedError,
+    DownloadError,
+    ImportDuplicateError,
+    ImportSource,
+    KbWriteError,
+    SmokeFailedError,
+    SmokeTimeoutError,
+    SpiceImportError,
 )
 from domain.spice_model import ComponentCategory
 from ports.outbound.app_manager import (
@@ -215,6 +227,12 @@ if TYPE_CHECKING:
     from ports.outbound.session_logger import SessionLogger
     from ports.outbound.sim_results import SimResultsRepository
     from ports.outbound.simulator import Simulator
+    from ports.outbound.spice_import import (
+        SpiceKbWriter,
+        SpiceModelClassifier,
+        SpiceModelDownloader,
+        SpiceSmokeRunner,
+    )
     from ports.outbound.spice_model_library import SpiceModelLibrary
     from ports.outbound.staged_schematics import (
         LockDetector,
@@ -466,6 +484,12 @@ def build_app(
     tube_iv_repository: TubeIVRepository,
     tube_lib_writer: TubeLibWriter,
     user_templates_root: Path,
+    user_library_root: Path,
+    kb_host_mutated_dir: Path,
+    spice_downloader: SpiceModelDownloader,
+    spice_classifier: SpiceModelClassifier,
+    spice_smoke: SpiceSmokeRunner,
+    spice_kb_writer: SpiceKbWriter,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -1658,6 +1682,227 @@ def build_app(
             f'out/grid-check/<ts>/report.md',
         )
         raise typer.Exit(1)
+
+    spice_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    app.add_typer(spice_app, name='spice')
+
+    def _spice_import_common(
+        *,
+        source: ImportSource,
+        vendor: str | None,
+        force: bool,
+        skip_smoke: bool,
+        dry_run: bool,
+        json_output: bool,
+        timeout_seconds: float,
+        max_bytes: int,
+        insecure: bool,
+        category: str | None,
+        subcategory: str | None,
+    ) -> None:
+        category_override: ComponentCategory | None = None
+        if category is not None:
+            try:
+                category_override = ComponentCategory(category.lower())
+            except ValueError as exc:
+                typer.echo(
+                    f'--category must be one of '
+                    f'{[c.value for c in ComponentCategory]}, got {category!r}',
+                    err=True,
+                )
+                raise typer.Exit(2) from exc
+
+        try:
+            report = asyncio.run(
+                run_spice_import(
+                    source=source,
+                    user_library_root=user_library_root,
+                    kb_root=kb_host_mutated_dir,
+                    downloader=spice_downloader,
+                    classifier=spice_classifier,
+                    smoke=spice_smoke,
+                    kb_writer=spice_kb_writer,
+                    force=force,
+                    skip_smoke=skip_smoke,
+                    dry_run=dry_run,
+                    timeout_seconds=timeout_seconds,
+                    max_bytes=max_bytes,
+                    verify_tls=not insecure,
+                    vendor_override=vendor,
+                    category_override=category_override,
+                    subcategory_override=subcategory,
+                ),
+            )
+        except DownloadError as exc:
+            typer.echo(f'download failed: {exc}', err=True)
+            raise typer.Exit(2) from exc
+        except ContentRejectedError as exc:
+            typer.echo(f'content rejected: {exc}', err=True)
+            raise typer.Exit(1) from exc
+        except ClassificationAmbiguousError as exc:
+            typer.echo(f'classification ambiguous: {exc}', err=True)
+            raise typer.Exit(1) from exc
+        except ImportDuplicateError as exc:
+            typer.echo(f'duplicate: {exc}', err=True)
+            raise typer.Exit(1) from exc
+        except (SmokeFailedError, SmokeTimeoutError) as exc:
+            typer.echo(f'smoke failed: {exc}', err=True)
+            raise typer.Exit(1) from exc
+        except KbWriteError as exc:
+            typer.echo(f'KB write failed: {exc}', err=True)
+            raise typer.Exit(2) from exc
+        except SpiceImportError as exc:
+            typer.echo(f'spice-import error: {exc}', err=True)
+            raise typer.Exit(1) from exc
+        except ValidationError as exc:
+            typer.echo(f'validation error: {exc}', err=True)
+            raise typer.Exit(2) from exc
+
+        if json_output:
+            typer.echo(report.model_dump_json(indent=2))
+            return
+
+        if dry_run:
+            typer.echo('DRY-RUN — нет записи на диск.')
+            typer.echo(f'  vendor: {report.plan.vendor}')
+            for (card, cls), target in zip(
+                report.plan.cards,
+                report.plan.target_paths,
+                strict=True,
+            ):
+                typer.echo(
+                    f'  {card.name}: {cls.category.value}/{cls.subcategory} → {target}',
+                )
+            return
+
+        for install, outcome in zip(
+            report.installed_paths,
+            report.smoke_outcomes,
+            strict=True,
+        ):
+            typer.echo(f'installed: {install} [smoke: {outcome.status.value}]')
+        for topic in report.kb_topics:
+            typer.echo(f'  KB topic: {topic}')
+
+    @spice_app.command('import-url')
+    def spice_import_url(
+        url: Annotated[
+            str,
+            typer.Argument(help='Direct-URL HTTP/HTTPS на SPICE-deck (.lib / .mod).'),
+        ],
+        *,
+        vendor: Annotated[
+            str | None,
+            typer.Option('--vendor', help='Override host-detected vendor.'),
+        ] = None,
+        force: Annotated[
+            bool,
+            typer.Option('--force', help='Перезаписать существующий target.'),
+        ] = False,
+        skip_smoke: Annotated[
+            bool,
+            typer.Option('--skip-smoke', help='Пропустить ngspice OP smoke.'),
+        ] = False,
+        dry_run: Annotated[
+            bool,
+            typer.Option('--dry-run', help='Печать плана без модификаций FS.'),
+        ] = False,
+        json_output: Annotated[
+            bool,
+            typer.Option('--json', help='Машинно-парсимый ImportReport JSON.'),
+        ] = False,
+        timeout_seconds: Annotated[
+            float,
+            typer.Option('--timeout', help='HTTP timeout, сек.'),
+        ] = 30.0,
+        max_bytes: Annotated[
+            int,
+            typer.Option('--max-bytes', help='Лимит body size, байты.'),
+        ] = 1_048_576,
+        insecure: Annotated[
+            bool,
+            typer.Option('--insecure', help='Отключить TLS verification.'),
+        ] = False,
+        category: Annotated[
+            str | None,
+            typer.Option('--category', help='Override эвристики классификации.'),
+        ] = None,
+        subcategory: Annotated[
+            str | None,
+            typer.Option('--subcategory', help='Override subcategory.'),
+        ] = None,
+    ) -> None:
+        """Import SPICE-модель из URL (T030)."""
+        source = ImportSource(kind='url', location=url, vendor_hint=vendor)
+        _spice_import_common(
+            source=source,
+            vendor=vendor,
+            force=force,
+            skip_smoke=skip_smoke,
+            dry_run=dry_run,
+            json_output=json_output,
+            timeout_seconds=timeout_seconds,
+            max_bytes=max_bytes,
+            insecure=insecure,
+            category=category,
+            subcategory=subcategory,
+        )
+
+    @spice_app.command('import-file')
+    def spice_import_file(
+        path: Annotated[
+            str,
+            typer.Argument(help='Локальный путь к .lib / .mod / .cir файлу.'),
+        ],
+        *,
+        vendor: Annotated[
+            str | None,
+            typer.Option('--vendor', help='Vendor name (default: unknown).'),
+        ] = None,
+        force: Annotated[
+            bool,
+            typer.Option('--force', help='Перезаписать существующий target.'),
+        ] = False,
+        skip_smoke: Annotated[
+            bool,
+            typer.Option('--skip-smoke', help='Пропустить ngspice OP smoke.'),
+        ] = False,
+        dry_run: Annotated[
+            bool,
+            typer.Option('--dry-run', help='Печать плана без модификаций FS.'),
+        ] = False,
+        json_output: Annotated[
+            bool,
+            typer.Option('--json', help='Машинно-парсимый ImportReport JSON.'),
+        ] = False,
+        max_bytes: Annotated[
+            int,
+            typer.Option('--max-bytes', help='Лимит файла, байты.'),
+        ] = 1_048_576,
+        category: Annotated[
+            str | None,
+            typer.Option('--category', help='Override эвристики классификации.'),
+        ] = None,
+        subcategory: Annotated[
+            str | None,
+            typer.Option('--subcategory', help='Override subcategory.'),
+        ] = None,
+    ) -> None:
+        """Import SPICE-модель из локального файла (T030)."""
+        source = ImportSource(kind='file', location=path, vendor_hint=vendor)
+        _spice_import_common(
+            source=source,
+            vendor=vendor,
+            force=force,
+            skip_smoke=skip_smoke,
+            dry_run=dry_run,
+            json_output=json_output,
+            timeout_seconds=0.0,
+            max_bytes=max_bytes,
+            insecure=False,
+            category=category,
+            subcategory=subcategory,
+        )
 
     def _exit_on_bridge_error(exc: Exception) -> typer.Exit:
         """Унифицированный маппинг bridge-ошибок в exit-коды."""

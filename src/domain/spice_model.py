@@ -27,13 +27,20 @@ SpiceModelId = Annotated[str, AfterValidator(_validate_id)]
 
 
 class ComponentCategory(StrEnum):
-    """Класс электронного компонента (T007 generalization, T101 диоды, T153 opamp)."""
+    """
+    Класс электронного компонента.
+
+    T007 generalization, T101 диоды, T153 opamp, T030 BJT/JFET/MOSFET.
+    """
 
     TUBE = 'tube'
     TRANSFORMER = 'transformer'
     LOAD = 'load'
     DIODE = 'diode'
     OPAMP = 'opamp'
+    BJT = 'bjt'
+    JFET = 'jfet'
+    MOSFET = 'mosfet'
 
 
 class TubeType(StrEnum):
@@ -71,10 +78,31 @@ class DiodeKind(StrEnum):
 
 
 class OpampKind(StrEnum):
-    """Подкатегория для category=OPAMP (T153, cross-validation reference)."""
+    """Подкатегория для category=OPAMP (T153 SINGLE_POLE, T030 FULL_VENDOR)."""
 
-    SINGLE_POLE = 'single_pole'  # macromodel: VCCS + RC + buffer + Rout
-    # future: TWO_POLE, FULL_VENDOR (LM741/OPA134 import — T030)
+    SINGLE_POLE = 'single_pole'  # T153 analytical macromodel: VCCS + RC + buffer + Rout
+    FULL_VENDOR = 'full_vendor'  # T030: реальный vendor .SUBCKT (TI/ADI/...)
+
+
+class BjtKind(StrEnum):
+    """Подкатегория для category=BJT (T030, bipolar transistors)."""
+
+    NPN = 'npn'
+    PNP = 'pnp'
+
+
+class JfetKind(StrEnum):
+    """Подкатегория для category=JFET (T030, junction field-effect transistors)."""
+
+    NJF = 'njf'  # N-channel
+    PJF = 'pjf'  # P-channel
+
+
+class MosfetKind(StrEnum):
+    """Подкатегория для category=MOSFET (T030, MOS field-effect transistors)."""
+
+    NMOS = 'nmos'
+    PMOS = 'pmos'
 
 
 class ModelSource(StrEnum):
@@ -149,3 +177,27 @@ class SpiceModel(BaseModel):
             msg = f'opamp_kind accessor invalid for category={self.category.value}'
             raise ValueError(msg)
         return OpampKind(self.subcategory)
+
+    @property
+    def bjt_kind(self) -> BjtKind:
+        """Typed accessor для category=BJT; raises иначе (T030)."""
+        if self.category is not ComponentCategory.BJT:
+            msg = f'bjt_kind accessor invalid for category={self.category.value}'
+            raise ValueError(msg)
+        return BjtKind(self.subcategory)
+
+    @property
+    def jfet_kind(self) -> JfetKind:
+        """Typed accessor для category=JFET; raises иначе (T030)."""
+        if self.category is not ComponentCategory.JFET:
+            msg = f'jfet_kind accessor invalid for category={self.category.value}'
+            raise ValueError(msg)
+        return JfetKind(self.subcategory)
+
+    @property
+    def mosfet_kind(self) -> MosfetKind:
+        """Typed accessor для category=MOSFET; raises иначе (T030)."""
+        if self.category is not ComponentCategory.MOSFET:
+            msg = f'mosfet_kind accessor invalid for category={self.category.value}'
+            raise ValueError(msg)
+        return MosfetKind(self.subcategory)

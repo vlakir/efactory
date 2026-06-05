@@ -980,15 +980,10 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      spec в specs/T187-off-grid-cleanup/spec.md, ветка
      T187-off-grid-cleanup. -->
 
-- **T030** — [2026-05-15, reformulated 2026-06-03] Импорт SPICE-моделей
-  по URL: slash `/spice-import-url <url>` (primary) и/или CLI
-  `efactory spice import-url <url>`. Pipeline: download → классификация
-  (BJT/MOSFET/op-amp/tube/diode/...) → `convert_pwrs_to_ngspice` (T168)
-  → раскладка по `spice-models/<class>/` → метаданные в KB topic
-  `spice.<vendor>.<part>` (T134 namespace).
-  Acceptance: URL TI/Vishay/ON Semi → модель добавлена в библиотеку
-  и проходит smoke-симуляцию; KB-entry создан и находится через
-  `/kb-search`.
+<!-- T030 (Импорт SPICE-моделей по URL) — taken into BOARD → Doing
+     2026-06-05, spec в specs/T030-spice-import-url/spec.md, ветка
+     T030-spice-import-url. -->
+
 <!-- T031 (Tube-curve-fitting) — taken into BOARD → Doing 2026-06-03,
      spec в specs/T031-tube-curve-fitting/spec.md. -->
 

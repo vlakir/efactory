@@ -1,0 +1,5 @@
+* Synthetic encrypted-block fixture — T030 negative test for ContentRejectedError.
+*encrypted
+Z29vZ2xlIHJlYWxseSBkb2VzIG5vdCBzdG9yZSBlbXB0eSBwYXNzd29yZHM=
+RHJvcCB0YWJsZSB1c2VyczsgLS0=
+*endencrypted

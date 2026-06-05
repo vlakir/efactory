@@ -1,0 +1,8 @@
+* Synthetic 2N3904 NPN BJT model — T030 test fixture.
+* Mimics typical Gummel-Poon parameter set published by ON Semi.
+* Not for production use — for parser/classifier tests only.
+.MODEL Q2N3904 NPN (IS=6.734E-15 BF=200 NF=1 VAF=74.03 IKF=66E-3
++ ISE=6.734E-15 NE=1.259 BR=1.001 NR=1 RB=10 RC=1
++ CJE=4.493E-12 VJE=0.75 MJE=0.2593 TF=301.2E-12
++ XTF=2 VTF=4 ITF=0.4 CJC=3.638E-12 VJC=0.75 MJC=0.3085
++ XCJC=1 FC=0.5 XTB=1.5 EG=1.11 XTI=3)

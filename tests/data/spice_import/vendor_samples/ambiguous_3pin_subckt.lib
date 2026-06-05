@@ -1,0 +1,6 @@
+* Synthetic ambiguous 3-pin SUBCKT — no Q/M/tube cards inside.
+* Test fixture for ClassificationAmbiguousError.
+.SUBCKT UNKNOWN3 A B C
+R1 A B 1K
+R2 B C 1K
+.ENDS UNKNOWN3

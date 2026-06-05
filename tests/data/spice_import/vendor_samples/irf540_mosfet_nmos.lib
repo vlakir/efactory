@@ -1,0 +1,5 @@
+* Synthetic IRF540 N-MOSFET (Vishay-style) — T030 test fixture.
+* Level 1 model (idealized — real IRF540 use BSIM3 or vendor SUBCKT).
+.MODEL IRF540 NMOS (LEVEL=1 VTO=3.5 KP=20.5 LAMBDA=0
++ RD=0.077 RS=0 RG=0 CGSO=1.7E-9 CGDO=0.5E-9 CBD=2E-9
++ PB=0.8 IS=1E-13)
