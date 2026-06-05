@@ -61,6 +61,19 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T107 Phase 1** — datasheet-accurate symbol drawing для советских
+  ламп (`Tubes_Soviet:GU50/6P45S/6N6P`). GU50 — pentode + top-cap anode.
+  6П45С — beam tetrode + beam-forming plates + top-cap anode. 6Н6П —
+  multi-unit dual triode по советскому ГОСТу (две половинки, аналог
+  ECC81 unit_1+unit_2). Pin numbers переходят на real datasheet pinouts
+  (Q3A). Source — copy валидных EL84/ECC81 sexp + редактирование (per
+  T008 mem0 lesson: lib_symbols из памяти не пишем).
+  Acceptance: 3 existing functional теста gain ≥ 5× продолжают
+  проходить + новые structural asserts на sexp content (`pin "TC"` для
+  top-cap, multi-unit signature для 6Н6П) + GUI ack от Vladimir-а
+  перед squash. Spec: `specs/T107-soviet-tube-shapes/spec.md`. Ветка:
+  `T107-phase1-soviet-tube-shapes`. Поднята 2026-06-05.
+
 ## Done
 
 - **T030** — [closed 2026-06-05, PR #121] **Импорт SPICE-моделей по
