@@ -7,7 +7,7 @@
 			(on_board yes)
 			(in_pos_files yes)
 			(duplicate_pin_numbers_are_jumpers no)
-			(property "Reference" "U"
+			(property "Reference" "V"
 				(at 2.54 10.16 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -27,7 +27,7 @@
 					)
 				)
 			)
-			(property "Footprint" "Valve:Valve_Noval_P"
+			(property "Footprint" "Valve:Valve_Magnoval_P"
 				(at 7.62 -10.16 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -38,7 +38,7 @@
 					)
 				)
 			)
-			(property "Datasheet" "http://www.r-type.org/pdfs/el84.pdf"
+			(property "Datasheet" "https://frank.pocnet.net/sheets/049/6/6P45S.pdf"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -49,7 +49,7 @@
 					)
 				)
 			)
-			(property "Description" "pentode, 12W"
+			(property "Description" "Soviet beam tetrode 35W (sweep tube), 9-pin base + top-cap anode"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -70,7 +70,7 @@
 					)
 				)
 			)
-			(property "ki_keywords" "pentode valve"
+			(property "ki_keywords" "beam tetrode valve soviet top-cap"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -81,7 +81,7 @@
 					)
 				)
 			)
-			(property "ki_fp_filters" "VALVE*NOVAL*P*"
+			(property "ki_fp_filters" "VALVE*MAGNOVAL*P*"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -207,30 +207,6 @@
 				)
 				(polyline
 					(pts
-						(xy -3.81 5.08) (xy -3.81 3.81)
-					)
-					(stroke
-						(width 0.2032)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy -3.81 3.81) (xy -2.794 3.81)
-					)
-					(stroke
-						(width 0.2032)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
 						(xy -3.429 2.54) (xy -2.159 1.27)
 					)
 					(stroke
@@ -279,18 +255,6 @@
 				)
 				(polyline
 					(pts
-						(xy -1.8542 3.81) (xy -1.2192 3.81)
-					)
-					(stroke
-						(width 0.2032)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
 						(xy -0.635 -1.27) (xy 0.635 -1.27)
 					)
 					(stroke
@@ -304,18 +268,6 @@
 				(polyline
 					(pts
 						(xy -0.5842 1.27) (xy 0.0762 1.27)
-					)
-					(stroke
-						(width 0.2032)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy -0.3302 3.81) (xy 0.3302 3.81)
 					)
 					(stroke
 						(width 0.2032)
@@ -363,18 +315,6 @@
 				)
 				(polyline
 					(pts
-						(xy 1.2192 3.81) (xy 1.8542 3.81)
-					)
-					(stroke
-						(width 0.2032)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
 						(xy 1.905 -1.27) (xy 3.175 -1.27)
 					)
 					(stroke
@@ -411,30 +351,6 @@
 				)
 				(polyline
 					(pts
-						(xy 3.81 5.08) (xy 3.81 3.81)
-					)
-					(stroke
-						(width 0.2032)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 3.81 3.81) (xy 2.794 3.81)
-					)
-					(stroke
-						(width 0.2032)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
 						(xy 4.445 2.54) (xy 3.175 1.27)
 					)
 					(stroke
@@ -443,6 +359,41 @@
 					)
 					(fill
 						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -4.572 -2.54) (xy -4.572 1.27)
+					)
+					(stroke
+						(width 0.508)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 4.572 -2.54) (xy 4.572 1.27)
+					)
+					(stroke
+						(width 0.508)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(circle
+					(center 0 13.97)
+					(radius 0.508)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type outline)
 					)
 				)
 				(pin input line
@@ -455,7 +406,7 @@
 							)
 						)
 					)
-					(number "2"
+					(number "7"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -466,7 +417,7 @@
 				(pin bidirectional line
 					(at -2.54 -8.89 90)
 					(length 2.54)
-					(name "K_G3"
+					(name "K"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -482,8 +433,8 @@
 					)
 				)
 				(pin output line
-					(at 0 11.43 270)
-					(length 2.54)
+					(at 0 13.97 270)
+					(length 5.08)
 					(name "A"
 						(effects
 							(font
@@ -491,7 +442,7 @@
 							)
 						)
 					)
-					(number "7"
+					(number "TC"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -509,7 +460,7 @@
 							)
 						)
 					)
-					(number "9"
+					(number "6"
 						(effects
 							(font
 								(size 1.27 1.27)
