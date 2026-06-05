@@ -1,6 +1,6 @@
 # Spec: T030 — Импорт SPICE-моделей по URL
 
-**Статус:** Draft
+**Статус:** Done (PR pending merge)
 **Дата создания:** 2026-06-05
 **Связанные документы:**
 - BACKLOG.md → T030 (reformulated 2026-06-03).

@@ -21,7 +21,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse
 
-from adapters.outbound.spice_models.conversion import convert_pwrs_to_ngspice
 from domain.spice_import import (
     ImportDuplicateError,
     ImportPlan,
@@ -30,6 +29,7 @@ from domain.spice_import import (
     SmokeStatus,
 )
 from domain.spice_model import ComponentCategory
+from domain.spice_pwrs import convert_pwrs_to_ngspice
 
 if TYPE_CHECKING:
     from pathlib import Path
