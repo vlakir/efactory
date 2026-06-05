@@ -36,6 +36,104 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T035 — Publication workflow как slash-команды (PR #123).**
+  `/export-schematic-publication` + `/export-sim-report`,
+  ADR-T035a в `DECISIONS.md`. 6 фаз × 10 коммитов; hexagonal-clean
+  (3/3 importlinter), 2439 passed, coverage 87.45%.
+  - **Phase 1 — domain VOs.** `src/domain/publication.py` —
+    `PublicationLang` (ru/en), `MultiSheetMode` (per-sheet/combined),
+    `SheetArtifactSet`, `SchematicPublicationArtifacts`,
+    `SimReportArtifacts`, `PublicationBundle` (Phase 1). Расширены
+    в Phase 2.3: `MeasurementSummary`, `ParametricSweepPoint`,
+    `ParametricSweepSection`, `SimulationResultsBundle`. UTC-aware
+    timestamp validators + cross-field validators (signals без
+    backing analysis, color/bw length match, combined-pair). 54
+    TDD-теста, 100% coverage.
+  - **Phase 2.1 — schematic renderer.**
+    `src/adapters/outbound/kicad_cli/schematic_publication_renderer.py`:
+    pipeline `kicad-cli sch export svg|pdf [--black-and-white]` +
+    `rsvg-convert --dpi-x 300 --dpi-y 300` × color/bw matrix; per-sheet
+    PDF цикл с `--pages I`; combined PDF без `--pages` (single
+    multi-page). 17 hybrid тестов (mocked AppManager + rsvg / real
+    integration skip if no rsvg-convert).
+  - **Phase 2.2 — publication plots.**
+    `src/adapters/inbound/cli/publication_plots.py` — 3 render-функции
+    (TRAN / AC sweep / parametric sweep) → matplotlib PNG @ 300 DPI
+    + helper `build_*_figure` для testability. `AXIS_LABELS` dict
+    для ru/en i18n (6 ключей на язык). 24 unit-теста с Pillow
+    `Image.info['dpi']` approximation (matplotlib stores DPM →
+    читается ≈299.9994).
+  - **Phase 2.3 — sim-report writer.**
+    `src/adapters/outbound/sim_report_markdown/writer.py`
+    (`MarkdownSimReportWriter`): композирует `report.md` из 6
+    секций (header, metadata, TRAN, AC, parametric sweep,
+    magnetics M-thin, measurements). i18n через `_REPORT_LABELS`
+    (~27 ключей на язык включая SI-обозначения Гн/H, Тл/T).
+    Magnetics M-thin graceful skip (path=None / file missing /
+    invalid JSON / no recognized fields) с notice + ссылкой на
+    T189. 25 unit-теста (fake_render fixture patches
+    publication_plots для скорости).
+  - **Phase 2.4 — README writer.**
+    `src/adapters/outbound/publication_readme_markdown/writer.py`
+    (`MarkdownPublicationReadmeWriter`): финальный README в корне
+    `<ts>`-каталога. Секции conditional (schematic / sim-report
+    может отсутствовать). Relative-path ссылки через
+    `Path.relative_to()` + `os.path.relpath()` fallback. 19
+    unit-теста.
+  - **Phase 3.1 — schematic use case.**
+    `src/application/run_export_schematic_publication.py`:
+    project resolve → renderer → readme → `(bundle, ts_root)`.
+    Collision-safe ts (spec W-4): empty existing reused, populated
+    → suffix `-1`, `-2`. Shared `_publication_paths` helpers.
+    8 unit-теста с FakeManifestRepo/FakeRenderer/FakeReadmeWriter.
+  - **Phase 3.2 — sim-report use case.**
+    `src/application/run_export_sim_report.py`: принимает pre-built
+    `SimulationResultsBundle` (caller — Phase 4 CLI — отвечает за
+    rerun-vs-load). Зеркальный pipeline: writer → bundle → readme.
+    6 unit-теста.
+  - **Phase 4.1 — schematic CLI + slash.**
+    `efactory publication export-schematic <slug>
+    [--schematic PATH] [--multi-sheet-mode per-sheet|combined]
+    [--lang ru|en]`. Auto-detect root `.kicad_sch`, каскадный
+    echo `publication-export: <ts_root>`. Slash file
+    `docker/runtime-agent-commands/export-schematic-publication.md`.
+    Composition: `KicadCliSchematicPublicationRenderer` +
+    `MarkdownPublicationReadmeWriter`.
+  - **Phase 4.2 — sim-report CLI + slash (MVP).**
+    `efactory publication export-sim-report <slug> [--lang ru|en]`.
+    **Минимальный MVP** — billds `SimulationResultsBundle` с
+    metadata only; TRAN/AC plots отсутствуют (заблокировано T190
+    + T191 в BACKLOG). Slash file
+    `export-sim-report.md` с явным указанием T190/T191
+    ограничений и temporary workaround (manual `/sim-run` +
+    `bridge plot` screenshot). Composition:
+    `MarkdownSimReportWriter`.
+  - **Phase 5 — acceptance integration.** SC-1 strict (на `se-amp`
+    template через `--template`, 3+3 файла, README ≥10 строк) +
+    SC-1 combined mode. SC-7 parametrized smoke × 11 templates
+    (sim-report MVP не падает ни на одном). SC-2/SC-3 deferred
+    (T190+T191). SC-6 → T192 BACKLOG (multi-sheet support в
+    Schematic facade).
+  - **Phase 6 — ADR.** `ADR-T035a` фиксирует design decisions
+    (два слабосвязанных pipeline'а, MVP с T190/T191 deferral,
+    отказ от bundling raw-waveform persistence в T035).
+  - **KB sync Уровень 1+2.**
+    `docker/runtime-agent-CLAUDE.md` — секция «Publication
+    workflow (T035)» в перечне slash. `agent.command-routing` —
+    2 mapping row для free-text discovery. Новый KB topic
+    `design.export-publication.md` (полный workflow обеих команд,
+    pitfall'ы, T190/T191 roadmap, 🚫 anti-pattern bullets). 3
+    parametrized regression cases в `test_control_examples.py`.
+  - **Уровень 3 smoke в `efactory:linux`** — 6 сценариев headless
+    `claude -p` × persistent bind-mount auth. Initial S5 fail (agent
+    изобретал custom matplotlib script вместо `/plot-tran --output`)
+    → fix KB topic `design.export-publication.md` с explicit «300
+    DPI gap» секцией + 🚫 anti-pattern bullets → rebuild image →
+    S5 re-run PASS. Все 6 scenarios зелёные.
+  - **Spun-off в BACKLOG:** T188 (DC sweep), T189 (T113 FEM
+    persistence), T190 (raw SPICE waveform), T191 (`--rerun`
+    integration), T192 (multi-sheet facade + SC-6 acceptance).
+
 - **T187 — Off-grid cleanup в шаблонах + snap-on-write facade +
   `/grid-check` diagnostic CLI (PR #119).** Plan B двухслойный фикс
   (ADR-T187a). После T029 probe нашёл 81 off-grid endpoint
