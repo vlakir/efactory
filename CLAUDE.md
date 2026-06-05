@@ -243,12 +243,21 @@ production-агенту в `efactory:linux`. Если KB отстаёт от
 исходники efactory. Поэтому при добавлении нового **user-facing
 функционала** в efactory — обязательная **трёхуровневая дисциплина**:
 
-**Уровень 1 — KB sync (обязательно, секунды).**
+**Уровень 1 — system prompt + KB sync (обязательно, секунды).**
 
-- **Новая slash-команда** → обновить mapping table в KB topic
-  `agent.command-routing` (одна строка `| user phrase | /slash |`).
-  Если команда имеет неочевидную семантику (pitfall'ы, специфический
-  workflow) — дополнительно завести свой topic.
+- **Новая slash-команда** →
+  - (a) Добавить bullet в **`docker/runtime-agent-CLAUDE.md`** —
+    секция «Custom slash-команды efactory». Это system prompt
+    baked'ится в `efactory:linux` образ и видна агенту с первой
+    строки разговора; без этого agent в running-контейнере не знает
+    о новом slash → разыщет через KB-routing если повезёт, иначе
+    изобретёт велосипед (T187 Уровень 3 smoke 2026-06-05 поймал это
+    для `/grid-check`).
+  - (b) Обновить mapping table в KB topic `agent.command-routing`
+    (одна строка `| user phrase | /slash |`) — для free-text
+    discovery агентом через TOC / `/kb-search`.
+  - (c) Если команда имеет неочевидную семантику (pitfall'ы,
+    специфический workflow) — дополнительно завести свой KB topic.
 - **Новая use case / adapter с non-obvious gotcha** (pitfall,
   workaround, дисциплина использования) → завести KB topic в
   подходящем namespace (`spice.*`, `magnetics.*`, `fem.*`,

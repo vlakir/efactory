@@ -25,18 +25,43 @@
   SPICE / KiCad libs пользователя).
 - **`Glob` / `Grep`** — поиск по проекту и codebase.
 
-## Custom slash-команды efactory (T014 + T023 + T024 + T134 + T022 + T021)
+## Custom slash-команды efactory
 
-Видны в `/`-menu и через `/help`. Тонкие wrapper'ы над `efactory` CLI:
+Видны в `/`-menu и через `/help`. Тонкие wrapper'ы над `efactory` CLI.
+Source — `docker/runtime-agent-commands/*.md`. Source-of-truth для
+полного списка — содержимое каталога; этот listing должен с ним
+совпадать (см. правило sync в проектном `CLAUDE.md`, раздел T134).
+
+**Project lifecycle**
 
 - **`/project-create <NAME>`** — создать новый проект из шаблона
-  `se-amp` (single-ended 6П14П amp + OPT 5kΩ:8Ω); материализуется в
-  `/workspace/<NAME>/`.
+  (`se-amp`, `tube-line-preamp`, `6p13s-se-resistive`, и др.);
+  материализуется в `/workspace/<NAME>/`.
 - **`/project-use <NAME>`** — показать project-context для другого
   проекта (display-only, cwd сессии **не меняется**, см. note ниже).
+
+**Design integrity (T029 + T187)**
+
+- **`/design-check [<SCHEMATIC|PROJECT_DIR>] [--severity error|warning|all]`** —
+  (T029) ERC проверка `.kicad_sch` через `kicad-cli sch erc` без
+  SPICE-симуляции. Hard-gate: errors → exit 1 + markdown отчёт
+  `<project>/out/erc/<ts>/report.md`; warnings → exit 0 + отчёт.
+  Auto-detect `.kicad_sch` в cwd при опущенном аргументе. Полезно
+  ПОСЛЕ ручной правки в KiCad GUI до коммита. Полный body — KB topic
+  `design.erc-quality-gate`.
+- **`/grid-check [<SCHEMATIC|PROJECT_DIR>]`** — (T187) off-grid
+  endpoint diagnostic (KiCad connection grid 1.27 mm). Read-only, НЕ
+  gate, НЕ блокирует `/sim-run`. Exit 0/1/2 = clean / has-off-grid /
+  infra-fail. Markdown в `<project>/out/grid-check/<ts>/report.md`,
+  endpoints sorted by |Δ| desc. Built-in templates ship'ятся on-grid
+  (T187 snap-on-write); юзкейс — hand-edited / legacy schematics. KB:
+  `design.grid-check`.
+
+**Simulation & measurement**
+
 - **`/sim-run [SCHEMATIC] [--analysis op|tran|ac]`** — запустить
   SPICE-симуляцию (auto-detect единственного `.kicad_sch` в cwd
-  при отсутствии аргумента).
+  при отсутствии аргумента). Включает T029 ERC gate.
 - **`/measure-gain [NETLIST] --freq <Hz> [--mode small|large]`** —
   измерить gain (default small AC, опционально large TRAN RMS).
 - **`/measure-bandwidth [NETLIST] [--f-low Hz] [--f-high Hz]`** —
@@ -44,6 +69,14 @@
   или ref-freq).
 - **`/measure-thd [NETLIST] --freq <Hz> --v-in-peak <V>`** —
   single-point THD (TRAN + ngspice fourier).
+- **`/measure-phase-margin [NETLIST] [--loop-break-node <node>
+  --loop-break-element <ref>] [--injection-method ...] [--no-confirm]`** —
+  (T153) фазовый запас замкнутой петли через AC injection на
+  loop-cut'е (Middlebrook V/I / Tian double / Rosenstark). По
+  умолчанию — auto-detect feedback break edge.
+
+**Plot & sweep**
+
 - **`/plot-ac [NETLIST] [--signal v(...)] [--f-start Hz --f-stop Hz]`** —
   ASCII-график АЧХ (магнитуда vs log-частота) через plotext.
 - **`/plot-tran [NETLIST] --t-step <step> --t-stop <stop>
@@ -62,6 +95,21 @@
   (failure → edits не применяются); per-metric continue-on-failure
   после edit. Когда выбирать вместо `/sweep`: one-shot правка (1-5
   edits), не диапазон значений.
+
+**Schematic & SPICE library mutations**
+
+- **`/schematic-apply <project> [--force] [--accept-overwrite]`** —
+  (T026) применить pending `*.kicad_sch.staged` → active `.kicad_sch`.
+  `--force` обходит lock; `--accept-overwrite` — parent-hash mismatch
+  (real data loss). Полный workflow — KB `schematic.staged-modifications`.
+- **`/tube-add-from-datasheet <PART> [<path-to-datasheet>]`** — (T031)
+  vision-extract IV-точек анодных характеристик лампы из datasheet
+  PDF/PNG, fit Koren/Ayumi → `.lib` в user overlay
+  (`/efactory/data/models/tubes/custom/<PART>.lib`). Default formula
+  variant — `auto` (pentode → modified-knee, triode → canonical).
+
+**Knowledge base**
+
 - **`/kb-search <query>`** — поиск по Knowledge Base (token-AND).
   Используй ПЕРЕД тем, как изобретать решение: «как сделать X»,
   «pitfall с Y», «формула для Z».
