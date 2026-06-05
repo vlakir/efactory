@@ -61,20 +61,24 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T035** — [taken 2026-06-05, branch T035-publication-workflow]
-  Публикационный workflow как slash-команды:
-  `/export-schematic-publication <project>` + `/export-sim-report
-  <project> [--rerun]`. SVG + PDF + PNG@300DPI × color/bw для
-  схемы; Markdown sim-report с публикационными плотами
-  (matplotlib dpi=300, `--lang ru|en` default `ru`), magnetics в
-  M-thin режиме. Артефакты в `<project>/out/publications/<ts>/
-  {schematic/,sim-report/,README.md}`. DC sweep вырезан (вынесен
-  в T188). Spec: `specs/T035-publication-workflow/spec.md`
-  (Status: Analyzed). Acceptance: SC-1..SC-10 в спеке;
-  baseline — `se-amp`, multi-sheet smoke через синтетический
-  проект.
-
 ## Done
+
+- **T035** — [closed 2026-06-06, PR #123] **Publication workflow как
+  slash-команды.** `/export-schematic-publication` (full) — SVG/PDF/PNG @
+  300 DPI × color/bw × per-sheet/optional combined PDF, через
+  kicad-cli + rsvg-convert. `/export-sim-report` (Phase 4.2 MVP) —
+  metadata-секция + magnetics graceful skip; полный отчёт с TRAN/AC
+  plots отложен до закрытия T190 (raw waveform persistence) + T191
+  (`--rerun` integration). Hexagonal-clean (3/3 importlinter, +101
+  файл, +6 фаз × 10 коммитов), 2439 passed, coverage 87.45%. 6 spec
+  acceptance criteria закрыты (SC-1/4/5/7/8/9/10), 3 deferred в
+  BACKLOG (SC-2/3 → T190+T191, SC-6 → T192). Уровень 3 smoke в
+  `efactory:linux` поймал KB regression на S5 (custom matplotlib
+  velosiped) → fix `design.export-publication.md` с explicit «300 DPI
+  gap» секцией + 🚫 anti-pattern bullets → re-run S5 PASS, все 6
+  scenarios зелёные. Spun-off в BACKLOG: T188 (DC sweep), T189 (T113
+  FEM persistence), T190 (raw waveform), T191 (--rerun), T192
+  (multi-sheet facade). ADR-T035a в `DECISIONS.md`.
 
 - **T107 Phase 1** — [closed 2026-06-05, PR #122] **Datasheet-accurate
   symbol shapes для советских ламп.** GU50 — pentode + top-cap anode
