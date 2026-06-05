@@ -50,6 +50,9 @@ from adapters.outbound.platform_native.platform_layer import (
 from adapters.outbound.publication_readme_markdown.writer import (
     MarkdownPublicationReadmeWriter,
 )
+from adapters.outbound.raw_waveforms_filesystem.adapter import (
+    FileSystemRawWaveforms,
+)
 from adapters.outbound.schematic_kicad.lock_detector import KicadLockDetector
 from adapters.outbound.schematic_kicad.scanner import KicadPendingStagedScanner
 from adapters.outbound.session_jsonl.session_logger import (
@@ -142,6 +145,7 @@ def build_cli_app() -> typer.Typer:
             host_mutated_dir=settings.kb_host_mutated_dir,
         ),
         sim_results_repo=FileSystemSimResults(),
+        raw_waveform_repo=FileSystemRawWaveforms(),
         lock_detector=KicadLockDetector(),
         staged_scanner=KicadPendingStagedScanner(),
         tube_iv_repository=FilesystemTubeIVRepository(),

@@ -241,6 +241,7 @@ if TYPE_CHECKING:
     from ports.outbound.publication_readme_writer import (
         PublicationReadmeWriter,
     )
+    from ports.outbound.raw_waveforms import RawWaveformRepository
     from ports.outbound.schematic_exporter import SchematicExporter
     from ports.outbound.schematic_publication_renderer import (
         SchematicPublicationRenderer,
@@ -502,6 +503,7 @@ def build_app(
     injection_patcher: InjectionNetlistPatcher,
     kb_store: KbStore,
     sim_results_repo: SimResultsRepository,
+    raw_waveform_repo: RawWaveformRepository,
     lock_detector: LockDetector,
     staged_scanner: PendingStagedScanner,
     tube_iv_repository: TubeIVRepository,
@@ -2045,6 +2047,19 @@ def build_app(
     sim_run_app = typer.Typer(no_args_is_help=True, add_completion=False)
     bridge_app.add_typer(sim_run_app, name='sim-run')
 
+    def _find_project_root_for_netlist(netlist_path: Path) -> Path | None:
+        """
+        T190: walk up from netlist looking for `.efactory/` (project marker).
+
+        Используется `bridge sim-run` для опциональной persistence без
+        обязательного `--project` флага. Возвращает None если не найден —
+        тогда writer'ы не вызываются.
+        """
+        for parent in netlist_path.resolve().parents:
+            if (parent / '.efactory').is_dir():
+                return parent
+        return None
+
     async def _execute_sim_run(
         netlist: Path,
         analysis: AnalysisSpec,
@@ -2052,6 +2067,7 @@ def build_app(
         event: str,
         *,
         enable_op_fallback: bool = False,
+        project_root: Path | None = None,
     ) -> SimulationResult:
         async def _run() -> SimulationResult:
             return await sim_run_use_case(
@@ -2060,6 +2076,13 @@ def build_app(
                 simulator=simulator,
                 timeout_seconds=timeout_seconds,
                 enable_op_fallback=enable_op_fallback,
+                sim_results_writer=(
+                    sim_results_repo if project_root is not None else None
+                ),
+                raw_waveform_writer=(
+                    raw_waveform_repo if project_root is not None else None
+                ),
+                project_root=project_root,
             )
 
         return await _log_command(
@@ -2083,6 +2106,7 @@ def build_app(
         enable_op_fallback: bool = False,
     ) -> None:
         netlist_path = _resolve_netlist_path(netlist)
+        project_root = _find_project_root_for_netlist(netlist_path)
         # T029 F16: `sim-run` operates on a pre-built netlist — no schematic
         # means ERC is physically impossible. We surface this so agents can
         # see the gate was skipped intentionally, not silently bypassed.
@@ -2095,6 +2119,7 @@ def build_app(
                     timeout_seconds,
                     event,
                     enable_op_fallback=enable_op_fallback,
+                    project_root=project_root,
                 ),
             )
         except (
@@ -2253,6 +2278,8 @@ def build_app(
                 simulator=simulator,
                 erc_runner=erc_runner,
                 erc_report_writer=erc_report_writer,
+                sim_results_writer=sim_results_repo,
+                raw_waveform_writer=raw_waveform_repo,
             )
 
         return await _log_command(

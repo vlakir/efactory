@@ -6,13 +6,20 @@ import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from domain.raw_waveform import RawWaveform, WaveformAnalysisType
 from domain.sim_results import AnalysisType, SimResult
-from domain.simulation import OpAnalysis, SimulationResult, TranAnalysis
+from domain.simulation import (
+    AcAnalysis,
+    OpAnalysis,
+    SimulationResult,
+    TranAnalysis,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from domain.simulation import AnalysisSpec, TimeSeries
+    from ports.outbound.raw_waveforms import RawWaveformRepository
     from ports.outbound.sim_results import SimResultsRepository
     from ports.outbound.simulator import Simulator
 
@@ -37,6 +44,7 @@ async def sim_run(
     simulator: Simulator,
     timeout_seconds: float = 60.0,
     sim_results_writer: SimResultsRepository | None = None,
+    raw_waveform_writer: RawWaveformRepository | None = None,
     project_root: Path | None = None,
     tool: str = 'ngspice',
     enable_op_fallback: bool = False,
@@ -62,11 +70,25 @@ async def sim_run(
     saturable circuits, где DC-solver `.OP` сходится к trivial idle
     solution.
     Допускается только для `OpAnalysis`; иначе — `ValueError`.
+
+    T190: при `raw_waveform_writer is not None` + `project_root is not None`
+    — после успешной симуляции `RawWaveform` sidecar записывается через
+    writer для TRAN/AC (DC — через расширение T188). OP результат не
+    persist'ится (нет временной/частотной оси).
     """
-    if (sim_results_writer is None) != (project_root is None):
+    if sim_results_writer is not None and project_root is None:
         msg = (
-            'sim_results_writer и project_root должны быть переданы парой '
-            '(оба или ни одного).'
+            'sim_results_writer задан без project_root '
+            '(нет каталога куда persist'
+            "'ить snapshot)."
+        )
+        raise ValueError(msg)
+    if project_root is not None and (
+        sim_results_writer is None and raw_waveform_writer is None
+    ):
+        msg = (
+            'project_root задан без sim_results_writer / raw_waveform_writer '
+            '(оба writer-а отсутствуют → нечего persist`ить).'
         )
         raise ValueError(msg)
 
@@ -118,6 +140,20 @@ async def sim_run(
         )
         await sim_results_writer.write(result=snapshot, project_root=project_root)
 
+    if raw_waveform_writer is not None and project_root is not None:
+        waveform = _build_waveform(
+            sim_result=result,
+            analysis=analysis,
+            netlist=netlist,
+            project_root=project_root,
+            started_at=started_at,
+        )
+        if waveform is not None:
+            await raw_waveform_writer.write(
+                waveform=waveform,
+                project_root=project_root,
+            )
+
     return result
 
 
@@ -145,6 +181,50 @@ def _build_snapshot(
         duration_seconds=max(0.0, duration_seconds),
         summary=_render_summary(analysis=analysis, sim_result=sim_result),
     )
+
+
+def _build_waveform(
+    *,
+    sim_result: SimulationResult,
+    analysis: AnalysisSpec,
+    netlist: Path,
+    project_root: Path,
+    started_at: datetime,
+) -> RawWaveform | None:
+    """
+    Convert SimulationResult → RawWaveform для TRAN / AC (T190).
+
+    Возвращает None для OP / FOUR (нет временной/частотной оси —
+    persistence не имеет смысла).
+    """
+    try:
+        source_netlist = str(netlist.resolve().relative_to(project_root.resolve()))
+    except ValueError:
+        source_netlist = netlist.name
+    timestamp = started_at.strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    if isinstance(analysis, TranAnalysis) and sim_result.time_series is not None:
+        ts = sim_result.time_series
+        return RawWaveform(
+            timestamp=timestamp,
+            analysis_type=WaveformAnalysisType.TRAN,
+            source_netlist=source_netlist,
+            x_axis_name='time',
+            x_axis=ts.time,
+            traces=dict(ts.traces),
+        )
+    if isinstance(analysis, AcAnalysis) and sim_result.ac_sweep is not None:
+        ac = sim_result.ac_sweep
+        return RawWaveform(
+            timestamp=timestamp,
+            analysis_type=WaveformAnalysisType.AC,
+            source_netlist=source_netlist,
+            x_axis_name='frequency',
+            x_axis=ac.frequency,
+            traces=dict(ac.traces_real),
+            traces_imag=dict(ac.traces_imag),
+        )
+    return None
 
 
 def _extract_op_from_tran_tail(
