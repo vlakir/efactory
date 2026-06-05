@@ -49,6 +49,14 @@ from adapters.outbound.session_jsonl.session_logger import (
     FilesystemJsonlSessionLogger,
 )
 from adapters.outbound.sim_results_filesystem.adapter import FileSystemSimResults
+from adapters.outbound.spice_import_classify.classifier import (
+    RegexSpiceModelClassifier,
+)
+from adapters.outbound.spice_import_http.downloader import (
+    UrllibSpiceModelDownloader,
+)
+from adapters.outbound.spice_import_kb.writer import MarkdownSpiceKbWriter
+from adapters.outbound.spice_import_smoke.runner import NgspiceSmokeRunner
 from adapters.outbound.spice_models.spice_library import (
     FilesystemSpiceModelLibrary,
 )
@@ -87,6 +95,7 @@ def build_cli_app() -> typer.Typer:
     session_id = _make_session_id()
     platform = NativePlatformLayer()
     app_manager = SubprocessAppManager(platform)
+    simulator = NgspiceSimulator(app_manager)
 
     return build_app(
         projects_root=settings.projects_root,
@@ -108,7 +117,7 @@ def build_cli_app() -> typer.Typer:
         erc_runner=KicadCliErcRunner(),
         erc_report_writer=MarkdownErcReportWriter(),
         grid_report_writer=MarkdownGridReportWriter(),
-        simulator=NgspiceSimulator(app_manager),
+        simulator=simulator,
         netlist_editor=NgspiceNetlistEditor(),
         injection_patcher=NgspiceInjectionNetlistPatcher(),
         kb_store=FileSystemKbStore(
@@ -121,6 +130,12 @@ def build_cli_app() -> typer.Typer:
         tube_iv_repository=FilesystemTubeIVRepository(),
         tube_lib_writer=FilesystemTubeLibWriter(),
         user_templates_root=settings.user_templates_root,
+        user_library_root=settings.user_library_root,
+        kb_host_mutated_dir=settings.kb_host_mutated_dir,
+        spice_downloader=UrllibSpiceModelDownloader(),
+        spice_classifier=RegexSpiceModelClassifier(),
+        spice_smoke=NgspiceSmokeRunner(simulator=simulator),
+        spice_kb_writer=MarkdownSpiceKbWriter(),
     )
 
 

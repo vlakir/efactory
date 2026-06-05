@@ -34,6 +34,7 @@ _EXPECTED_COMMANDS = {
     'tube-add-from-datasheet',  # T031 Phase 3
     'design-check',  # T029 Phase 5
     'grid-check',  # T187 Phase 3
+    'spice-import-url',  # T030 Phase 4
 }
 _REQUIRED_FRONTMATTER = {'description', 'argument-hint', 'allowed-tools'}
 
