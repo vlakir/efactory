@@ -1070,32 +1070,9 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- T188 (DC sweep как тип симуляции) — moved to BOARD.md → Done
      2026-06-06, PR #126. -->
 
-- **T189** — [2026-06-05, spun off from T035 Phase 2.0 probe W-2]
-  Persistence FEM-результатов T113 + magnetics summary JSON для
-  M-thin режима `/export-sim-report`. Сейчас GetDP adapter
-  возвращает `FemSolveOutcome` только in-memory; временные
-  `energy_per_depth.txt` / `flux_linkage.txt` в `/tmp` чистятся
-  после parsing. T035 Phase 2.3 реализует graceful skip («m-thin
-  artefacts not found») — но без persistent summary M-thin секция
-  публикационного отчёта вечно пустая. Включает: (1)
-  `MagneticResultsRepository` port в `src/ports/outbound/
-  magnetic_results.py`; (2) `FileSystemMagneticResults` adapter
-  с atomic-write pattern (`.tmp` + `replace`, like
-  `FileSystemSimResults`) пишущий в `<project>/out/fem/<ts>/
-  summary.json` со схемой v1: `schema_version`, `timestamp`
-  (UTC), `component_name`, `analytical_inductance_h`,
-  `fem_inductance_h`, `relative_difference`, `fem_method`,
-  `peak_flux_density_t` (nullable), `core{shape_name,
-  material_name, gap_length_m, gap_type}`, `operating_point
-  {frequency_hz, primary_peak_voltage_v, primary_dc_bias_a}`;
-  (3) hook persistence в `application/mag_verify_field.py`
-  (через optional repository injection); (4) reader в T035
-  `MarkdownSimReportWriter` (отдельная задача — T035 уже merge'д).
-  Acceptance: после `/mag-verify <project>` файл
-  `<project>/out/fem/<ts>/summary.json` существует, валиден по
-  схеме v1; `/export-sim-report <project>` подтягивает магнитный
-  summary в секцию «Магнитные компоненты» с таблицей `L_self`,
-  `B_peak`, `analytical vs FEM relative_difference`.
+<!-- T189 (FEM persistence + magnetics summary) — moved to BOARD.md →
+     Done 2026-06-06, PR #127. -->
+
 <!-- T190 (raw waveform persistence) — moved to BOARD.md → Done
      2026-06-06, PR #124. -->
 

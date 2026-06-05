@@ -63,6 +63,25 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T189** — [closed 2026-06-06, PR #127] **Persistence FEM + magnetics
+  summary JSON для `/export-sim-report`.** Закрывает M-thin gap
+  (T035 SC-9): магнитная секция отчёта подтягивается автоматически
+  из persistent sidecar. Domain VO `MagneticsSummary` (schema v1:
+  timestamp / component_name / analytical+fem inductance H /
+  relative_difference / fem_method / peak_flux_density_t + nested core
+  и operating_point под-секции). Port `MagneticResultsRepository`
+  + adapter `FileSystemMagneticResults` (atomic `.tmp → replace`,
+  layout `<project>/out/fem/<TS-safe>/summary.json`); port exposes
+  `write` (async) + `find_latest` (sync) — hexagonal-clean reader
+  через application use case. Hook в `mag_verify_field` (optional
+  pair `magnetics_results_writer + project_root`, parametric
+  validation). `compose_sim_results_bundle` инжектит optional
+  `MagneticResultsRepository` → подтягивает `magnetics_summary_path`
+  в bundle → MarkdownSimReportWriter (T035 reader) автоматически
+  рисует таблицу `L_self` / `B_peak` / `analytical vs FEM`. CLI
+  wire-up через build_app + composition. 15 новых tests (6 domain,
+  6 adapter, 3 hook). Coverage 87.31%, pre-push 5/5 ✓ (importlinter 3/3).
+
 - **T188** — [closed 2026-06-06, PR #126] **DC sweep как тип симуляции
   (`.DC <src> <start> <stop> <step>`).** Расширяет efactory новым
   analysis type — DC transfer characteristic. Domain VO `DcSweepAnalysis`

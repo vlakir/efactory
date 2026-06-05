@@ -36,6 +36,9 @@ from adapters.outbound.kicad_cli.schematic_renderer import (
     KicadCliSchematicRenderer,
 )
 from adapters.outbound.knowledge_base_filesystem.store import FileSystemKbStore
+from adapters.outbound.magnetic_results_filesystem.adapter import (
+    FileSystemMagneticResults,
+)
 from adapters.outbound.manifest_yaml.project_manifest_repository import (
     FilesystemProjectManifestRepository,
 )
@@ -146,6 +149,7 @@ def build_cli_app() -> typer.Typer:
         ),
         sim_results_repo=FileSystemSimResults(),
         raw_waveform_repo=FileSystemRawWaveforms(),
+        magnetics_results_repo=FileSystemMagneticResults(),
         lock_detector=KicadLockDetector(),
         staged_scanner=KicadPendingStagedScanner(),
         tube_iv_repository=FilesystemTubeIVRepository(),
