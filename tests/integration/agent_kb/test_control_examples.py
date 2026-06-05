@@ -383,6 +383,11 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         '/export-sim-report',
     ),
+    (
+        'anti-pattern matplotlib 300 dpi publication',
+        'design.export-publication',
+        'Anti-pattern',
+    ),
 ]
 
 

@@ -83,15 +83,56 @@ follow-up задачами в `BACKLOG.md`:
 
 ### Текущий workflow до T190+T191
 
-Для production-grade статей с plots:
+Для production-grade статей с plots **используй существующие
+slash / CLI** efactory, не пиши свой Python.
 
-1. `/sim-run <project>` — прогон симуляции (или `/bridge plot
-   {ac,tran} --output <abs.png>` для PNG @ 120 DPI preview).
-2. Открой PNG в `eog`, сделай скриншот / используй preview.
-3. Руками вставь в статью.
+**TRAN waveform → PNG (preview-grade, 120 DPI):**
 
-После T190+T191 этот manual workflow заменится одной командой
-`/export-sim-report <project> --rerun`.
+```
+/plot-tran <netlist> --signal v(load) --t-step 1u --t-stop 5m --output /tmp/tran.png
+```
+
+или эквивалентно `efactory bridge plot tran <netlist> --output
+<abs.png>` (T025 routes одинаково). Преврыватель stdout печатает
+`plot-render: <abs path>` — затем `eog <path> &` чтобы открыть в
+host viewer через X11.
+
+**AC sweep → PNG:**
+
+```
+/plot-ac <netlist> --signal v(load) --f-start 10 --f-stop 1Meg --output /tmp/ac.png
+```
+
+**300 DPI gap (важно!):** существующий `/plot-{ac,tran} --output`
+выдаёт **120 DPI** (T024 preview-grade). Для **печатных
+публикаций @ 300 DPI** на момент T035 Phase 4 **нет готового
+workflow** — это и есть scope T190+T191. Пока workaround:
+
+- Использовать 120 DPI PNG как «черновой» для structure статьи.
+- Для финальной print-version: открыть схему / симуляцию в
+  **KiCad Simulator GUI** (`eeschema` → Simulator → plot →
+  Export → PNG/SVG) и сделать manual export с нужным DPI.
+- Либо подождать T190 (raw waveform persistence) + T191
+  (`--rerun` integration) → `/export-sim-report <project>
+  --rerun` сделает всё одной командой с 300 DPI.
+
+**🚫 Anti-pattern (НЕ делай так):**
+
+- НЕ пиши custom matplotlib скрипт типа `from spicelib.raw import
+  RawRead; ...; fig.savefig(dpi=300)`. Это **изобретение
+  велосипеда** — нарушает `agent.command-routing`
+  anti-patterns. `bridge plot {ac,tran} --output` уже это
+  делает. Custom script — extra dependency (`uv add matplotlib`),
+  extra path для maintenance, не интегрирован с T025 / T035
+  будущим pipeline.
+- НЕ запускай `ngspice -b -r out.raw netlist.cir` руками — у
+  тебя есть `/sim-run` + `/plot-{ac,tran}` оркестрация поверх.
+- НЕ предлагай юзеру скачать matplotlib / spicelib — efactory
+  уже всё содержит, юзер не должен думать о dependency.
+
+**После T190+T191** этот manual workflow заменится одной
+командой `/export-sim-report <project> --rerun` с автоматическим
+300 DPI publication-grade PNG.
 
 ### Что MVP всё-таки делает
 
