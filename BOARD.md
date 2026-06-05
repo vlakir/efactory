@@ -61,20 +61,23 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T107 Phase 1** — datasheet-accurate symbol drawing для советских
-  ламп (`Tubes_Soviet:GU50/6P45S/6N6P`). GU50 — pentode + top-cap anode.
-  6П45С — beam tetrode + beam-forming plates + top-cap anode. 6Н6П —
-  multi-unit dual triode по советскому ГОСТу (две половинки, аналог
-  ECC81 unit_1+unit_2). Pin numbers переходят на real datasheet pinouts
-  (Q3A). Source — copy валидных EL84/ECC81 sexp + редактирование (per
-  T008 mem0 lesson: lib_symbols из памяти не пишем).
-  Acceptance: 3 existing functional теста gain ≥ 5× продолжают
-  проходить + новые structural asserts на sexp content (`pin "TC"` для
-  top-cap, multi-unit signature для 6Н6П) + GUI ack от Vladimir-а
-  перед squash. Spec: `specs/T107-soviet-tube-shapes/spec.md`. Ветка:
-  `T107-phase1-soviet-tube-shapes`. Поднята 2026-06-05.
-
 ## Done
+
+- **T107 Phase 1** — [closed 2026-06-05, PR #122] **Datasheet-accurate
+  symbol shapes для советских ламп.** GU50 — pentode + top-cap anode
+  (pin TC, extended at lib (0, 13.97) + filled circle marker); pin
+  numbers per Russian Magnoval datasheet (2/3/5/TC), footprint
+  Valve_Magnoval_P. 6П45С — beam tetrode + top-cap anode + 2
+  beam-forming plates (thick vertical polylines at X=±4.572, stroke
+  0.508); G3 suppressor dashed line удалена (у beam tetrode её нет);
+  pin numbers 7/3/6/TC. 6Н6П — multi-unit dual triode по советскому
+  ГОСТу (две половинки, source — копия Valve.ECC81 sexp pattern);
+  Unit 1: A=6 G=7 K=8; Unit 2: A=1 G=2 K=3; добавлен
+  `_TUBES_SOVIET_6N6P_B` registry entry (аналог Valve:ECC81B).
+  Acceptance: 3 functional gain ≥ 5× теста + 9 новых structural sexp
+  asserts (`test_soviet_tubes_phase1_shapes.py`) + GUI ack Vladimir
+  перед squash-merge. Pre-push 5/5 ✓ (2262 passed, +9 от Phase 1,
+  coverage 87.20%). Spec: `specs/T107-soviet-tube-shapes/spec.md`.
 
 - **T030** — [closed 2026-06-05, PR #121] **Импорт SPICE-моделей по
   URL.** Slash `/spice-import-url <url>` + CLI `efactory spice
