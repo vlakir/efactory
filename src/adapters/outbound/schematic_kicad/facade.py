@@ -356,9 +356,12 @@ _TUBES_SOVIET_6P45S = _SymbolDef(
     label_offsets=_TUBES_SOVIET_GU50.label_offsets,
 )
 
-# 6Н6П — single-triode shape (copy ECC81 unit 1, strip unit 2). T006
-# SPICE модель .SUBCKT 6N6P P G K (single half) — match ECC81 unit 1
-# pins (A=6, G=7, K=8).
+# 6Н6П (T107 Phase 1) — Soviet dual triode, noval 9-pin base. Datasheet
+# pinout: Unit B (KiCad unit 1, copy ECC81 pattern) A=6, G=7, K=8; Unit A
+# (KiCad unit 2) A=1, G=2, K=3. Pin 4/5 = heater, pin 9 = heater center
+# tap (не показываем в symbol units, consistent с ECC81 conventions).
+# Source — lib_symbols/Tubes_Soviet.6N6P.sexp как multi-unit (две unit
+# definitions 6N6P_1_1 + 6N6P_2_1), копия ECC81 multi-unit pattern.
 _TUBES_SOVIET_6N6P = _SymbolDef(
     lib_id='Tubes_Soviet:6N6P',
     pins=(
@@ -368,6 +371,23 @@ _TUBES_SOVIET_6N6P = _SymbolDef(
     ),
     spice_pin_names=('P', 'G', 'K'),
     unit=1,
+    label_offsets=_TRIODE_LABEL_OFFSETS,
+)
+
+# 6Н6П "B-half" (T107 Phase 1) — second triode unit. Registry key
+# 'Tubes_Soviet:6N6PB', но ComponentSpec lib_id = 'Tubes_Soviet:6N6P'
+# (тот же KiCad library entry, multi-unit). Используется параллельно с
+# Tubes_Soviet:6N6P для full dual-triode amplifier с обоими halves
+# в одной схеме (аналог Valve:ECC81B).
+_TUBES_SOVIET_6N6P_B = _SymbolDef(
+    lib_id='Tubes_Soviet:6N6P',
+    pins=(
+        _PinLayout('1', (0.0, -10.16)),
+        _PinLayout('2', (-7.62, 0.0)),
+        _PinLayout('3', (-2.54, 10.16)),
+    ),
+    spice_pin_names=('P', 'G', 'K'),
+    unit=2,
     label_offsets=_TRIODE_LABEL_OFFSETS,
 )
 
@@ -386,6 +406,7 @@ _SYMBOL_REGISTRY: dict[str, _SymbolDef] = {
     'Tubes_Soviet:GU50': _TUBES_SOVIET_GU50,
     'Tubes_Soviet:6P45S': _TUBES_SOVIET_6P45S,
     'Tubes_Soviet:6N6P': _TUBES_SOVIET_6N6P,
+    'Tubes_Soviet:6N6PB': _TUBES_SOVIET_6N6P_B,
     'Device:Transformer_1P_1S': _TRANSFORMER_1P_1S,
     'Device:Transformer_2P_1S': _TRANSFORMER_2P_1S,
 }
