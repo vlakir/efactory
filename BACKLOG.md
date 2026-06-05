@@ -1063,15 +1063,24 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      Component-name completion (имена из текущей схемы) — задача
      prompts/KB, не нашего TUI. -->
 
-- **T035** — [2026-05-15, reformulated 2026-06-03] Публикационный
-  workflow как slash-команды: `/export-schematic-publication
-  <project>` (схема → SVG/PDF для статьи, использует T025 render)
-  и `/export-sim-report <project>` (результаты симуляции →
-  Markdown-отчёт с графиками, использует существующие
-  `cli/*_renderer.py` + `/plot-*` адаптеры).
-  Acceptance: для тестового проекта обе команды генерируют
-  публикационно-готовые артефакты в `out/publications/<ts>/`;
-  README с описанием включения в статью.
+<!-- T035 (Публикационный workflow) — moved to BOARD.md → Doing
+     2026-06-05; spec в specs/T035-publication-workflow/spec.md
+     (Status: Analyzed). -->
+
+- **T188** — [2026-06-05, spun off from T035 Analyze C-1] DC sweep
+  (`.dc <src> <start> <stop> <step>`) как тип симуляции в efactory.
+  Сейчас в `domain/simulation.py` есть только Op / Tran / Ac /
+  Fourier; DC sweep отсутствует в domain VO + ngspice adapter +
+  renderer. Включает: (1) `DcSweepAnalysis` + `DcSweep` result VO
+  в `domain/simulation.py`; (2) ngspice parser для `.dc`-output;
+  (3) `render_dc_sweep` (ASCII + PNG @ 120 DPI) и
+  `render_dc_sweep_publication_png` (300 DPI) в `cli/plot_renderer.py`
+  и `cli/publication_plots.py`; (4) интеграция с `design_to_sim`
+  use case + `/sim-run` CLI; (5) после реализации — расширение
+  `/export-sim-report` (T035) на DC sweep секцию.
+  Acceptance: на тестовом проекте `bjt-ce-nfb` или
+  `op-amp-inverting` `.dc V1 0 5 0.1` пишет точки в результат,
+  renderers выводят transfer-curve.
 - **T036** — [2026-05-15, re-evaluate 2026-05-19 после Phase 0.9]
   Стратегия обновлений: флаги `--update`, `--update-models`,
   `--doctor` в bootstrap + CLI.

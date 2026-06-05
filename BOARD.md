@@ -61,6 +61,19 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T035** — [taken 2026-06-05, branch T035-publication-workflow]
+  Публикационный workflow как slash-команды:
+  `/export-schematic-publication <project>` + `/export-sim-report
+  <project> [--rerun]`. SVG + PDF + PNG@300DPI × color/bw для
+  схемы; Markdown sim-report с публикационными плотами
+  (matplotlib dpi=300, `--lang ru|en` default `ru`), magnetics в
+  M-thin режиме. Артефакты в `<project>/out/publications/<ts>/
+  {schematic/,sim-report/,README.md}`. DC sweep вырезан (вынесен
+  в T188). Spec: `specs/T035-publication-workflow/spec.md`
+  (Status: Analyzed). Acceptance: SC-1..SC-10 в спеке;
+  baseline — `se-amp`, multi-sheet smoke через синтетический
+  проект.
+
 ## Done
 
 - **T107 Phase 1** — [closed 2026-06-05, PR #122] **Datasheet-accurate
