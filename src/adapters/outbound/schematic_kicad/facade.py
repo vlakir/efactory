@@ -329,31 +329,53 @@ _TRANSFORMER_2P_1S = _SymbolDef(
     label_offsets=_LabelOffsets(ref=(0.0, -8.89), value=(0.0, 8.89)),
 )
 
-# Custom Soviet tube snippets (T107) — нет в стандартной Valve.kicad_sym,
-# generated as copy-rename из EL84/ECC81 базовых форм. Visually одинаковы
-# (pentode/triode shape), отличаются только lib_id name и default Value.
-# Pin numbers сохранены от source snippet (KiCad-side pin numbers ≠
-# datasheet pinouts реальных советских ламп, но это OK — SPICE pinout
-# через Sim.Pins property mapping всё равно работает).
+# Custom Soviet tube snippets (T107). Phase 0 (PR #46, 2026-05-19) —
+# copy-rename базовых EL84/ECC81 форм, pin numbers сохранены от source.
+# Phase 1 (T107 Phase 1, 2026-06-05) — datasheet-accurate shapes:
+# top-cap anode для GU50/6П45С, multi-unit для 6Н6П, real datasheet
+# pin numbers. Source — copy валидных EL84/ECC81 sexp + редактирование
+# (per T008 mem0 lesson: lib_symbols из памяти не пишем).
+
+# GU50 (T107 Phase 1) — Russian Magnoval 9-pin pentode, anode = top cap.
+# Datasheet pinout (frank.pocnet.net): 1=heater, 2=G1, 3=K+G3 (suppressor
+# internally tied to cathode), 4=heater, 5=G2, 6-9=NC/shield, TC=anode.
+# В symbol unit 1 показываем только electrically active pins (G1/K/G2/TC);
+# heater и NC не выводим (consistent с EL84 unit 1).
+# Lib coords Y-up → schematic Y-down (знак Y инвертирован).
+# Pin TC at lib (0, 13.97) → schematic (0, -13.97) — выше envelope на 5.08
+# (выдвинут на 2.54 mm дальше обычной anode position для top-cap visual cue).
 _TUBES_SOVIET_GU50 = _SymbolDef(
     lib_id='Tubes_Soviet:GU50',
     pins=(
         _PinLayout('2', (-7.62, 1.27)),  # G1 (control grid)
-        _PinLayout('3', (-2.54, 8.89)),  # K_G3 (cathode)
-        _PinLayout('7', (0.0, -11.43)),  # A (anode/plate)
-        _PinLayout('9', (7.62, -1.27)),  # G2 (screen)
+        _PinLayout('3', (-2.54, 8.89)),  # K + G3 internal (cathode/suppressor)
+        _PinLayout('TC', (0.0, -13.97)),  # A (anode), top-cap
+        _PinLayout('5', (7.62, -1.27)),  # G2 (screen grid)
     ),
     spice_pin_names=('G', 'K', 'P', 'G2'),
     unit=1,
     label_offsets=_LabelOffsets(ref=(7.62, -10.16), value=(7.62, 7.62)),
 )
 
+# 6П45С / 6P45S (T107 Phase 1) — Soviet sweep beam tetrode, octal base
+# + top-cap anode. Datasheet pinout (best-effort из публичных reference,
+# 6П45С / EL519 семейство): 2=heater, 3=cathode (K), 4=G3 (suppressor;
+# часто tied to cathode externally), 5=heater, 6=G2 (screen), 7=G1
+# (control grid), TC=anode. Beam-forming plates — внутренние, не
+# выводятся на pin'ы (показываются визуально внутри envelope).
+# Phase 1 разделяет _TUBES_SOVIET_6P45S от _TUBES_SOVIET_GU50 (Phase 0
+# были общие): другой pin layout + visual beam-plates в sexp.
 _TUBES_SOVIET_6P45S = _SymbolDef(
     lib_id='Tubes_Soviet:6P45S',
-    pins=_TUBES_SOVIET_GU50.pins,  # Same pentode shape
-    spice_pin_names=_TUBES_SOVIET_GU50.spice_pin_names,
+    pins=(
+        _PinLayout('7', (-7.62, 1.27)),  # G1 (control grid)
+        _PinLayout('3', (-2.54, 8.89)),  # K (cathode)
+        _PinLayout('TC', (0.0, -13.97)),  # A (anode), top-cap
+        _PinLayout('6', (7.62, -1.27)),  # G2 (screen grid)
+    ),
+    spice_pin_names=('G', 'K', 'P', 'G2'),
     unit=1,
-    label_offsets=_TUBES_SOVIET_GU50.label_offsets,
+    label_offsets=_LabelOffsets(ref=(7.62, -10.16), value=(7.62, 7.62)),
 )
 
 # 6Н6П (T107 Phase 1) — Soviet dual triode, noval 9-pin base. Datasheet
