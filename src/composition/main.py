@@ -6,6 +6,7 @@ import logging
 import os
 import secrets
 from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING
 
 from adapters.inbound.cli.app import build_app
@@ -28,6 +29,9 @@ from adapters.outbound.grid_report_markdown.writer import (
 from adapters.outbound.kicad_cli.schematic_exporter import (
     KicadCliSchematicExporter,
 )
+from adapters.outbound.kicad_cli.schematic_publication_renderer import (
+    KicadCliSchematicPublicationRenderer,
+)
 from adapters.outbound.kicad_cli.schematic_renderer import (
     KicadCliSchematicRenderer,
 )
@@ -43,10 +47,16 @@ from adapters.outbound.ngspice.simulator import NgspiceSimulator
 from adapters.outbound.platform_native.platform_layer import (
     NativePlatformLayer,
 )
+from adapters.outbound.publication_readme_markdown.writer import (
+    MarkdownPublicationReadmeWriter,
+)
 from adapters.outbound.schematic_kicad.lock_detector import KicadLockDetector
 from adapters.outbound.schematic_kicad.scanner import KicadPendingStagedScanner
 from adapters.outbound.session_jsonl.session_logger import (
     FilesystemJsonlSessionLogger,
+)
+from adapters.outbound.sim_report_markdown.writer import (
+    MarkdownSimReportWriter,
 )
 from adapters.outbound.sim_results_filesystem.adapter import FileSystemSimResults
 from adapters.outbound.spice_import_classify.classifier import (
@@ -84,6 +94,13 @@ def _make_session_id() -> str:
         return env_id
     timestamp = datetime.now(UTC).strftime('%Y%m%d-%H%M%S')
     return f'{timestamp}-{secrets.token_hex(3)}'
+
+
+def _resolve_efactory_version() -> str:
+    try:
+        return version('efactory')
+    except PackageNotFoundError:
+        return 'unknown'
 
 
 def build_cli_app() -> typer.Typer:
@@ -136,6 +153,10 @@ def build_cli_app() -> typer.Typer:
         spice_classifier=RegexSpiceModelClassifier(),
         spice_smoke=NgspiceSmokeRunner(simulator=simulator),
         spice_kb_writer=MarkdownSpiceKbWriter(),
+        publication_renderer=KicadCliSchematicPublicationRenderer(app_manager),
+        publication_readme_writer=MarkdownPublicationReadmeWriter(),
+        sim_report_writer=MarkdownSimReportWriter(),
+        efactory_version=_resolve_efactory_version(),
     )
 
 

@@ -35,6 +35,8 @@ _EXPECTED_COMMANDS = {
     'design-check',  # T029 Phase 5
     'grid-check',  # T187 Phase 3
     'spice-import-url',  # T030 Phase 4
+    'export-schematic-publication',  # T035 Phase 4.1
+    'export-sim-report',  # T035 Phase 4.2 (MVP — metadata only до T190+T191)
 }
 _REQUIRED_FRONTMATTER = {'description', 'argument-hint', 'allowed-tools'}
 

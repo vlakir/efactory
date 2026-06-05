@@ -1127,6 +1127,20 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   Acceptance: после `/sim-run <project>` raw waveforms лежат
   на диске; `/export-sim-report <project>` (без --rerun) видит
   их, формирует полный TRAN+AC отчёт за <30s.
+- **T191** — [2026-06-05, T035 Phase 4.2 MVP follow-up]
+  `--rerun` integration для `/export-sim-report`. Сейчас CLI команда
+  билдит минимальный `SimulationResultsBundle` (только metadata),
+  TRAN/AC секции отсутствуют. Включает: (1) `--rerun` флаг в CLI;
+  (2) когда `--rerun` — определение какие analyses гонять (project
+  config? CLI flags `--tran-step / --tran-stop / --ac-*`? auto-detect
+  по schematic?); (3) вызов `design_to_sim` use case за каждый
+  analysis type; (4) сборка `SimulationResultsBundle` с
+  `tran`/`ac_sweep`/`measurements` из реальных результатов;
+  (5) передача bundle в `run_export_sim_report`. Без `--rerun`
+  (default) — требует T190 (raw waveform persistence) для load из
+  `.efactory/sim-results/`. Acceptance SC-2 (`/export-sim-report
+  se-amp --rerun` за <120s формирует report.md с TRAN+AC
+  секциями + ≥2 PNG @ 300 DPI).
 - **T036** — [2026-05-15, re-evaluate 2026-05-19 после Phase 0.9]
   Стратегия обновлений: флаги `--update`, `--update-models`,
   `--doctor` в bootstrap + CLI.

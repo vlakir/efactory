@@ -367,6 +367,22 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         '/spice-import-url',
     ),
+    # T035 Phase 4: publication workflow topic + routing.
+    (
+        'publication grade schematic SVG PDF PNG 300 DPI color bw print',
+        'design.export-publication',
+        '/export-schematic-publication',
+    ),
+    (
+        'экспорт схемы для статьи publication LaTeX figure',
+        'agent.command-routing',
+        '/export-schematic-publication',
+    ),
+    (
+        'sim report Markdown publication для статьи',
+        'agent.command-routing',
+        '/export-sim-report',
+    ),
 ]
 
 

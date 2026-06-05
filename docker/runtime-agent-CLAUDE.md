@@ -71,6 +71,30 @@ Source — `docker/runtime-agent-commands/*.md`. Source-of-truth для
   PSpice .zip за SSO): `efactory spice import-file <path> --vendor=ti`
   — тот же pipeline, bypass download. KB: `spice.import-pipeline`.
 
+**Publication workflow (T035)**
+
+- **`/export-schematic-publication <PROJECT_SLUG> [--schematic PATH]
+  [--multi-sheet-mode per-sheet|combined] [--lang ru|en]`** — (T035
+  Phase 4.1) publication-grade схема: SVG (vector) + PDF (vector) +
+  PNG @ 300 DPI (raster для печати) × color + bw в
+  `<project>/out/publications/<ts>/schematic/`. README.md на `--lang`
+  описывает все файлы с относительными ссылками. `combined`-mode
+  добавляет multi-page PDF `<color|bw>/combined/<project>.pdf`.
+  Auto-detect root `.kicad_sch` (по `<name>.kicad_sch`, иначе
+  единственный `*.kicad_sch`). Exit 0/1/2 = ok / project-not-found
+  или manifest-corrupt / renderer infra-fail (kicad-cli, rsvg-convert,
+  ambiguous schematic). KB: `design.export-publication`.
+- **`/export-sim-report <PROJECT_SLUG> [--lang ru|en]`** — (T035 Phase
+  4.2, MVP) publication-grade sim-report Markdown в `<project>/out/
+  publications/<ts>/sim-report/`. **Текущее ограничение MVP:**
+  формирует только metadata-секцию + magnetics-missing notice;
+  TRAN/AC/parametric плоты ОТСУТСТВУЮТ — заблокировано T190 (raw
+  waveform persistence для load) + T191 (`--rerun` integration). До
+  закрытия — для публикации graphics workflow остаётся manual:
+  `/sim-run`, скриншот preview `bridge plot`, ручная вставка в
+  статью. Exit 0/1/2 same as schematic. KB:
+  `design.export-publication`.
+
 **Simulation & measurement**
 
 - **`/sim-run [SCHEMATIC] [--analysis op|tran|ac]`** — запустить

@@ -118,6 +118,10 @@ from application.reindex_projects import (
     reindex_projects as reindex_projects_use_case,
 )
 from application.run_erc_check import run_erc_check
+from application.run_export_schematic_publication import (
+    run_export_schematic_publication,
+)
+from application.run_export_sim_report import run_export_sim_report
 from application.run_grid_check import run_grid_check
 from application.run_spice_import import run_spice_import
 from application.schematic_snapshot import SchematicSnapshot
@@ -157,6 +161,11 @@ from domain.phase_margin_injection import (
     RosenstarkReturnRatioStrategy,
     TianStrategy,
 )
+from domain.publication import (
+    MultiSheetMode,
+    PublicationLang,
+    SimulationResultsBundle,
+)
 from domain.simulation import (
     AcAnalysis,
     OpAnalysis,
@@ -181,9 +190,16 @@ from ports.outbound.app_manager import (
 )
 from ports.outbound.decision_repository import DecisionNotFoundError
 from ports.outbound.git_repository import GitOperationError
+from ports.outbound.publication_readme_writer import (
+    PublicationReadmeWriteError,
+)
 from ports.outbound.schematic_exporter import SchematicExportError
+from ports.outbound.schematic_publication_renderer import (
+    SchematicPublicationRenderError,
+)
 from ports.outbound.schematic_renderer import SchematicRenderError
 from ports.outbound.session_logger import SessionEventStatus
+from ports.outbound.sim_report_writer import SimReportWriteError
 from ports.outbound.simulator import (
     SimulationFailedError,
     SimulatorUnavailableError,
@@ -222,9 +238,16 @@ if TYPE_CHECKING:
     from ports.outbound.project_manifest_repository import (
         ProjectManifestRepository,
     )
+    from ports.outbound.publication_readme_writer import (
+        PublicationReadmeWriter,
+    )
     from ports.outbound.schematic_exporter import SchematicExporter
+    from ports.outbound.schematic_publication_renderer import (
+        SchematicPublicationRenderer,
+    )
     from ports.outbound.schematic_renderer import SchematicRender, SchematicRenderer
     from ports.outbound.session_logger import SessionLogger
+    from ports.outbound.sim_report_writer import SimReportWriter
     from ports.outbound.sim_results import SimResultsRepository
     from ports.outbound.simulator import Simulator
     from ports.outbound.spice_import import (
@@ -490,6 +513,10 @@ def build_app(
     spice_classifier: SpiceModelClassifier,
     spice_smoke: SpiceSmokeRunner,
     spice_kb_writer: SpiceKbWriter,
+    publication_renderer: SchematicPublicationRenderer,
+    publication_readme_writer: PublicationReadmeWriter,
+    sim_report_writer: SimReportWriter,
+    efactory_version: str,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -4273,6 +4300,195 @@ def build_app(
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
         _emit_tube_fit_summary(result)
+
+    # =====================================================================
+    # === efactory publication <export-schematic|export-sim-report> (T035) ===
+    # =====================================================================
+
+    publication_app = typer.Typer(no_args_is_help=True, add_completion=False)
+    app.add_typer(publication_app, name='publication')
+
+    def _resolve_root_schematic(
+        project_root: Path,
+        project_name: str,
+        explicit: str | None,
+    ) -> Path:
+        """
+        Найти root .kicad_sch для publication-команды.
+
+        Если `--schematic` передан — используем его (relative → from
+        project_root). Иначе пробуем `<project_root>/<project_name>.kicad_sch`,
+        затем fallback на единственный `*.kicad_sch` в project_root.
+        """
+        if explicit is not None:
+            candidate = Path(explicit)
+            if not candidate.is_absolute():
+                candidate = project_root / candidate
+            if not candidate.is_file():
+                typer.echo(f'schematic not found: {candidate}', err=True)
+                raise typer.Exit(2)
+            return candidate
+
+        by_name = project_root / f'{project_name}.kicad_sch'
+        if by_name.is_file():
+            return by_name
+
+        matches = sorted(project_root.glob('*.kicad_sch'))
+        if len(matches) == 1:
+            return matches[0]
+        if not matches:
+            typer.echo(
+                f'No .kicad_sch found in {project_root}. Pass --schematic <path>.',
+                err=True,
+            )
+            raise typer.Exit(2)
+        typer.echo(
+            f'Multiple .kicad_sch found in {project_root}; pick one with --schematic:',
+            err=True,
+        )
+        for m in matches:
+            typer.echo(f'  {m}', err=True)
+        raise typer.Exit(2)
+
+    @publication_app.command('export-schematic')
+    def publication_export_schematic(
+        project: Annotated[str, typer.Argument(help='Slug проекта')],
+        *,
+        schematic: Annotated[
+            str | None,
+            typer.Option(
+                '--schematic',
+                help='Путь к .kicad_sch (default — auto-detect)',
+            ),
+        ] = None,
+        multi_sheet_mode: Annotated[
+            str,
+            typer.Option(
+                '--multi-sheet-mode',
+                help='per-sheet | combined (default per-sheet)',
+            ),
+        ] = 'per-sheet',
+        lang: Annotated[
+            str,
+            typer.Option('--lang', help='ru | en (default ru)'),
+        ] = 'ru',
+    ) -> None:
+        """Publication-grade schematic export (T035 /export-schematic-publication)."""
+        try:
+            mode = MultiSheetMode(multi_sheet_mode)
+        except ValueError as exc:
+            typer.echo(
+                f'--multi-sheet-mode must be per-sheet|combined, got '
+                f'{multi_sheet_mode!r}',
+                err=True,
+            )
+            raise typer.Exit(2) from exc
+        try:
+            pub_lang = PublicationLang(lang)
+        except ValueError as exc:
+            typer.echo(f'--lang must be ru|en, got {lang!r}', err=True)
+            raise typer.Exit(2) from exc
+
+        project_root = projects_root / project
+        schematic_path = _resolve_root_schematic(project_root, project, schematic)
+
+        async def _run() -> tuple[object, Path]:
+            return await run_export_schematic_publication(
+                project_name=project,
+                schematic=schematic_path,
+                multi_sheet_mode=mode,
+                lang=pub_lang,
+                efactory_version=efactory_version,
+                projects_root=projects_root,
+                manifest_repo=manifest_repository,
+                renderer=publication_renderer,
+                readme_writer=publication_readme_writer,
+            )
+
+        try:
+            _bundle, ts_root = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'publication.export_schematic',
+                    project=project,
+                    payload={
+                        'project': project,
+                        'schematic': str(schematic_path),
+                        'multi_sheet_mode': multi_sheet_mode,
+                        'lang': lang,
+                    },
+                    fn=_run,
+                ),
+            )
+        except (ProjectNotFoundError, ProjectManifestMissingError) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
+        except SchematicPublicationRenderError as exc:
+            typer.echo(f'publication renderer failed: {exc}', err=True)
+            raise typer.Exit(2) from exc
+        except PublicationReadmeWriteError as exc:
+            typer.echo(f'publication readme writer failed: {exc}', err=True)
+            raise typer.Exit(2) from exc
+
+        typer.echo(f'publication-export: {ts_root}')
+
+    @publication_app.command('export-sim-report')
+    def publication_export_sim_report(
+        project: Annotated[str, typer.Argument(help='Slug проекта')],
+        *,
+        lang: Annotated[
+            str,
+            typer.Option('--lang', help='ru | en (default ru)'),
+        ] = 'ru',
+    ) -> None:
+        """
+        Publication-grade sim-report (T035 /export-sim-report) — MVP.
+
+        T035 Phase 4.2 minimal: формирует report.md с metadata-секцией +
+        magnetics-missing notice. TRAN/AC plots блокированы T190 в
+        BACKLOG (raw waveform persistence) + T191 (--rerun integration).
+        Полноценный отчёт станет доступен после закрытия T190+T191.
+        """
+        try:
+            pub_lang = PublicationLang(lang)
+        except ValueError as exc:
+            typer.echo(f'--lang must be ru|en, got {lang!r}', err=True)
+            raise typer.Exit(2) from exc
+
+        bundle_data = SimulationResultsBundle(
+            project=project,
+            efactory_version=efactory_version,
+            publication_timestamp=datetime.now(UTC),
+        )
+
+        async def _run() -> tuple[object, Path]:
+            return await run_export_sim_report(
+                sim_results=bundle_data,
+                lang=pub_lang,
+                projects_root=projects_root,
+                manifest_repo=manifest_repository,
+                writer=sim_report_writer,
+                readme_writer=publication_readme_writer,
+            )
+
+        try:
+            _bundle, ts_root = asyncio.run(
+                _log_command(
+                    session_logger,
+                    'publication.export_sim_report',
+                    project=project,
+                    payload={'project': project, 'lang': lang},
+                    fn=_run,
+                ),
+            )
+        except (ProjectNotFoundError, ProjectManifestMissingError) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
+        except (SimReportWriteError, PublicationReadmeWriteError) as exc:
+            typer.echo(f'publication writer failed: {exc}', err=True)
+            raise typer.Exit(2) from exc
+
+        typer.echo(f'publication-export: {ts_root}')
 
     return app
 
