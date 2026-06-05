@@ -20,9 +20,15 @@ Use case — pure orchestrator: no IO кроме ports (renderer, writer, manife
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from application._publication_paths import (
+    PUBLICATIONS_SUBDIR,
+    SCHEMATIC_SUBDIR,
+    default_now,
+    resolve_schematic_path,
+    resolve_ts_root,
+)
 from application.get_project import get_project
 from domain.publication import (
     PublicationBundle,
@@ -31,6 +37,7 @@ from domain.publication import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from datetime import datetime
     from pathlib import Path
 
     from domain.publication import (
@@ -48,43 +55,6 @@ if TYPE_CHECKING:
     )
 
 
-_PUBLICATIONS_SUBDIR = 'out/publications'
-_SCHEMATIC_SUBDIR = 'schematic'
-
-
-def _default_now() -> datetime:
-    return datetime.now(UTC)
-
-
-def _resolve_schematic_path(project_path: Path, schematic: Path) -> Path:
-    if schematic.is_absolute():
-        return schematic
-    return project_path / schematic
-
-
-def _resolve_ts_root(publications_root: Path, ts_dirname: str) -> Path:
-    """
-    Resolve collision-safe `<publications_root>/<ts_dirname>[-N]/` (W-4).
-
-    Если каталог не существует — возвращаем как есть. Если существует
-    и пуст — переиспользуем. Если существует и содержит файлы — пробуем
-    суффикс `-1`, `-2`, ..., до первого свободного имени.
-    """
-    candidate = publications_root / ts_dirname
-    if not candidate.exists():
-        return candidate
-    if candidate.is_dir() and not any(candidate.iterdir()):
-        return candidate
-    suffix = 1
-    while True:
-        with_suffix = publications_root / f'{ts_dirname}-{suffix}'
-        if not with_suffix.exists():
-            return with_suffix
-        if with_suffix.is_dir() and not any(with_suffix.iterdir()):
-            return with_suffix
-        suffix += 1
-
-
 async def run_export_schematic_publication(
     *,
     project_name: str,
@@ -96,7 +66,7 @@ async def run_export_schematic_publication(
     manifest_repo: ProjectManifestRepository,
     renderer: SchematicPublicationRenderer,
     readme_writer: PublicationReadmeWriter,
-    now: Callable[[], datetime] = _default_now,
+    now: Callable[[], datetime] = default_now,
 ) -> tuple[PublicationBundle, Path]:
     """
     Compose publication-grade schematic artefacts + README в `<ts>` каталоге.
@@ -109,16 +79,16 @@ async def run_export_schematic_publication(
         projects_root=projects_root,
         manifest_repo=manifest_repo,
     )
-    schematic_resolved = _resolve_schematic_path(project.path, schematic)
+    schematic_resolved = resolve_schematic_path(project.path, schematic)
 
     timestamp = now()
     ts_dirname = publication_timestamp_dirname(timestamp)
-    publications_root = project.path / _PUBLICATIONS_SUBDIR
+    publications_root = project.path / PUBLICATIONS_SUBDIR
     publications_root.mkdir(parents=True, exist_ok=True)
-    ts_root = _resolve_ts_root(publications_root, ts_dirname)
+    ts_root = resolve_ts_root(publications_root, ts_dirname)
     ts_root.mkdir(parents=True, exist_ok=True)
 
-    schematic_out_dir = ts_root / _SCHEMATIC_SUBDIR
+    schematic_out_dir = ts_root / SCHEMATIC_SUBDIR
     schematic_out_dir.mkdir(parents=True, exist_ok=True)
 
     artifacts = await renderer.render(
