@@ -8,9 +8,12 @@ import pytest
 from pydantic import ValidationError
 
 from domain.spice_model import (
+    BjtKind,
     ComponentCategory,
+    JfetKind,
     LoadKind,
     ModelSource,
+    MosfetKind,
     OpampKind,
     SpiceModel,
     TransformerKind,
@@ -125,8 +128,17 @@ def test_tube_type_accessor_raises_for_opamp() -> None:
 
 @pytest.mark.parametrize(
     'good_id',
-    ['EL34', '6N2P', '6P14P', '12AX7', 'GENERIC_TRIODE', 'EL34_KOREN',
-     'OPT_SE_5K_8', 'SPEAKER_8OHM', 'SPEAKER_8OHM_RES'],
+    [
+        'EL34',
+        '6N2P',
+        '6P14P',
+        '12AX7',
+        'GENERIC_TRIODE',
+        'EL34_KOREN',
+        'OPT_SE_5K_8',
+        'SPEAKER_8OHM',
+        'SPEAKER_8OHM_RES',
+    ],
 )
 def test_spice_model_id_accepts_valid(good_id: str) -> None:
     m = _tube(id=good_id)
@@ -170,6 +182,9 @@ def test_component_category_enum_values() -> None:
         ComponentCategory.LOAD,
         ComponentCategory.DIODE,
         ComponentCategory.OPAMP,
+        ComponentCategory.BJT,
+        ComponentCategory.JFET,
+        ComponentCategory.MOSFET,
     }
 
 
@@ -178,7 +193,128 @@ def test_transformer_kind_enum() -> None:
 
 
 def test_opamp_kind_enum_values() -> None:
-    assert OpampKind.SINGLE_POLE.value == 'single_pole'
+    assert set(OpampKind) == {OpampKind.SINGLE_POLE, OpampKind.FULL_VENDOR}
+
+
+# === BJT / JFET / MOSFET (T030) ===
+
+
+def _bjt(**overrides: object) -> SpiceModel:
+    defaults: dict[str, object] = {
+        'id': 'Q2N3904',
+        'name': 'Q2N3904',
+        'category': ComponentCategory.BJT,
+        'subcategory': BjtKind.NPN.value,
+        'source': ModelSource.GENERIC,
+        'file_path': Path('/data/spice-models/bjt/onsemi/Q2N3904.lib'),
+        'subckt_pins': (),
+    }
+    defaults.update(overrides)
+    return SpiceModel.model_validate(defaults)
+
+
+def _jfet(**overrides: object) -> SpiceModel:
+    defaults: dict[str, object] = {
+        'id': 'J2N5457',
+        'name': 'J2N5457',
+        'category': ComponentCategory.JFET,
+        'subcategory': JfetKind.NJF.value,
+        'source': ModelSource.GENERIC,
+        'file_path': Path('/data/spice-models/jfet/onsemi/J2N5457.lib'),
+        'subckt_pins': (),
+    }
+    defaults.update(overrides)
+    return SpiceModel.model_validate(defaults)
+
+
+def _mosfet(**overrides: object) -> SpiceModel:
+    defaults: dict[str, object] = {
+        'id': 'IRF540',
+        'name': 'IRF540',
+        'category': ComponentCategory.MOSFET,
+        'subcategory': MosfetKind.NMOS.value,
+        'source': ModelSource.GENERIC,
+        'file_path': Path('/data/spice-models/mosfet/vishay/IRF540.lib'),
+        'subckt_pins': (),
+    }
+    defaults.update(overrides)
+    return SpiceModel.model_validate(defaults)
+
+
+def test_bjt_npn_with_full_metadata() -> None:
+    m = _bjt()
+    assert m.category is ComponentCategory.BJT
+    assert m.bjt_kind is BjtKind.NPN
+
+
+def test_bjt_pnp_subcategory() -> None:
+    m = _bjt(id='Q2N3906', name='Q2N3906', subcategory=BjtKind.PNP.value)
+    assert m.bjt_kind is BjtKind.PNP
+
+
+def test_jfet_njf_with_full_metadata() -> None:
+    m = _jfet()
+    assert m.jfet_kind is JfetKind.NJF
+
+
+def test_jfet_pjf_subcategory() -> None:
+    m = _jfet(id='J2N5460', name='J2N5460', subcategory=JfetKind.PJF.value)
+    assert m.jfet_kind is JfetKind.PJF
+
+
+def test_mosfet_nmos_with_full_metadata() -> None:
+    m = _mosfet()
+    assert m.mosfet_kind is MosfetKind.NMOS
+
+
+def test_mosfet_pmos_subcategory() -> None:
+    m = _mosfet(id='IRF9540', name='IRF9540', subcategory=MosfetKind.PMOS.value)
+    assert m.mosfet_kind is MosfetKind.PMOS
+
+
+def test_bjt_kind_accessor_raises_for_tube() -> None:
+    m = _tube()
+    with pytest.raises(ValueError, match='bjt_kind accessor invalid'):
+        _ = m.bjt_kind
+
+
+def test_jfet_kind_accessor_raises_for_mosfet() -> None:
+    m = _mosfet()
+    with pytest.raises(ValueError, match='jfet_kind accessor invalid'):
+        _ = m.jfet_kind
+
+
+def test_mosfet_kind_accessor_raises_for_jfet() -> None:
+    m = _jfet()
+    with pytest.raises(ValueError, match='mosfet_kind accessor invalid'):
+        _ = m.mosfet_kind
+
+
+def test_tube_type_accessor_raises_for_bjt() -> None:
+    m = _bjt()
+    with pytest.raises(ValueError, match='tube_type accessor invalid'):
+        _ = m.tube_type
+
+
+def test_bjt_kind_enum_values() -> None:
+    assert set(BjtKind) == {BjtKind.NPN, BjtKind.PNP}
+
+
+def test_jfet_kind_enum_values() -> None:
+    assert set(JfetKind) == {JfetKind.NJF, JfetKind.PJF}
+
+
+def test_mosfet_kind_enum_values() -> None:
+    assert set(MosfetKind) == {MosfetKind.NMOS, MosfetKind.PMOS}
+
+
+def test_opamp_kind_full_vendor_subcategory() -> None:
+    m = _opamp(
+        id='OPA1612',
+        name='OPA1612',
+        subcategory=OpampKind.FULL_VENDOR.value,
+    )
+    assert m.opamp_kind is OpampKind.FULL_VENDOR
 
 
 def test_load_kind_enum_values() -> None:
