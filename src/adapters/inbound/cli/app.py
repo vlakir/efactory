@@ -168,6 +168,7 @@ from domain.publication import (
 )
 from domain.simulation import (
     AcAnalysis,
+    DcSweepAnalysis,
     OpAnalysis,
     TranAnalysis,
 )
@@ -2240,6 +2241,47 @@ def build_app(
             analysis,
             timeout,
             'bridge.sim_run.ac',
+        )
+
+    @sim_run_app.command('dc')
+    def sim_run_dc(  # T188: DC sweep
+        netlist: Annotated[str, typer.Argument(help='Путь к SPICE netlist')],
+        *,
+        source: Annotated[
+            str,
+            typer.Option('--source', help='Имя V/I источника для свипа (V1, I1)'),
+        ],
+        start: Annotated[
+            str,
+            typer.Option('--start', help='Начало развёртки (0, 0.1V)'),
+        ],
+        stop: Annotated[
+            str,
+            typer.Option('--stop', help='Конец развёртки (5, 12V)'),
+        ],
+        step: Annotated[
+            str,
+            typer.Option('--step', help='Шаг развёртки (0.01, 100m)'),
+        ],
+        timeout: Annotated[
+            float,
+            typer.Option('--timeout', help='Таймаут в секундах (default 60.0)'),
+        ] = 60.0,
+    ) -> None:
+        try:
+            analysis = DcSweepAnalysis(
+                source=source,
+                start=parse_spice_number(start),
+                stop=parse_spice_number(stop),
+                step=parse_spice_number(step),
+            )
+        except (SpiceNumberFormatError, ValidationError) as exc:
+            raise _exit_on_bridge_error(exc) from exc
+        _run_sim_and_report(
+            netlist,
+            analysis,
+            timeout,
+            'bridge.sim_run.dc',
         )
 
     # === bridge design-to-sim <op|tran|ac> (композиция export + sim) ===
@@ -4534,6 +4576,32 @@ def build_app(
                 help='Comma-separated trace-имена для AC-плотов (default — все).',
             ),
         ] = None,
+        dc_source: Annotated[
+            str | None,
+            typer.Option(
+                '--dc-source',
+                help='T188: V/I источник для DC sweep (V1, I1).',
+            ),
+        ] = None,
+        dc_start: Annotated[
+            str | None,
+            typer.Option('--dc-start', help='DC sweep: начало (0, 0.1).'),
+        ] = None,
+        dc_stop: Annotated[
+            str | None,
+            typer.Option('--dc-stop', help='DC sweep: конец (5, 12V).'),
+        ] = None,
+        dc_step: Annotated[
+            str | None,
+            typer.Option('--dc-step', help='DC sweep: шаг (0.01, 100m).'),
+        ] = None,
+        dc_signals: Annotated[
+            str | None,
+            typer.Option(
+                '--dc-signals',
+                help='Comma-separated trace-имена для DC-плотов (default — все).',
+            ),
+        ] = None,
         sim_timeout: Annotated[
             float,
             typer.Option('--sim-timeout', help='Таймаут одного analysis (s).'),
@@ -4566,6 +4634,23 @@ def build_app(
             except (SpiceNumberFormatError, ValidationError) as exc:
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(1) from exc
+        dc_spec: DcSweepAnalysis | None = None
+        if (
+            dc_source is not None
+            and dc_start is not None
+            and dc_stop is not None
+            and dc_step is not None
+        ):
+            try:
+                dc_spec = DcSweepAnalysis(
+                    source=dc_source,
+                    start=parse_spice_number(dc_start),
+                    stop=parse_spice_number(dc_stop),
+                    step=parse_spice_number(dc_step),
+                )
+            except (SpiceNumberFormatError, ValidationError) as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(1) from exc
 
         async def _run() -> tuple[object, Path]:
             bundle_data = await compose_sim_results_bundle(
@@ -4575,8 +4660,10 @@ def build_app(
                 schematic=Path(schematic) if schematic is not None else None,
                 tran_analysis=tran_spec,
                 ac_analysis=ac_spec,
+                dc_analysis=dc_spec,
                 tran_signals=_split_signals(tran_signals),
                 ac_signals=_split_signals(ac_signals),
+                dc_signals=_split_signals(dc_signals),
                 sim_timeout_seconds=sim_timeout,
                 projects_root=projects_root,
                 manifest_repo=manifest_repository,

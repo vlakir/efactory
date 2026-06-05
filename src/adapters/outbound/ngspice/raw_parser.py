@@ -30,11 +30,12 @@ from __future__ import annotations
 import itertools
 from dataclasses import dataclass
 
-from domain.simulation import AcSweep, SimulationResult, TimeSeries
+from domain.simulation import AcSweep, DcSweep, SimulationResult, TimeSeries
 
 _PLOTNAME_OP = 'Operating Point'
 _PLOTNAME_TRAN = 'Transient Analysis'
 _PLOTNAME_AC = 'AC Analysis'
+_PLOTNAME_DC = 'DC transfer characteristic'
 
 _FLAG_REAL = 'real'
 _FLAG_COMPLEX = 'complex'
@@ -95,7 +96,7 @@ def parse_ngspice_raw(content: str) -> SimulationResult:
 
 
 _SUPPORTED_PLOTNAMES = frozenset(
-    {_PLOTNAME_OP, _PLOTNAME_TRAN, _PLOTNAME_AC},
+    {_PLOTNAME_OP, _PLOTNAME_TRAN, _PLOTNAME_AC, _PLOTNAME_DC},
 )
 
 
@@ -273,6 +274,23 @@ def _build_result(
                 frequency=frequency,
                 traces_real=traces_real,
                 traces_imag=traces_imag,
+            ),
+        )
+    if plotname == _PLOTNAME_DC:
+        _require_flag(plotname, flags, _FLAG_REAL)
+        axis_idx = 0
+        sweep_var_name = variables[axis_idx].name
+        sweep_values = tuple(_as_float(row[axis_idx]) for row in values)
+        traces = {
+            var.name: tuple(_as_float(row[i]) for row in values)
+            for i, var in enumerate(variables)
+            if i != axis_idx
+        }
+        return SimulationResult(
+            dc_sweep=DcSweep(
+                sweep_variable=sweep_var_name,
+                sweep_values=sweep_values,
+                traces=traces,
             ),
         )
     msg = f'ngspice raw: unsupported Plotname {plotname!r}.'

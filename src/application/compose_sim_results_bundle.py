@@ -28,13 +28,14 @@ from domain.publication import SimulationResultsBundle
 from domain.raw_waveform import (
     WaveformAnalysisType,
     waveform_to_ac_sweep,
+    waveform_to_dc_sweep,
     waveform_to_time_series,
 )
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from domain.simulation import AcAnalysis, TranAnalysis
+    from domain.simulation import AcAnalysis, DcSweepAnalysis, TranAnalysis
     from ports.outbound.project_manifest_repository import (
         ProjectManifestRepository,
     )
@@ -52,8 +53,10 @@ async def compose_sim_results_bundle(
     schematic: Path | None,
     tran_analysis: TranAnalysis | None,
     ac_analysis: AcAnalysis | None,
+    dc_analysis: DcSweepAnalysis | None = None,
     tran_signals: tuple[str, ...],
     ac_signals: tuple[str, ...],
+    dc_signals: tuple[str, ...] = (),
     sim_timeout_seconds: float,
     projects_root: Path,
     manifest_repo: ProjectManifestRepository,
@@ -63,13 +66,14 @@ async def compose_sim_results_bundle(
     sim_results_writer: SimResultsRepository | None = None,
 ) -> SimulationResultsBundle:
     """
-    T191: build `SimulationResultsBundle` for `/export-sim-report`.
+    T191 + T188: build `SimulationResultsBundle` for `/export-sim-report`.
 
     Raises `ValueError` if `rerun=True` без `schematic`.
     """
     publication_ts = datetime.now(UTC)
     tran_ts = None
     ac_data = None
+    dc_data = None
 
     if rerun:
         if schematic is None:
@@ -105,6 +109,21 @@ async def compose_sim_results_bundle(
             )
             if sim.result is not None and sim.result.ac_sweep is not None:
                 ac_data = sim.result.ac_sweep
+        if dc_analysis is not None:
+            sim = await design_to_sim(
+                project_name=project_name,
+                schematic=schematic,
+                analysis=dc_analysis,
+                timeout_seconds=sim_timeout_seconds,
+                projects_root=projects_root,
+                manifest_repo=manifest_repo,
+                exporter=exporter,
+                simulator=simulator,
+                sim_results_writer=sim_results_writer,
+                raw_waveform_writer=raw_waveform_repo,
+            )
+            if sim.result is not None and sim.result.dc_sweep is not None:
+                dc_data = sim.result.dc_sweep
     else:
         project_obj = await get_project(
             name=project_name,
@@ -119,10 +138,16 @@ async def compose_sim_results_bundle(
             project_root=project_obj.path,
             analysis_type=WaveformAnalysisType.AC,
         )
+        dc_wf = await raw_waveform_repo.load_latest(
+            project_root=project_obj.path,
+            analysis_type=WaveformAnalysisType.DC,
+        )
         if tran_wf is not None:
             tran_ts = waveform_to_time_series(tran_wf)
         if ac_wf is not None:
             ac_data = waveform_to_ac_sweep(ac_wf)
+        if dc_wf is not None:
+            dc_data = waveform_to_dc_sweep(dc_wf)
 
     if tran_ts is not None:
         tran_signals_resolved = tran_signals or tuple(tran_ts.traces.keys())
@@ -132,6 +157,10 @@ async def compose_sim_results_bundle(
         ac_signals_resolved = ac_signals or tuple(ac_data.traces_real.keys())
     else:
         ac_signals_resolved = ()
+    if dc_data is not None:
+        dc_signals_resolved = dc_signals or tuple(dc_data.traces.keys())
+    else:
+        dc_signals_resolved = ()
 
     return SimulationResultsBundle(
         project=project_name,
@@ -142,6 +171,8 @@ async def compose_sim_results_bundle(
         tran_signals=tran_signals_resolved,
         ac_sweep=ac_data,
         ac_signals=ac_signals_resolved,
+        dc_sweep=dc_data,
+        dc_signals=dc_signals_resolved,
     )
 
 

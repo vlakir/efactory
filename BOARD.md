@@ -63,6 +63,28 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T188** — [closed 2026-06-06, PR #126] **DC sweep как тип симуляции
+  (`.DC <src> <start> <stop> <step>`).** Расширяет efactory новым
+  analysis type — DC transfer characteristic. Domain VO `DcSweepAnalysis`
+  + `DcSweep` result + ветвь `SimulationResult.dc_sweep` + `AnalysisSpec`
+  discriminated union. ngspice wrapper эмитит `.DC` директиву; raw_parser
+  распознаёт Plotname `DC transfer characteristic` (real-mode, axis 0
+  — sweep variable). sim_run hook persist'ит DC waveform через T190
+  sidecar. CLI: `bridge sim-run dc --source V1 --start 0 --stop 5
+  --step 0.1` + 5 новых флагов в `/export-sim-report` (`--dc-source/
+  start/stop/step/signals`). Publication plot `render_dc_sweep_
+  publication_png` + `build_dc_sweep_figure` @ 300 DPI с ru/en labels
+  (`vs_dc_sweep`, `dc_sweep_var`). MarkdownSimReportWriter рендерит
+  DC секцию (`## DC-развёртка (transfer characteristic)` /
+  `## DC sweep (transfer characteristic)`) — файлы `plots/dc-
+  <signal>.png`. compose_sim_results_bundle supports optional
+  `dc_analysis` + `dc_signals` (--rerun + persistent load). Domain
+  helper `waveform_to_dc_sweep`; `waveform_to_time_series` теперь
+  strict-TRAN. Slash + KB topic + L2 regression case обновлены.
+  15 новых tests (7 domain, 1 ngspice parser, 2 wrapper, 2 markdown
+  DC, 3 raw_waveform DC converter, 1 KB L2). 2496 passed, coverage
+  87.29%, pre-push 5/5 ✓.
+
 - **T191** — [closed 2026-06-06, PR #125] **`--rerun` integration в
   `/export-sim-report` (real TRAN/AC plots).** Расширяет MVP-команду
   (T035 Phase 4.2) тремя ветками: `--rerun` гоняет свежие SPICE-

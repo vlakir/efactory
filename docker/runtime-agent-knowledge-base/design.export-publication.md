@@ -94,6 +94,8 @@ Sheet names и формат-агностичная информация (DPI, ф
   `1u`/`5m`).
 - AC: `--ac-points <N>` + `--ac-fstart <f0>` + `--ac-fstop <f1>`
   (+ optional `--ac-sweep dec|lin|oct`, default dec).
+- DC (T188): `--dc-source <V/I>` + `--dc-start <V0>` +
+  `--dc-stop <V1>` + `--dc-step <dV>` для transfer characteristic.
 
 Каждая симуляция автоматически persist'ится через T190 hook —
 следующий вызов без `--rerun` получит plot'ы без повторного запуска

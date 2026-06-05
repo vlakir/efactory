@@ -394,6 +394,12 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'design.export-publication',
         '--rerun',
     ),
+    # T188: DC sweep / transfer characteristic.
+    (
+        'DC sweep transfer characteristic publication report',
+        'design.export-publication',
+        '--dc-source',
+    ),
 ]
 
 

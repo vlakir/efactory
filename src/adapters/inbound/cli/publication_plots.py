@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
     from application.bridge_sweep import SweepRun
-    from domain.simulation import AcSweep, TimeSeries
+    from domain.simulation import AcSweep, DcSweep, TimeSeries
 
 
 _PUBLICATION_DPI = 300
@@ -54,16 +54,20 @@ AXIS_LABELS: dict[PublicationLang, dict[str, str]] = {
         'magnitude_db': 'магнитуда, дБ',
         'frequency_log_hz': 'частота, Гц (лог.)',
         'vs_time': 'от времени',
+        'vs_dc_sweep': 'от развёртки',
         'tf_title_prefix': '|H(f)|',
         'grouped_by': 'группировка по',
+        'dc_sweep_var': 'переменная развёртки',
     },
     PublicationLang.EN: {
         'time_s': 'time, s',
         'magnitude_db': 'magnitude, dB',
         'frequency_log_hz': 'frequency, Hz (log)',
         'vs_time': 'vs time',
+        'vs_dc_sweep': 'vs DC sweep',
         'tf_title_prefix': '|H(f)|',
         'grouped_by': 'grouped by',
+        'dc_sweep_var': 'sweep variable',
     },
 }
 
@@ -94,6 +98,19 @@ def render_ac_sweep_publication_png(
 ) -> Path:
     """Render АЧХ (|H(f)| в dB) → PNG @ 300 DPI, log-x."""
     fig = build_ac_sweep_figure(sweep, signal=signal, lang=lang, title=title)
+    return _save_publication_png(fig, output)
+
+
+def render_dc_sweep_publication_png(
+    sweep: DcSweep,
+    *,
+    signal: str,
+    output: Path,
+    lang: PublicationLang,
+    title: str | None = None,
+) -> Path:
+    """Render DC transfer curve (T188) → PNG @ 300 DPI."""
+    fig = build_dc_sweep_figure(sweep, signal=signal, lang=lang, title=title)
     return _save_publication_png(fig, output)
 
 
@@ -139,6 +156,29 @@ def build_time_series_figure(
     ax.set_xlabel(labels['time_s'])
     ax.set_ylabel(signal)
     effective_title = title if title is not None else f'{signal} {labels["vs_time"]}'
+    ax.set_title(effective_title)
+    ax.grid(visible=True, linestyle=':', alpha=0.4)
+    return fig
+
+
+def build_dc_sweep_figure(
+    sweep: DcSweep,
+    *,
+    signal: str,
+    lang: PublicationLang,
+    title: str | None,
+) -> Figure:
+    """Build matplotlib Figure для DC transfer curve (T188)."""
+    trace = _trace_or_raise(sweep.traces, signal)
+    sweep_values = list(sweep.sweep_values)
+    labels = AXIS_LABELS[lang]
+    fig, ax = _new_publication_figure()
+    ax.plot(sweep_values, list(trace))
+    ax.set_xlabel(sweep.sweep_variable)
+    ax.set_ylabel(signal)
+    effective_title = (
+        title if title is not None else f'{signal} {labels["vs_dc_sweep"]}'
+    )
     ax.set_title(effective_title)
     ax.grid(visible=True, linestyle=':', alpha=0.4)
     return fig
@@ -264,9 +304,11 @@ def _save_publication_png(fig: Figure, output: Path) -> Path:
 __all__ = [
     'AXIS_LABELS',
     'build_ac_sweep_figure',
+    'build_dc_sweep_figure',
     'build_sweep_plot_figure',
     'build_time_series_figure',
     'render_ac_sweep_publication_png',
+    'render_dc_sweep_publication_png',
     'render_sweep_plot_publication_png',
     'render_time_series_publication_png',
 ]

@@ -82,8 +82,36 @@ class FourierAnalysis(BaseModel):
     signal: str = Field(min_length=1)
 
 
+class DcSweepAnalysis(BaseModel):
+    """
+    DC sweep analysis (`.DC <src> <start> <stop> <step>`) — T188.
+
+    Линейная развёртка одного DC источника (V/I), сбор transfer-curve.
+    Полезно для DC transfer characteristics транзисторов / операционных
+    усилителей.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    type: Literal['dc'] = 'dc'
+    source: str = Field(min_length=1)
+    start: float
+    stop: float
+    step: float = Field(gt=0.0)
+
+    @model_validator(mode='after')
+    def _check_range(self) -> Self:
+        if self.stop == self.start:
+            msg = (
+                f'DcSweepAnalysis: stop ({self.stop}) must differ from '
+                f'start ({self.start}).'
+            )
+            raise ValueError(msg)
+        return self
+
+
 AnalysisSpec = Annotated[
-    OpAnalysis | TranAnalysis | AcAnalysis | FourierAnalysis,
+    OpAnalysis | TranAnalysis | AcAnalysis | FourierAnalysis | DcSweepAnalysis,
     Field(discriminator='type'),
 ]
 
@@ -166,8 +194,30 @@ class AcSweep(BaseModel):
         return self
 
 
+class DcSweep(BaseModel):
+    """DC sweep result (T188): sweep variable + named traces (real)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    sweep_variable: str = Field(min_length=1)
+    sweep_values: tuple[float, ...] = Field(min_length=1)
+    traces: dict[str, tuple[float, ...]]
+
+    @model_validator(mode='after')
+    def _check_trace_lengths_match_sweep(self) -> Self:
+        n = len(self.sweep_values)
+        for name, values in self.traces.items():
+            if len(values) != n:
+                msg = (
+                    f'DcSweep: trace {name!r} has {len(values)} samples '
+                    f'but sweep_values has {n}.'
+                )
+                raise ValueError(msg)
+        return self
+
+
 class SimulationResult(BaseModel):
-    """Результат одного анализа — ровно одна из четырёх ветвей заполнена."""
+    """Результат одного анализа — ровно одна из пяти ветвей заполнена."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -175,6 +225,7 @@ class SimulationResult(BaseModel):
     time_series: TimeSeries | None = None
     ac_sweep: AcSweep | None = None
     fourier_result: FourierResult | None = None
+    dc_sweep: DcSweep | None = None
 
     @model_validator(mode='after')
     def _check_exactly_one_branch(self) -> Self:
@@ -185,14 +236,15 @@ class SimulationResult(BaseModel):
                 ('time_series', self.time_series),
                 ('ac_sweep', self.ac_sweep),
                 ('fourier_result', self.fourier_result),
+                ('dc_sweep', self.dc_sweep),
             )
             if value is not None
         ]
         if len(filled) != 1:
             msg = (
                 f'SimulationResult: exactly one of (operating_points, '
-                f'time_series, ac_sweep, fourier_result) must be set; '
-                f'got {filled}.'
+                f'time_series, ac_sweep, fourier_result, dc_sweep) must '
+                f'be set; got {filled}.'
             )
             raise ValueError(msg)
         return self

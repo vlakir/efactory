@@ -19,7 +19,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from domain.simulation import AcSweep, TimeSeries
+from domain.simulation import AcSweep, DcSweep, TimeSeries
 
 RAW_WAVEFORM_SCHEMA_VERSION: Literal[1] = 1
 
@@ -99,17 +99,38 @@ class RawWaveform(BaseModel):
 
 def waveform_to_time_series(waveform: RawWaveform) -> TimeSeries:
     """
-    Convert TRAN/DC `RawWaveform` → `TimeSeries` (T191).
+    Convert TRAN `RawWaveform` → `TimeSeries` (T191).
 
-    Raises `ValueError` if waveform is AC (use `waveform_to_ac_sweep`).
+    Raises `ValueError` если waveform не TRAN (DC использует
+    `waveform_to_dc_sweep`; AC — `waveform_to_ac_sweep`).
     """
-    if waveform.analysis_type == WaveformAnalysisType.AC:
+    if waveform.analysis_type != WaveformAnalysisType.TRAN:
         msg = (
-            f'waveform_to_time_series: cannot convert AC waveform '
-            f'(use waveform_to_ac_sweep); got {waveform.analysis_type.value}.'
+            f'waveform_to_time_series: expected TRAN waveform, '
+            f'got {waveform.analysis_type.value} (use waveform_to_ac_sweep '
+            f'для AC, waveform_to_dc_sweep для DC).'
         )
         raise ValueError(msg)
     return TimeSeries(time=waveform.x_axis, traces=waveform.traces)
+
+
+def waveform_to_dc_sweep(waveform: RawWaveform) -> DcSweep:
+    """
+    Convert DC `RawWaveform` → `DcSweep` (T188).
+
+    Raises `ValueError` если waveform не DC.
+    """
+    if waveform.analysis_type != WaveformAnalysisType.DC:
+        msg = (
+            f'waveform_to_dc_sweep: expected DC waveform, '
+            f'got {waveform.analysis_type.value}.'
+        )
+        raise ValueError(msg)
+    return DcSweep(
+        sweep_variable=waveform.x_axis_name,
+        sweep_values=waveform.x_axis,
+        traces=waveform.traces,
+    )
 
 
 def waveform_to_ac_sweep(waveform: RawWaveform) -> AcSweep:
@@ -140,5 +161,6 @@ __all__ = [
     'RawWaveform',
     'WaveformAnalysisType',
     'waveform_to_ac_sweep',
+    'waveform_to_dc_sweep',
     'waveform_to_time_series',
 ]
