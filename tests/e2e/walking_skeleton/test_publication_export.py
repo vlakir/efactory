@@ -1,8 +1,9 @@
-"""E2E: efactory publication <export-schematic|export-sim-report> (T035 Phase 4)."""
+"""E2E: efactory publication <export-schematic|export-sim-report> (T035 Phase 4-5)."""
 
 from __future__ import annotations
 
 import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -11,7 +12,7 @@ from typer.testing import CliRunner
 from composition.main import build_cli_app
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    pass
 
 
 _KICAD_AVAILABLE = shutil.which('kicad-cli') is not None
@@ -27,6 +28,10 @@ needs_rsvg = pytest.mark.skipif(
     'efactory:linux контейнере',
 )
 
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_TEMPLATES_DIR = _REPO_ROOT / 'data' / 'templates'
+_ALL_TEMPLATES = sorted(p.name for p in _TEMPLATES_DIR.iterdir() if p.is_dir())
+
 
 def _setup_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv('EFACTORY_PROJECTS_ROOT', str(tmp_path / 'projects'))
@@ -36,6 +41,15 @@ def _setup_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 def _create_project(name: str) -> None:
     runner = CliRunner()
     result = runner.invoke(build_cli_app(), ['project', 'create', '--name', name])
+    assert result.exit_code == 0, result.output
+
+
+def _create_project_from_template(name: str, template: str) -> None:
+    runner = CliRunner()
+    result = runner.invoke(
+        build_cli_app(),
+        ['project', 'create', '--name', name, '--template', template],
+    )
     assert result.exit_code == 0, result.output
 
 
@@ -221,3 +235,136 @@ def test_publication_export_sim_report_rejects_bad_lang(
 
     assert result.exit_code == 2
     assert 'ru|en' in result.output
+
+
+# ─────────────────────────── Phase 5: SC-1 / SC-7 acceptance ──────────────────
+
+
+@needs_kicad_cli
+@needs_rsvg
+def test_sc1_se_amp_template_full_acceptance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    SC-1 (T035 Phase 5): на тестовом проекте `se-amp`
+    `/export-schematic-publication` за <60 секунд создаёт:
+    - 3 файла в color/per-sheet/ (.svg + .pdf + .png, 1 sheet);
+    - 3 файла в bw/per-sheet/;
+    - README.md ≥10 строк;
+    - exit 0.
+
+    Skip на host без rsvg-convert (есть только в efactory:linux).
+    """
+    _setup_env(tmp_path, monkeypatch)
+    _create_project_from_template('my-amp', 'se-amp')
+
+    runner = CliRunner()
+    result = runner.invoke(
+        build_cli_app(),
+        ['publication', 'export-schematic', 'my-amp'],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert 'publication-export:' in result.output
+
+    project_root = tmp_path / 'projects' / 'my-amp'
+    pub_root = project_root / 'out' / 'publications'
+    ts_dirs = list(pub_root.iterdir())
+    assert len(ts_dirs) == 1
+    ts_root = ts_dirs[0]
+
+    color_per_sheet = ts_root / 'schematic' / 'color' / 'per-sheet'
+    bw_per_sheet = ts_root / 'schematic' / 'bw' / 'per-sheet'
+
+    color_files = sorted(color_per_sheet.iterdir())
+    bw_files = sorted(bw_per_sheet.iterdir())
+
+    # se-amp = single-sheet → 3 файла (svg+pdf+png) на цвет.
+    assert len(color_files) == 3, [p.name for p in color_files]
+    assert len(bw_files) == 3, [p.name for p in bw_files]
+
+    color_exts = sorted(p.suffix for p in color_files)
+    bw_exts = sorted(p.suffix for p in bw_files)
+    assert color_exts == ['.pdf', '.png', '.svg']
+    assert bw_exts == ['.pdf', '.png', '.svg']
+
+    readme = ts_root / 'README.md'
+    assert readme.is_file()
+    lines = readme.read_text(encoding='utf-8').splitlines()
+    assert len(lines) >= 10, f'README only {len(lines)} lines: {lines}'
+
+
+@needs_kicad_cli
+@needs_rsvg
+def test_sc1_combined_mode_creates_combined_pdf(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Combined-mode дополнительно к per-sheet создаёт combined PDF в подкаталоге."""
+    _setup_env(tmp_path, monkeypatch)
+    _create_project_from_template('my-amp', 'se-amp')
+
+    runner = CliRunner()
+    result = runner.invoke(
+        build_cli_app(),
+        [
+            'publication', 'export-schematic', 'my-amp',
+            '--multi-sheet-mode', 'combined',
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+
+    project_root = tmp_path / 'projects' / 'my-amp'
+    pub_root = project_root / 'out' / 'publications'
+    ts_root = next(pub_root.iterdir())
+
+    combined_color = ts_root / 'schematic' / 'color' / 'combined'
+    combined_bw = ts_root / 'schematic' / 'bw' / 'combined'
+
+    assert combined_color.is_dir()
+    assert combined_bw.is_dir()
+    assert (combined_color / 'my-amp.pdf').is_file()
+    assert (combined_bw / 'my-amp.pdf').is_file()
+
+
+@pytest.mark.parametrize('template', _ALL_TEMPLATES)
+def test_sc7_sim_report_smoke_per_template(
+    template: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    SC-7 (T035 Phase 5): `/export-sim-report` не падает ни на одном из
+    11 templates (MVP режим — bundle metadata only, без TRAN/AC).
+
+    Полноценный отчёт с plots зависит от T190+T191 (см. BACKLOG);
+    smoke здесь проверяет CLI-плоскость: команда отрабатывает, exit 0,
+    report.md создан с правильной metadata-секцией.
+    """
+    _setup_env(tmp_path, monkeypatch)
+    project_name = f'smoke-{template}'
+    _create_project_from_template(project_name, template)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        build_cli_app(),
+        ['publication', 'export-sim-report', project_name],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert 'publication-export:' in result.output
+
+    project_root = tmp_path / 'projects' / project_name
+    pub_root = project_root / 'out' / 'publications'
+    ts_root = next(pub_root.iterdir())
+    report_md = ts_root / 'sim-report' / 'report.md'
+    assert report_md.is_file()
+    content = report_md.read_text(encoding='utf-8')
+    # Metadata-секция обязательна (FR §3).
+    assert f'# Отчёт о симуляции — {project_name}' in content
+    assert '## Метаданные' in content
+    assert project_name in content
+    # MVP — magnetics graceful skip notice присутствует.
+    assert '## Магнитные компоненты' in content
