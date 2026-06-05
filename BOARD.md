@@ -63,6 +63,25 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T191** — [closed 2026-06-06, PR #125] **`--rerun` integration в
+  `/export-sim-report` (real TRAN/AC plots).** Расширяет MVP-команду
+  (T035 Phase 4.2) тремя ветками: `--rerun` гоняет свежие SPICE-
+  симуляции через `design_to_sim` per analysis (TRAN если `--tran-step`
+  + `--tran-stop`; AC если `--ac-points` + `--ac-fstart` + `--ac-fstop`,
+  + optional `--ac-sweep`), каждая симуляция автоматически persist'ится
+  через T190 hook; default (no-rerun) грузит latest TRAN/AC из T190
+  sidecar; MVP-edge (нет ни persistent, ни --rerun) → metadata-only
+  report (старое MVP-поведение). Архитектура hexagonal-clean: новый
+  use case `compose_sim_results_bundle` (application/) оркестрирует
+  всё; CLI handler инжектит зависимости. Domain helpers
+  `waveform_to_time_series` / `waveform_to_ac_sweep` (TRAN/DC→TimeSeries,
+  AC→AcSweep) c rejection-валидацией. 11 новых тестов (6 unit-compose,
+  5 domain converters) + 1 KB L2 regression case. KB topic + slash
+  обновлены: убрана секция «MVP workaround / 300 DPI gap», добавлены
+  примеры `--rerun --schematic <path> --tran-step Xu --tran-stop Yms
+  --ac-points N --ac-fstart F0 --ac-fstop F1`. 2480 passed, coverage
+  87.40%, pre-push 5/5 ✓. Закрывает T035 SC-2/SC-3 acceptance.
+
 - **T190** — [closed 2026-06-06, PR #124] **Persistence raw SPICE
   waveforms (sidecar JSON).** Domain VO `RawWaveform` (schema v1:
   `timestamp` + `analysis_type` + `source_netlist` + `x_axis_name` +

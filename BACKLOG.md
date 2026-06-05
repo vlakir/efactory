@@ -1110,20 +1110,9 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- T190 (raw waveform persistence) — moved to BOARD.md → Done
      2026-06-06, PR #124. -->
 
-- **T191** — [2026-06-05, T035 Phase 4.2 MVP follow-up]
-  `--rerun` integration для `/export-sim-report`. Сейчас CLI команда
-  билдит минимальный `SimulationResultsBundle` (только metadata),
-  TRAN/AC секции отсутствуют. Включает: (1) `--rerun` флаг в CLI;
-  (2) когда `--rerun` — определение какие analyses гонять (project
-  config? CLI flags `--tran-step / --tran-stop / --ac-*`? auto-detect
-  по schematic?); (3) вызов `design_to_sim` use case за каждый
-  analysis type; (4) сборка `SimulationResultsBundle` с
-  `tran`/`ac_sweep`/`measurements` из реальных результатов;
-  (5) передача bundle в `run_export_sim_report`. Без `--rerun`
-  (default) — требует T190 (raw waveform persistence) для load из
-  `.efactory/sim-results/`. Acceptance SC-2 (`/export-sim-report
-  se-amp --rerun` за <120s формирует report.md с TRAN+AC
-  секциями + ≥2 PNG @ 300 DPI).
+<!-- T191 (--rerun integration в /export-sim-report) — moved to
+     BOARD.md → Done 2026-06-06, PR #125. -->
+
 - **T192** — [2026-06-06, T035 Phase 5 deferred — multi-sheet support]
   Multi-sheet hierarchical `.kicad_sch` support в `Schematic` facade
   (T100) + acceptance SC-6 для T035 `/export-schematic-publication
