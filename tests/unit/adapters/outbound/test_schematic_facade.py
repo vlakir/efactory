@@ -25,13 +25,14 @@ def test_resistor_pins_at_rotation_zero() -> None:
 
 
 def test_resistor_pins_at_rotation_90_ccw() -> None:
-    """CCW 90°: локальный (0, 3.81) → глобальный (-3.81, 0)."""
+    """CCW 90°: локальный (0, 3.81) → глобальный (-3.81, 0). On-grid coords."""
     sch = Schematic('t')
     r = sch.add_resistor(
-        reference='R1', value='1k', at=(100.0, 50.0), rotation=90.0,
+        reference='R1', value='1k', at=(101.6, 50.8), rotation=90.0,
     )
-    assert r.pin_a == Position(x_mm=100.0 - 3.81, y_mm=50.0)
-    assert r.pin_b == Position(x_mm=100.0 + 3.81, y_mm=50.0)
+    # 101.6 - 3.81 = 97.79; 101.6 + 3.81 = 105.41 (already-rounded; avoid FP fuzz).
+    assert r.pin_a == Position(x_mm=97.79, y_mm=50.8)
+    assert r.pin_b == Position(x_mm=105.41, y_mm=50.8)
 
 
 def test_vdc_pins_at_rotation_180() -> None:
@@ -81,14 +82,14 @@ def test_connect_diagonal_emits_two_wires_with_corner() -> None:
     sch = Schematic('t')
     sch.connect(
         Position(x_mm=0.0, y_mm=0.0),
-        Position(x_mm=10.0, y_mm=20.0),
+        Position(x_mm=10.16, y_mm=20.32),  # on-grid (8×1.27, 16×1.27)
     )
     wires = sch.to_spec().wires
     assert len(wires) == 2
-    # Corner — (start.x, end.y) = (0, 20).
-    assert wires[0].end == Position(x_mm=0.0, y_mm=20.0)
-    assert wires[1].start == Position(x_mm=0.0, y_mm=20.0)
-    assert wires[1].end == Position(x_mm=10.0, y_mm=20.0)
+    # Corner — (start.x, end.y) = (0, 20.32).
+    assert wires[0].end == Position(x_mm=0.0, y_mm=20.32)
+    assert wires[1].start == Position(x_mm=0.0, y_mm=20.32)
+    assert wires[1].end == Position(x_mm=10.16, y_mm=20.32)
 
 
 def test_connect_same_point_is_noop() -> None:
@@ -100,19 +101,19 @@ def test_connect_same_point_is_noop() -> None:
 
 def test_label_records_position() -> None:
     sch = Schematic('t')
-    sch.label('in', at=(5.0, 6.0))
+    sch.label('in', at=(5.08, 6.35))
     labels = sch.to_spec().labels
     assert labels[0].text == 'in'
-    assert labels[0].position == Position(x_mm=5.0, y_mm=6.0)
+    assert labels[0].position == Position(x_mm=5.08, y_mm=6.35)
 
 
 def test_spice_directive_recorded_as_text_node() -> None:
     sch = Schematic('t')
-    sch.spice_directive('.tran 100u 80m', at=(50.8, 80.0))
+    sch.spice_directive('.tran 100u 80m', at=(50.8, 80.01))
     texts = sch.to_spec().texts
     assert len(texts) == 1
     assert texts[0].text == '.tran 100u 80m'
-    assert texts[0].position == Position(x_mm=50.8, y_mm=80.0)
+    assert texts[0].position == Position(x_mm=50.8, y_mm=80.01)
 
 
 def test_to_spec_carries_name_and_all_components() -> None:
@@ -128,8 +129,8 @@ def test_to_spec_carries_name_and_all_components() -> None:
 
 def test_junction_at_recorded() -> None:
     sch = Schematic('t')
-    sch.junction(at=(5.0, 5.0))
-    assert sch.to_spec().junctions[0].at == Position(x_mm=5.0, y_mm=5.0)
+    sch.junction(at=(5.08, 5.08))
+    assert sch.to_spec().junctions[0].at == Position(x_mm=5.08, y_mm=5.08)
 
 
 def test_handle_pin_by_number_unknown_raises() -> None:
@@ -152,12 +153,16 @@ def test_pin_transform_pin_b_position_match_manual_calculation() -> None:
 
 
 def test_add_accepts_position_object_directly() -> None:
-    """`at=` принимает не только tuple, но и готовый Position."""
+    """`at=` принимает не только tuple, но и готовый Position. Снап
+    применяется и к Position-input (чтобы builder, который собрал
+    Position(x_mm=..., y_mm=...) напрямую с off-grid coords, не ломал
+    connectivity)."""
     sch = Schematic('t')
+    # on-grid input → identity snap, pin_a follows.
     r = sch.add_resistor(
-        reference='R1', value='1k', at=Position(x_mm=5.0, y_mm=6.0),
+        reference='R1', value='1k', at=Position(x_mm=5.08, y_mm=6.35),
     )
-    assert r.pin_a == Position(x_mm=5.0, y_mm=9.81)
+    assert r.pin_a == Position(x_mm=5.08, y_mm=10.16)
 
 
 def test_round_grid_eliminates_float_jitter() -> None:
@@ -172,6 +177,86 @@ def test_round_grid_eliminates_float_jitter() -> None:
     assert r.pin_a.y_mm == 0.0
 
 
+# === T187: connection-grid snap ===
+
+
+def test_add_off_grid_position_silently_snaps_to_connection_grid() -> None:
+    """Builder передал off-grid (101.5, 80.5); facade snap'ит к (101.6, 80.01)."""
+    sch = Schematic('t')
+    r = sch.add_resistor(
+        reference='R1', value='1k', at=(101.5, 80.5),
+    )
+    spec = sch.to_spec()
+    # 101.5 / 1.27 = 79.92 → round = 80 → 80*1.27 = 101.6
+    # 80.5 / 1.27 = 63.385 → round = 63 → 63*1.27 = 80.01
+    assert spec.components[0].position == Position(x_mm=101.6, y_mm=80.01)
+
+
+def test_add_on_grid_position_no_op_snap() -> None:
+    sch = Schematic('t')
+    r = sch.add_resistor(
+        reference='R1', value='1k', at=(101.6, 80.01),
+    )
+    assert sch.to_spec().components[0].position == Position(x_mm=101.6, y_mm=80.01)
+
+
+def test_strict_grid_mode_raises_on_off_grid(monkeypatch: pytest.MonkeyPatch) -> None:
+    """EFACTORY_STRICT_GRID=1 → off-grid placement → OffGridPositionError."""
+    monkeypatch.setenv('EFACTORY_STRICT_GRID', '1')
+    from domain.grid import OffGridPositionError
+    sch = Schematic('t')
+    with pytest.raises(OffGridPositionError) as exc_info:
+        sch.add_resistor(reference='R1', value='1k', at=(101.5, 80.5))
+    assert exc_info.value.component_name == 'R1'
+    assert exc_info.value.requested == (101.5, 80.5)
+    assert exc_info.value.snapped == (101.6, 80.01)
+
+
+def test_strict_grid_mode_silent_for_on_grid(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv('EFACTORY_STRICT_GRID', '1')
+    sch = Schematic('t')
+    # No exception — coords are on-grid.
+    sch.add_resistor(reference='R1', value='1k', at=(101.6, 80.01))
+
+
+def test_strict_grid_mode_ignores_fp_jitter(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv('EFACTORY_STRICT_GRID', '1')
+    sch = Schematic('t')
+    # FP jitter < 1e-6 mm — not real off-grid drift; silent snap allowed.
+    sch.add_resistor(reference='R1', value='1k', at=(101.6 + 1e-12, 80.01))
+
+
+def test_label_snaps_off_grid_position() -> None:
+    sch = Schematic('t')
+    sch.label('input', at=(50.5, 85.0))
+    # 50.5 / 1.27 = 39.76 → round 40 → 50.8; 85.0 / 1.27 = 66.93 → round 67 → 85.09
+    assert sch.to_spec().labels[0].position == Position(x_mm=50.8, y_mm=85.09)
+
+
+def test_spice_directive_snaps_off_grid_position() -> None:
+    sch = Schematic('t')
+    sch.spice_directive('.op', at=(50.5, 50.5))
+    assert sch.to_spec().texts[0].position == Position(x_mm=50.8, y_mm=50.8)
+
+
+def test_ground_snaps_off_grid_position() -> None:
+    sch = Schematic('t')
+    g = sch.add_ground(at=(50.5, 100.0))
+    # Snapped: (50.8, 100.33). Reference auto-assigned.
+    pos = sch.to_spec().components[0].position
+    assert pos == Position(x_mm=50.8, y_mm=100.33)
+    assert g.reference == '#PWR01'
+
+
+def test_pwr_flag_snaps_off_grid_position() -> None:
+    sch = Schematic('t')
+    f = sch.add_pwr_flag(at=(45.5, 99.0))
+    pos = sch.to_spec().components[0].position
+    # 45.5 → 36 * 1.27 = 45.72; 99.0 → 78 * 1.27 = 99.06
+    assert pos == Position(x_mm=45.72, y_mm=99.06)
+    assert f.reference == '#FLG01'
+
+
 # === Phase 2: BJT / MOSFET / subckt / tube / transformer ===
 
 
@@ -180,7 +265,7 @@ def test_add_bjt_npn_sim_properties_and_pin_handles() -> None:
     q = sch.add_bjt(
         reference='Q1', value='2N3904',
         polarity='NPN', model_name='2N3904',
-        at=(100.0, 50.0),
+        at=(101.6, 50.8),
     )
     spec = sch.to_spec()
     c = spec.components[0]
@@ -188,10 +273,10 @@ def test_add_bjt_npn_sim_properties_and_pin_handles() -> None:
     assert c.properties['Sim.Device'] == 'NPN'
     assert c.properties['Sim.Model'] == '2N3904'
     assert c.properties['Sim.Pins'] == 'C=1 B=2 E=3'
-    # pin handles по semantic именам
-    assert q.pin_b == Position(x_mm=94.92, y_mm=50.0)
-    assert q.pin_c == Position(x_mm=102.54, y_mm=50.0 - 5.08)
-    assert q.pin_e == Position(x_mm=102.54, y_mm=50.0 + 5.08)
+    # pin handles по semantic именам (rounded, no FP fuzz)
+    assert q.pin_b == Position(x_mm=96.52, y_mm=50.8)
+    assert q.pin_c == Position(x_mm=104.14, y_mm=45.72)
+    assert q.pin_e == Position(x_mm=104.14, y_mm=55.88)
 
 
 def test_add_bjt_pnp_uses_pnp_symbol_and_sim_device() -> None:
@@ -221,15 +306,15 @@ def test_add_mosfet_nmos_sim_properties_and_pins() -> None:
     m = sch.add_mosfet(
         reference='M1', value='IRF540',
         polarity='NMOS', model_name='IRF540',
-        at=(50.0, 50.0),
+        at=(50.8, 50.8),
     )
     c = sch.to_spec().components[0]
     assert c.lib_id == 'Device:Q_NMOS'
     assert c.properties['Sim.Device'] == 'NMOS'
     assert c.properties['Sim.Pins'] == 'D=1 G=2 S=3'
-    assert m.pin_g.x_mm == pytest.approx(50.0 - 5.08)
-    assert m.pin_d.y_mm == pytest.approx(50.0 - 5.08)
-    assert m.pin_s.y_mm == pytest.approx(50.0 + 5.08)
+    assert m.pin_g.x_mm == pytest.approx(50.8 - 5.08)
+    assert m.pin_d.y_mm == pytest.approx(50.8 - 5.08)
+    assert m.pin_s.y_mm == pytest.approx(50.8 + 5.08)
 
 
 def test_add_mosfet_invalid_polarity_raises() -> None:
@@ -247,7 +332,7 @@ def test_add_subckt_writes_sim_library_and_pin_mapping() -> None:
         reference='XV1', model_id='6P14P',
         lib_path=Path('/some/where/6P14P.lib'),
         pin_names=('P', 'G2', 'G', 'K'),
-        at=(50.0, 50.0),
+        at=(50.8, 50.8),
     )
     c = sch.to_spec().components[0]
     assert c.lib_id == 'Connector_Generic:Conn_01x04'
@@ -255,9 +340,9 @@ def test_add_subckt_writes_sim_library_and_pin_mapping() -> None:
     assert c.properties['Sim.Name'] == '6P14P'
     assert c.properties['Sim.Library'] == '/some/where/6P14P.lib'
     assert c.properties['Sim.Pins'] == '1=P 2=G2 3=G 4=K'
-    # pin('P') — semantic access
-    assert sub.pin('P') == Position(x_mm=50.0 - 5.08, y_mm=50.0 - 2.54)
-    assert sub.pin('K') == Position(x_mm=50.0 - 5.08, y_mm=50.0 + 5.08)
+    # pin('P') — semantic access (rounded)
+    assert sub.pin('P') == Position(x_mm=45.72, y_mm=48.26)
+    assert sub.pin('K') == Position(x_mm=45.72, y_mm=55.88)
 
 
 def test_add_subckt_wrong_pin_count_raises() -> None:

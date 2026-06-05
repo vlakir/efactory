@@ -2732,7 +2732,7 @@
 	)
 	(text ".tran 10u 80m 10m uic"
 		(exclude_from_sim no)
-		(at 50.8 122 0)
+		(at 50.8 121.92 0)
 		(effects
 			(font
 				(size 1.27 1.27)

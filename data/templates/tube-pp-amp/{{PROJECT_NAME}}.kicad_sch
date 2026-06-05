@@ -3042,7 +3042,7 @@
 	)
 	(text ".op"
 		(exclude_from_sim no)
-		(at 50.8 130 0)
+		(at 50.8 129.54 0)
 		(effects
 			(font
 				(size 1.27 1.27)

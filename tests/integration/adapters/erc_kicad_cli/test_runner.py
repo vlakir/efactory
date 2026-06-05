@@ -8,11 +8,7 @@ from pathlib import Path
 import pytest
 
 from adapters.outbound.erc_kicad_cli.runner import KicadCliErcRunner
-from domain.erc import (
-    ErcSeverity,
-    KiCadCliUnavailableError,
-    SchematicParseError,
-)
+from domain.erc import KiCadCliUnavailableError, SchematicParseError
 
 _KICAD_CLI = shutil.which('kicad-cli')
 
@@ -44,18 +40,6 @@ async def test_runner_returns_clean_report_on_se_amp(tmp_path: Path) -> None:
 
     assert report.error_count == 0
     assert report.kicad_version.startswith('10.')
-
-
-@needs_kicad_cli
-async def test_runner_returns_warnings_without_errors(tmp_path: Path) -> None:
-    """`active-lpf-sallen-key` is ERC-clean for errors but has off-grid warnings."""
-    sch = _stage_template('active-lpf-sallen-key', tmp_path)
-    runner = KicadCliErcRunner()
-    report = await runner.run(sch, timeout_seconds=30.0)
-
-    assert report.error_count == 0
-    assert report.warning_count > 0
-    assert any(v.severity is ErcSeverity.WARNING for v in report.violations)
 
 
 @needs_kicad_cli

@@ -15,10 +15,16 @@ Auto-layout (grid) — Phase 1+; в Phase 0 пользователь даёт я
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from adapters.outbound.schematic_kicad.writer import KicadSchematicWriter
+from domain.grid import (
+    DEFAULT_CONNECTION_GRID_MM,
+    OffGridPositionError,
+    snap_to_grid,
+)
 from domain.schematic import (
     ComponentSpec,
     JunctionSpec,
@@ -30,6 +36,12 @@ from domain.schematic import (
     WireSpec,
 )
 from domain.spice_model import ComponentCategory
+
+# Below this Δ we treat off-grid as FP jitter и silently snap независимо
+# от EFACTORY_STRICT_GRID. Выше — реальный builder-mistake (real off-grid
+# placement), который strict mode превращает в OffGridPositionError.
+_GRID_JITTER_TOLERANCE_MM = 1e-6
+_STRICT_GRID_ENV = 'EFACTORY_STRICT_GRID'
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -643,10 +655,58 @@ class Subcircuit(_ComponentHandle):
             raise KeyError(msg) from exc
 
 
-def _to_position(at: tuple[float, float] | Position) -> Position:
-    if isinstance(at, Position):
-        return at
-    return Position(x_mm=at[0], y_mm=at[1])
+def _is_strict_grid_mode() -> bool:
+    return os.environ.get(_STRICT_GRID_ENV) == '1'
+
+
+def _snap_position(
+    x: float,
+    y: float,
+    *,
+    name: str,
+) -> tuple[float, float]:
+    """
+    Snap (x, y) к connection-grid 1.27 mm.
+
+    Default mode — silent snap. При ``EFACTORY_STRICT_GRID=1`` real off-
+    grid placement (Δ > 1e-6 mm) поднимает ``OffGridPositionError``.
+    FP-jitter (Δ ≤ 1e-6) всегда тихо snap'ится: это нечего диагностить.
+    """
+    snapped_x = snap_to_grid(x, grid_mm=DEFAULT_CONNECTION_GRID_MM)
+    snapped_y = snap_to_grid(y, grid_mm=DEFAULT_CONNECTION_GRID_MM)
+    delta_x = x - snapped_x
+    delta_y = y - snapped_y
+    real_drift = (
+        abs(delta_x) > _GRID_JITTER_TOLERANCE_MM
+        or abs(delta_y) > _GRID_JITTER_TOLERANCE_MM
+    )
+    if real_drift and _is_strict_grid_mode():
+        raise OffGridPositionError(
+            component_name=name,
+            requested=(x, y),
+            snapped=(snapped_x, snapped_y),
+            delta_mm=(delta_x, delta_y),
+        )
+    return snapped_x, snapped_y
+
+
+def _to_position(
+    at: tuple[float, float] | Position,
+    *,
+    name: str = '<unknown>',
+) -> Position:
+    """
+    Convert (x, y) tuple / Position → snapped Position.
+
+    Both tuple-input и Position-input проходят через snap (idempotent для
+    уже on-grid coords). Это покрывает edge-case когда builder создаёт
+    ``Position(x_mm=..., y_mm=...)`` напрямую с off-grid coordinates —
+    snap всё равно срабатывает, иначе wire/junction разъезжается с
+    pin-derived endpoints.
+    """
+    raw_x, raw_y = (at.x_mm, at.y_mm) if isinstance(at, Position) else (at[0], at[1])
+    snapped_x, snapped_y = _snap_position(raw_x, raw_y, name=name)
+    return Position(x_mm=snapped_x, y_mm=snapped_y)
 
 
 def _pin_positions(
@@ -710,7 +770,7 @@ class Schematic:
     ) -> Resistor:
         if reference is None:
             reference = self._auto_ref('R')
-        position = _to_position(at)
+        position = _to_position(at, name=reference)
         ref_pos, value_pos = _label_positions(position, _RC_LABEL_OFFSETS)
         self._components.append(
             ComponentSpec(
@@ -741,7 +801,7 @@ class Schematic:
     ) -> Capacitor:
         if reference is None:
             reference = self._auto_ref('C')
-        position = _to_position(at)
+        position = _to_position(at, name=reference)
         ref_pos, value_pos = _label_positions(position, _RC_LABEL_OFFSETS)
         self._components.append(
             ComponentSpec(
@@ -772,7 +832,7 @@ class Schematic:
     ) -> Inductor:
         if reference is None:
             reference = self._auto_ref('L')
-        position = _to_position(at)
+        position = _to_position(at, name=reference)
         ref_pos, value_pos = _label_positions(position, _INDUCTOR_LABEL_OFFSETS)
         self._components.append(
             ComponentSpec(
@@ -859,7 +919,7 @@ class Schematic:
                 'Sim.Pins': _DIODE_SIM_PINS,
                 'Sim.Params': spice_params,  # type: ignore[dict-item]
             }
-        position = _to_position(at)
+        position = _to_position(at, name=reference)
         ref_pos, value_pos = _label_positions(position, _DIODE_LABEL_OFFSETS)
         self._components.append(
             ComponentSpec(
@@ -889,7 +949,7 @@ class Schematic:
     ) -> VoltageSourceDc:
         if reference is None:
             reference = self._auto_ref('V')
-        position = _to_position(at)
+        position = _to_position(at, name=reference)
         properties = dict(_VDC_DEFAULT_PROPERTIES)
         properties['Sim.Params'] = f'dc={value} ac=1'
         ref_pos, value_pos = _label_positions(position, _VDC_LABEL_OFFSETS)
@@ -931,7 +991,7 @@ class Schematic:
         """
         if reference is None:
             reference = self._auto_ref('V')
-        position = _to_position(at)
+        position = _to_position(at, name=reference)
         properties = dict(_VAC_DEFAULT_PROPERTIES)
         properties['Sim.Params'] = f'dc={dc_offset} ampl={amplitude} f={frequency} ac=1'
         ref_pos, value_pos = _label_positions(position, _VAC_LABEL_OFFSETS)
@@ -959,10 +1019,10 @@ class Schematic:
         at: tuple[float, float] | Position,
         reference: str | None = None,
     ) -> Ground:
-        position = _to_position(at)
         if reference is None:
             self._pwr_counter += 1
             reference = f'#PWR{self._pwr_counter:02d}'
+        position = _to_position(at, name=reference)
         ref_pos, value_pos = _label_positions(position, _GND_LABEL_OFFSETS)
         self._components.append(
             ComponentSpec(
@@ -994,10 +1054,10 @@ class Schematic:
         `rotation`: 0 — стрелка вверх (default), 180 — стрелка вниз (placement
         под GND на одном уровне, см. user-perfected RC fixture).
         """
-        position = _to_position(at)
         if reference is None:
             self._flg_counter += 1
             reference = f'#FLG{self._flg_counter:02d}'
+        position = _to_position(at, name=reference)
         ref_pos, value_pos = _label_positions(position, _PWR_FLAG_LABEL_OFFSETS)
         self._components.append(
             ComponentSpec(
@@ -1044,7 +1104,7 @@ class Schematic:
         else:
             msg = f"BJT polarity must be 'NPN' or 'PNP', got {polarity!r}"
             raise ValueError(msg)
-        position = _to_position(at)
+        position = _to_position(at, name=reference)
         properties = {
             'Sim.Device': polarity,
             'Sim.Model': model_name,
@@ -1094,7 +1154,7 @@ class Schematic:
         else:
             msg = f"MOSFET polarity must be 'NMOS' or 'PMOS', got {polarity!r}"
             raise ValueError(msg)
-        position = _to_position(at)
+        position = _to_position(at, name=reference)
         properties = {
             'Sim.Device': polarity,
             'Sim.Model': model_name,
@@ -1151,7 +1211,7 @@ class Schematic:
         """
         if reference is None:
             reference = self._auto_ref('X')
-        position = _to_position(at)
+        position = _to_position(at, name=reference)
         if symbol is None:
             return self._add_generic_conn_subckt(
                 reference=reference,
@@ -1324,7 +1384,7 @@ class Schematic:
         """
         if reference is None:
             reference = self._auto_ref('U')
-        position = _to_position(at)
+        position = _to_position(at, name=reference)
         properties = {
             'Sim.Device': 'subckt',
             'Sim.Library': str(lib_path),
@@ -1419,8 +1479,11 @@ class Schematic:
         Соединить две точки Manhattan-маршрутом (вертикаль → горизонталь).
 
         Если точки collinear (общий x или y) — один сегмент. Иначе — два
-        сегмента через corner `(start.x, end.y)`.
+        сегмента через corner `(start.x, end.y)`. Endpoints snap'ятся к
+        connection-grid; corner inherits snapped coords from start/end.
         """
+        start = _to_position(start, name='<wire-start>')
+        end = _to_position(end, name='<wire-end>')
         if start == end:
             return
         if math.isclose(start.x_mm, end.x_mm) or math.isclose(
@@ -1434,7 +1497,7 @@ class Schematic:
         self._wires.append(WireSpec(start=corner, end=end))
 
     def junction(self, at: tuple[float, float] | Position) -> None:
-        self._junctions.append(JunctionSpec(at=_to_position(at)))
+        self._junctions.append(JunctionSpec(at=_to_position(at, name='<junction>')))
 
     def no_connect(self, at: tuple[float, float] | Position) -> None:
         """
@@ -1444,10 +1507,14 @@ class Schematic:
         и ERC checker'а. Типичный use case: V+/V- supply pins op-amp
         macromodel'и, которые SPICE writer пропускает через `Sim.Pins`.
         """
-        self._no_connects.append(NoConnectSpec(at=_to_position(at)))
+        self._no_connects.append(
+            NoConnectSpec(at=_to_position(at, name='<no_connect>')),
+        )
 
     def label(self, text: str, *, at: tuple[float, float] | Position) -> None:
-        self._labels.append(LabelSpec(text=text, position=_to_position(at)))
+        self._labels.append(
+            LabelSpec(text=text, position=_to_position(at, name=f'label:{text}')),
+        )
 
     def spice_directive(
         self,
@@ -1461,7 +1528,9 @@ class Schematic:
         KiCad GUI Simulator подхватывает её при Open → Run; распознаётся
         по leading `.`. Координата `at` — куда поставить text node в схеме.
         """
-        self._texts.append(TextSpec(text=text, position=_to_position(at)))
+        self._texts.append(
+            TextSpec(text=text, position=_to_position(at, name=f'spice:{text}')),
+        )
 
     def to_spec(self) -> SchematicSpec:
         return SchematicSpec(

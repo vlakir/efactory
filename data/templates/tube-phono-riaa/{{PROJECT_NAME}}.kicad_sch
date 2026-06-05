@@ -1899,7 +1899,7 @@
 		(uuid "d7518c29-b709-486b-b82e-74671f5082aa")
 	)
 	(label "riaa_mid"
-		(at 125 78.74 0)
+		(at 124.46 78.74 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -1950,7 +1950,7 @@
 	)
 	(text ".op"
 		(exclude_from_sim no)
-		(at 50.8 125 0)
+		(at 50.8 124.46 0)
 		(effects
 			(font
 				(size 1.27 1.27)
