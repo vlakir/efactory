@@ -356,6 +356,17 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'agent.command-routing',
         '/grid-check',
     ),
+    # T030 Phase 5: SPICE import pipeline topic + routing.
+    (
+        'spice model import URL vendor BJT MOSFET diode op-amp pipeline',
+        'spice.import-pipeline',
+        '/spice-import-url',
+    ),
+    (
+        'импортируй модель из URL vendor',
+        'agent.command-routing',
+        '/spice-import-url',
+    ),
 ]
 
 

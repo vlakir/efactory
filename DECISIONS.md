@@ -25,6 +25,65 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-05 — T030 ADR-T030a: SPICE import pipeline + ComponentCategory expansion + `.MODEL` scanner
+
+- **Контекст.** До T030 импорт vendor-моделей (BJT/MOSFET/diode/op-amp)
+  из публичных URL'ов TI/Vishay/ON Semi/Microchip был manual: скачать,
+  определить категорию, придумать имя в `<user_library_root>/`, починить
+  HSPICE-only `PWRS()` (T168), написать KB topic. 5-8 шагов на каждую
+  модель — отпугивающий overhead. T030 формализует pipeline в одну
+  команду `/spice-import-url <URL>` (или CLI `efactory spice import-url
+  <URL>`).
+- **Архитектурные решения (одним пакетом):**
+  - **3 новых ComponentCategory:** `BJT`, `JFET`, `MOSFET`. Альтернатива
+    «один FET bucket» отвергнута: bipolar vs field-effect — фундаментально
+    разные принципы (pn-junction-controlled current vs voltage-controlled
+    channel), subcategory всё равно дискриминировала бы. Три enum'а
+    читабельнее (`category: jfet` vs `category: fet, subcategory: jfet/n`).
+    Не вынесено в отдельную задачу (per Vladimir mandate: «все делаем
+    в рамках текущей»).
+  - **`.MODEL` scanner contract** — расширение существующего
+    `FilesystemSpiceModelLibrary`-pattern'а: parser ищет и `.SUBCKT`
+    (исторически tubes/opamps/transformers/loads), и `.MODEL TYPE`
+    (BJT/JFET/MOSFET/D primitive cards) с join-continuation `+` lines
+    support. Mapping таблица `_MODEL_TYPE_TO_CATEGORY`. Header
+    override `* category:`/`* subcategory:` priority.
+  - **`user_library_root` only — write policy.** Imports не модифицируют
+    built-in `data/models/`. Это сохраняет git-immutable built-in baseline
+    и user overlay (T006 fix-up Q3) семантику.
+  - **Atomic staging.** `<user_library_root>/_imports/<sha256>/staged/`
+    → ngspice smoke → `shutil.move` на success. Smoke fail rollback'ит
+    staging без mutation user-visible state. Raw bytes хранятся в
+    `_imports/<sha256>/raw.lib` (audit trail, без headers/конверсии).
+  - **Header injection в install file.** `* vendor: ti`, `* source_url:
+    <url>`, `* sha256: <hex>`, `* imported_at: <UTC ISO>`,
+    `* subcategory: <value>` — для traceability и subsequent re-classify
+    через header override. Raw download остаётся нетронутым.
+  - **Direct-URL only** (no cookies/SSO/JS). Auth-walled vendors (TI
+    PSpice .zip за SSO) — workaround `efactory spice import-file
+    <path> --vendor=ti` (same pipeline, bypass download). M3 batch
+    import — future.
+- **Альтернативы и почему отвергнуты:**
+  - **Один `FET` bucket вместо JFET+MOSFET** — спрятал бы важное
+    физическое различие.
+  - **Multi-`.SUBCKT` bundle вместо split** — потребовало бы refactor
+    сканера `FilesystemSpiceModelLibrary` (один `.SUBCKT` на файл —
+    существующий контракт). Split тривиален, не ломает scanner.
+  - **LLM-based classification** — deterministic regex чтобы CI был
+    воспроизводимым. LLM-assist оставлен на будущее, если эвристики
+    станут недостаточны.
+  - **Per-class full DC/AC/transient smoke** — overkill для acceptance
+    «модель парсится и bias'ится». Только OP, ~1s per smoke.
+  - **`/spice-import-file` slash** — agent не должен предлагать
+    manually-downloaded путь (off-grid action для agent'а). Только
+    CLI flow (Vladimir manual use).
+- **Acceptance pre-PR:** SC1-SC13 в `specs/T030-spice-import-url/
+  spec.md` (synthetic fixtures + duplicate handling + atomicity +
+  dry-run + KB sync + T134 L2 regression + ADR). SC14 (real URL
+  TI/Vishay/ON Semi) — manual, не блокирует merge.
+
+---
+
 ### 2026-06-05 — T187 ADR-T187a: snap-on-write в facade + diagnostic CLI (Plan B)
 
 - **Контекст.** Probe T029 Phase 0 (2026-06-04) обнаружил `endpoint_
