@@ -25,6 +25,111 @@ ADR-Lite: компактный лог архитектурных решений 
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 
+### 2026-06-06 — T035 ADR-T035a: Publication workflow — два slash-команды + minimal sim-report MVP с T190/T191 deferral
+
+- **Контекст.** Vladimir пишет научно-технические статьи и отчёты по
+  проектам РЭА. На каждую публикацию нужны два класса артефактов:
+  схема в publication-grade форматах (vector + raster, color + bw) и
+  Markdown sim-report с графиками для прямой вставки в draft статьи.
+  До T035 это собиралось вручную из терминального ASCII-плоттера + T025
+  одиночных SVG — медленно и не воспроизводимо.
+
+  По дороге T035 Phase 0 probe (W-2) вскрыл два structural
+  ограничения efactory, не закладывавшиеся в spec до analyze:
+  (1) T113 GetDP adapter возвращает `FemSolveOutcome` только in-memory,
+  raw FEM-результаты на диск не пишутся → M-thin magnetics секция в
+  sim-report может только graceful skip; (2) `sim_run` хранит
+  `SimResult` JSON snapshot — summary metadata + metrics dict,
+  но **без raw `time`/`traces` массивов** → publication PNG рендер от
+  existing results физически невозможен.
+
+  Решение нужно принять до Phase 3, иначе use case design зайдёт в
+  тупик «требует данных, которых нет».
+
+- **Решение.** **Два слабосвязанных pipeline'а** с независимыми use
+  cases, общим domain VO `PublicationBundle` и shared `_publication_paths`
+  helpers (collision-safe ts W-4):
+
+  1. **`/export-schematic-publication`** — **full implementation**:
+     `KicadCliSchematicPublicationRenderer` (kicad-cli sch export
+     svg|pdf [--black-and-white] + rsvg-convert --dpi-x 300 --dpi-y 300)
+     × color/bw × per-sheet/optional combined PDF. Use case
+     `run_export_schematic_publication` orchestrates project resolve →
+     renderer → `MarkdownPublicationReadmeWriter` → `PublicationBundle`.
+
+  2. **`/export-sim-report`** — **MVP с явным deferral'ом** до T190+T191
+     follow-ups. Phase 4.2 CLI билдит минимальный
+     `SimulationResultsBundle` (только project / version / publication_ts,
+     без analyses), use case оркестрирует `MarkdownSimReportWriter` +
+     readme. Output: report.md с metadata-секцией + magnetics graceful-
+     skip notice; TRAN/AC/parametric секции **отсутствуют**.
+
+  Полноценный sim-report — после T190 (raw waveform persistence для
+  load) + T191 (`--rerun` integration + design_to_sim orchestration).
+  В KB topic `design.export-publication` + slash docs явно
+  задокументированы текущие ограничения и временный manual workflow
+  (`/sim-run` + `bridge plot` screenshot).
+
+- **Альтернативы.**
+
+  - **(а) Bundle T190 raw waveform persistence внутрь T035.**
+    Отвергнуто: scope creep на ~+2-3 дня (расширение `SimResult`
+    schema, обновление `FileSystemSimResults` writer, reader port +
+    adapter, integration в `sim_run`). T035 уже разросся до 6 фаз;
+    вкорчёвывание T113-style persistence сверху размывает
+    «publication packaging» фокус задачи. Лучше четко отделить:
+    T035 = packaging existing data, T190 = persistence infrastructure,
+    T191 = orchestration.
+
+  - **(б) Реализовать `--rerun` integration в Phase 4 одновременно с
+    минимальным CLI.** Отвергнуто: требует решений по
+    «как CLI определяет какие analyses гонять» (project config? CLI
+    flags `--tran-step / --ac-*`? auto-discover по schematic?). Эти
+    решения тянут собственный design pass + clarify, что overflow'ит
+    T035 за пределы 6 фаз. Парковка в T191 даёт чистый scope для
+    отдельного re-clarify.
+
+  - **(в) Сделать единую CLI команду `efactory publication export` с
+    подкомандами schematic/sim-report.** Отвергнуто: spec ясно
+    мандирует **два слэша** (`/export-schematic-publication` +
+    `/export-sim-report`). Объединение усложняет KB routing (одна
+    команда — разная семантика по subсommand) и сбивает UX (пользователь
+    мысленно делит «схема» и «отчёт» отдельно).
+
+  - **(г) PDF combined через pypdf после per-sheet PDF.** Отвергнуто
+    в Analyze C-2: `kicad-cli sch export pdf` без `--pages` создаёт
+    multi-page PDF нативно. pypdf dep не нужна.
+
+- **Последствия.**
+
+  - `/export-schematic-publication` готов **к продакшну сейчас** для
+    всех 11 single-sheet templates: SVG/PDF/PNG @ 300 DPI × color/bw
+    одной командой <60s (SC-1 acceptance в efactory:linux).
+    Multi-sheet (SC-6) deferred в T192 — требует расширения
+    `Schematic` facade.
+  - `/export-sim-report` сейчас годен как **placeholder в publication
+    tree** (правильная структура каталогов + metadata + magnetics
+    notice + ссылки на manual workflow). После T190+T191 — full
+    отчёт с TRAN/AC PNG @ 300 DPI с ru/en локализацией без changes
+    в API use case (caller передаёт SimulationResultsBundle полностью
+    заполненный).
+  - **Domain VO `SimulationResultsBundle`** становится контрактом
+    между Phase 3 use case (writer) и future T191 caller (sim runner
+    + reader). Это поощряет clean orchestration в T191: загрузить /
+    rerun → собрать bundle → передать в use case.
+  - **i18n архитектура** через `_REPORT_LABELS` / `_README_LABELS` /
+    `AXIS_LABELS` dicts (~15-20 key/value на язык, без gettext
+    overkill, spec A-7) — масштабируется на третий язык при
+    необходимости.
+  - **Acceptance SC-2/SC-3** не закрыты T035 (требуют T190+T191).
+    SC-1 и SC-7 закрыты strict тестами; SC-4/SC-5 (DPI/i18n) закрыты
+    Phase 2.2 unit-тестами; SC-6 → T192. SC-8/SC-9/SC-10 закрыты в
+    каждом коммите.
+  - **Scope discipline:** распознавание T190/T191 как structural
+    blocker'ов вместо «попытка везде heroic» — single PR T035 ушёл
+    бы в ~10-14 дней работы. Текущий split (6 фаз × ~3-4 часа каждая
+    при autonomous mode) укладывается в одну ночь.
+
 ### 2026-06-05 — T030 ADR-T030a: SPICE import pipeline + ComponentCategory expansion + `.MODEL` scanner
 
 - **Контекст.** До T030 импорт vendor-моделей (BJT/MOSFET/diode/op-amp)

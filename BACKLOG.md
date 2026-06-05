@@ -1063,15 +1063,102 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      Component-name completion (имена из текущей схемы) — задача
      prompts/KB, не нашего TUI. -->
 
-- **T035** — [2026-05-15, reformulated 2026-06-03] Публикационный
-  workflow как slash-команды: `/export-schematic-publication
-  <project>` (схема → SVG/PDF для статьи, использует T025 render)
-  и `/export-sim-report <project>` (результаты симуляции →
-  Markdown-отчёт с графиками, использует существующие
-  `cli/*_renderer.py` + `/plot-*` адаптеры).
-  Acceptance: для тестового проекта обе команды генерируют
-  публикационно-готовые артефакты в `out/publications/<ts>/`;
-  README с описанием включения в статью.
+<!-- T035 (Публикационный workflow) — moved to BOARD.md → Doing
+     2026-06-05; spec в specs/T035-publication-workflow/spec.md
+     (Status: Analyzed). -->
+
+- **T188** — [2026-06-05, spun off from T035 Analyze C-1] DC sweep
+  (`.dc <src> <start> <stop> <step>`) как тип симуляции в efactory.
+  Сейчас в `domain/simulation.py` есть только Op / Tran / Ac /
+  Fourier; DC sweep отсутствует в domain VO + ngspice adapter +
+  renderer. Включает: (1) `DcSweepAnalysis` + `DcSweep` result VO
+  в `domain/simulation.py`; (2) ngspice parser для `.dc`-output;
+  (3) `render_dc_sweep` (ASCII + PNG @ 120 DPI) и
+  `render_dc_sweep_publication_png` (300 DPI) в `cli/plot_renderer.py`
+  и `cli/publication_plots.py`; (4) интеграция с `design_to_sim`
+  use case + `/sim-run` CLI; (5) после реализации — расширение
+  `/export-sim-report` (T035) на DC sweep секцию.
+  Acceptance: на тестовом проекте `bjt-ce-nfb` или
+  `op-amp-inverting` `.dc V1 0 5 0.1` пишет точки в результат,
+  renderers выводят transfer-curve.
+- **T189** — [2026-06-05, spun off from T035 Phase 2.0 probe W-2]
+  Persistence FEM-результатов T113 + magnetics summary JSON для
+  M-thin режима `/export-sim-report`. Сейчас GetDP adapter
+  возвращает `FemSolveOutcome` только in-memory; временные
+  `energy_per_depth.txt` / `flux_linkage.txt` в `/tmp` чистятся
+  после parsing. T035 Phase 2.3 реализует graceful skip («m-thin
+  artefacts not found») — но без persistent summary M-thin секция
+  публикационного отчёта вечно пустая. Включает: (1)
+  `MagneticResultsRepository` port в `src/ports/outbound/
+  magnetic_results.py`; (2) `FileSystemMagneticResults` adapter
+  с atomic-write pattern (`.tmp` + `replace`, like
+  `FileSystemSimResults`) пишущий в `<project>/out/fem/<ts>/
+  summary.json` со схемой v1: `schema_version`, `timestamp`
+  (UTC), `component_name`, `analytical_inductance_h`,
+  `fem_inductance_h`, `relative_difference`, `fem_method`,
+  `peak_flux_density_t` (nullable), `core{shape_name,
+  material_name, gap_length_m, gap_type}`, `operating_point
+  {frequency_hz, primary_peak_voltage_v, primary_dc_bias_a}`;
+  (3) hook persistence в `application/mag_verify_field.py`
+  (через optional repository injection); (4) reader в T035
+  `MarkdownSimReportWriter` (отдельная задача — T035 уже merge'д).
+  Acceptance: после `/mag-verify <project>` файл
+  `<project>/out/fem/<ts>/summary.json` существует, валиден по
+  схеме v1; `/export-sim-report <project>` подтягивает магнитный
+  summary в секцию «Магнитные компоненты» с таблицей `L_self`,
+  `B_peak`, `analytical vs FEM relative_difference`.
+- **T190** — [2026-06-05, discovered during T035 Phase 3 design]
+  Persistence raw SPICE waveforms (TimeSeries / AcSweep) для
+  `/export-sim-report --no-rerun` mode. Сейчас `sim_run` хранит
+  только `SimResult` JSON snapshot в `<project>/.efactory/
+  sim-results/<TS>-<analysis>.json` — это summary + metrics dict,
+  без raw `time`/`traces`. Значит `/export-sim-report` без
+  `--rerun` не может построить TRAN / AC publication plots
+  (T035 Phase 2.2 функции `render_*_publication_png` требуют
+  TimeSeries / AcSweep). Включает: (1) расширение `SimResult`
+  schema (либо отдельный sidecar JSON / parquet) для записи
+  `time` + `traces_*` массивов; (2) обновление
+  `FileSystemSimResults` adapter (writer); (3) reader порт +
+  adapter для загрузки SimulationResultsBundle из latest
+  saved результатов; (4) обновление Phase 4 CLI
+  `/export-sim-report` чтобы без `--rerun` загружать persistent
+  данные. Без T190 — `/export-sim-report` де-факто всегда требует
+  `--rerun` (либо TRAN/AC секции пустые с warning notice).
+  Acceptance: после `/sim-run <project>` raw waveforms лежат
+  на диске; `/export-sim-report <project>` (без --rerun) видит
+  их, формирует полный TRAN+AC отчёт за <30s.
+- **T191** — [2026-06-05, T035 Phase 4.2 MVP follow-up]
+  `--rerun` integration для `/export-sim-report`. Сейчас CLI команда
+  билдит минимальный `SimulationResultsBundle` (только metadata),
+  TRAN/AC секции отсутствуют. Включает: (1) `--rerun` флаг в CLI;
+  (2) когда `--rerun` — определение какие analyses гонять (project
+  config? CLI flags `--tran-step / --tran-stop / --ac-*`? auto-detect
+  по schematic?); (3) вызов `design_to_sim` use case за каждый
+  analysis type; (4) сборка `SimulationResultsBundle` с
+  `tran`/`ac_sweep`/`measurements` из реальных результатов;
+  (5) передача bundle в `run_export_sim_report`. Без `--rerun`
+  (default) — требует T190 (raw waveform persistence) для load из
+  `.efactory/sim-results/`. Acceptance SC-2 (`/export-sim-report
+  se-amp --rerun` за <120s формирует report.md с TRAN+AC
+  секциями + ≥2 PNG @ 300 DPI).
+- **T192** — [2026-06-06, T035 Phase 5 deferred — multi-sheet support]
+  Multi-sheet hierarchical `.kicad_sch` support в `Schematic` facade
+  (T100) + acceptance SC-6 для T035 `/export-schematic-publication
+  --multi-sheet-mode combined`. Сейчас facade (`add_v_dc`, `add_resistor`,
+  ...) знает только single-sheet; все 11 templates в `data/templates/`
+  — one-sheet. T035 W-3 предсказал: SC-6 unverifiable без синтетического
+  multi-sheet проекта. Включает: (1) `add_sub_sheet(name, pos)` API в
+  Schematic facade (создаёт hierarchical sheet child); (2) sub-sheet
+  s-expr block (`(sheet (at ...) (size ...) (uuid ...) ...)`) +
+  child `.kicad_sch` файл с правильным parent reference; (3) e2e тест
+  `test_sc6_multi_sheet_combined_pdf` — программно генерирует 2-sheet
+  проект, запускает `/export-schematic-publication --multi-sheet-mode
+  combined`, проверяет: single combined PDF в `combined/<project>.pdf`,
+  per-sheet PDF count = N, README с warning про SVG/PNG combined
+  unavailable, page-to-sheet-name mapping корректный для hierarchical
+  ordering. Acceptance: SC-6 strict (один combined PDF; per-sheet svg/
+  pdf/png × N sheets; README warning text присутствует). Не блокер
+  T035 — single-sheet проекты работают сейчас.
 - **T036** — [2026-05-15, re-evaluate 2026-05-19 после Phase 0.9]
   Стратегия обновлений: флаги `--update`, `--update-models`,
   `--doctor` в bootstrap + CLI.
