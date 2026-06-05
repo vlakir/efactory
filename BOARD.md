@@ -61,27 +61,27 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T030** — [taken 2026-06-05] **Импорт SPICE-моделей по URL.**
-  Slash `/spice-import-url <url>` + CLI `efactory spice import-url
-  <url>` / `import-file <path>`. Pipeline: download (direct-URL only)
-  → classify (`.SUBCKT` heuristics + `.MODEL` type-mapping для BJT/
-  JFET/MOSFET/DIODE/OPAMP) → PWRS-конверсия (reuse T168) → install в
-  `<user_library_root>/<category>/<vendor>/<PART>.lib` с inline
-  headers (vendor, source_url, sha256, imported_at, subcategory) →
-  per-class ngspice smoke → KB topic `spice.<vendor>.<part>` (T134
-  Уровень 1). Atomic через staging. Spec: `specs/T030-spice-import-
-  url/spec.md`, ветка `T030-spice-import-url`.
-
-  Расширение `ComponentCategory`: BJT/JFET/MOSFET (новые) + расширение
-  scanner `FilesystemSpiceModelLibrary` до `.MODEL` cards — обоснование
-  в ADR-T030a (часть acceptance).
-
-  Acceptance: SC1-SC14 в spec — synthetic fixtures + duplicate handling
-  + atomicity + dry-run + KB sync + T134 L2 regression + ADR. Manual
-  acceptance SC14 (Vladimir, real-URL TI/Vishay/ON Semi) не блокирует
-  PR.
-
 ## Done
+
+- **T030** — [closed 2026-06-05, PR #121] **Импорт SPICE-моделей по
+  URL.** Slash `/spice-import-url <url>` + CLI `efactory spice
+  import-url <url>` / `import-file <path>`. Pipeline: download
+  (direct-URL only) → classify (`.SUBCKT` heuristics + `.MODEL`
+  type-mapping для BJT/JFET/MOSFET/DIODE/OPAMP) → PWRS-конверсия
+  (reuse T168) → install в `<user_library_root>/<category>/<vendor>/
+  <PART>.lib` с inline headers (vendor / source_url / sha256 /
+  imported_at / subcategory) → per-class ngspice OP smoke (CE для
+  BJT, CS для FET, forward для diode, unity buffer для op-amp) →
+  KB topic `spice.<vendor>.<part>` (T134 Уровень 1). Atomic через
+  staging `_imports/<sha256>/staged/` + `shutil.move`. ADR-T030a в
+  DECISIONS.md (3 новых ComponentCategory BJT/JFET/MOSFET, .MODEL
+  scanner contract, user_library_root-only write, header injection,
+  5 rejected alternatives). KB Уровень 2 — 2 deterministic L2
+  regression cases. Tests 2189 → 2253 (+64), coverage 87.20%,
+  pre-push 5/5 ✓ (включая 3/3 importlinter contracts). Bug по
+  дороге: пустой `tests/unit/application/__init__.py` создавал
+  package collision с `src/application/` после очистки .pytest_
+  cache → удалён.
 
 - **T187** — [closed 2026-06-05, PR #119] **Off-grid cleanup в
   шаблонах + snap-on-write facade + `/grid-check` CLI.** Plan B
