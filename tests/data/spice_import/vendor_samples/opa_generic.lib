@@ -1,0 +1,9 @@
+* Synthetic single op-amp .SUBCKT — T030 test fixture.
+* vendor: ti
+* subcategory: full_vendor
+.SUBCKT OPAGEN VCC VEE INP INM OUT
+* Minimal SUBCKT body — not a real op-amp, just enough cards to parse.
+R1 INP INM 1MEG
+R2 INM OUT 100K
+EAMP OUT 0 INP INM 1E5
+.ENDS OPAGEN

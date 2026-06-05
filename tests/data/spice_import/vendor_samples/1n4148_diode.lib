@@ -1,0 +1,4 @@
+* Synthetic 1N4148 small-signal diode — T030 test fixture.
+* subcategory: signal
+.MODEL D1N4148 D (IS=2.52E-9 RS=0.568 N=1.752 BV=110
++ IBV=0.0001 CJO=4E-12 VJ=0.7 M=0.333 EG=1.11 XTI=3 TT=20E-9)
