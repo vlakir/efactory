@@ -7,7 +7,7 @@
 			(on_board yes)
 			(in_pos_files yes)
 			(duplicate_pin_numbers_are_jumpers no)
-			(property "Reference" "U"
+			(property "Reference" "V"
 				(at 2.54 10.16 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -27,7 +27,7 @@
 					)
 				)
 			)
-			(property "Footprint" "Valve:Valve_Noval_P"
+			(property "Footprint" "Valve:Valve_Magnoval_P"
 				(at 7.62 -10.16 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -38,7 +38,7 @@
 					)
 				)
 			)
-			(property "Datasheet" "http://www.r-type.org/pdfs/el84.pdf"
+			(property "Datasheet" "https://frank.pocnet.net/sheets/030/g/GU50.pdf"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -49,7 +49,7 @@
 					)
 				)
 			)
-			(property "Description" "pentode, 12W"
+			(property "Description" "Soviet pentode 12W, magnoval 9-pin base + top-cap anode"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -70,7 +70,7 @@
 					)
 				)
 			)
-			(property "ki_keywords" "pentode valve"
+			(property "ki_keywords" "pentode valve soviet top-cap"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -81,7 +81,7 @@
 					)
 				)
 			)
-			(property "ki_fp_filters" "VALVE*NOVAL*P*"
+			(property "ki_fp_filters" "VALVE*MAGNOVAL*P*"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -445,6 +445,17 @@
 						(type none)
 					)
 				)
+				(circle
+					(center 0 13.97)
+					(radius 0.508)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type outline)
+					)
+				)
 				(pin input line
 					(at -7.62 -1.27 0)
 					(length 2.54)
@@ -482,8 +493,8 @@
 					)
 				)
 				(pin output line
-					(at 0 11.43 270)
-					(length 2.54)
+					(at 0 13.97 270)
+					(length 5.08)
 					(name "A"
 						(effects
 							(font
@@ -491,7 +502,7 @@
 							)
 						)
 					)
-					(number "7"
+					(number "TC"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -509,7 +520,7 @@
 							)
 						)
 					)
-					(number "9"
+					(number "5"
 						(effects
 							(font
 								(size 1.27 1.27)

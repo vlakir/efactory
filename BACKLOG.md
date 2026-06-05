@@ -1003,16 +1003,9 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
      - Снятие блокировки: T106 Phase 3 и T107 Phase 1 больше не
        зависят от T032 (см. их обновлённые формулировки). -->
 
-- **T107 Phase 1 (deferred)** — datasheet-accurate symbol drawing для
-  советских ламп. Phase 0 (закрыт 2026-05-19, PR #46) реализован
-  через copy-rename базовых EL84/ECC81 форм (visually одинаковы,
-  отличается lib_id и Value). Phase 1 — нарисовать оригинальные
-  shapes: GU50 (octal base с top-cap anode), 6П45С (specific beam
-  tetrode shape), 6Н6П (octal dual triode layout). Drawing-heavy
-  vector polyline work. **Снятие блокировки 2026-06-03:** SVG-render
-  больше не блокер (T032 superseded by T025) — фоновый workflow
-  «datasheet image через чат → vector polylines через Claude vision»
-  можно начинать в любой момент.
+<!-- T107 Phase 1 — поднята 2026-06-05 в BOARD → Doing.
+     Spec: specs/T107-soviet-tube-shapes/spec.md.
+     Ветка T107-phase1-soviet-tube-shapes. -->
 - **T106** — [2026-05-19] **Scheme layout beautifier.** Post-process
   валидного `.kicad_sch` (после ERC) для «textbook look»: убрать
   collisions подписей/компонентов/проводников, выровнять reference/
