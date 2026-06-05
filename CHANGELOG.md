@@ -36,6 +36,59 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T187 — Off-grid cleanup в шаблонах + snap-on-write facade +
+  `/grid-check` diagnostic CLI (PR #119).** Plan B двухслойный фикс
+  (ADR-T187a). После T029 probe нашёл 81 off-grid endpoint
+  в 6 из 11 встроенных шаблонов; T187 закрывает 81/81 + ship'ит
+  preventive snap + diagnostic CLI.
+  - **Слой 1 — preventive snap.** `domain/grid.py` (`snap_to_grid`,
+    `OffGridEndpoint`, `OffGridReport`, `OffGridPositionError`).
+    `Schematic` facade (`adapters/outbound/schematic_kicad/facade.py`)
+    snap'ит все Position/tuple входы (compoent placement, wire
+    endpoints, labels, junctions, no_connect, spice directives) к
+    1.27 mm connection grid. `connect(start, end)` тоже snap'ит.
+    Idempotent для уже on-grid. FP-jitter (Δ ≤ 1e-6 mm) silent
+    snap независимо от mode. `EFACTORY_STRICT_GRID=1` env-var —
+    opt-in strict mode (raise `OffGridPositionError`) для CI /
+    safety-net в новых builders.
+  - **Слой 2 — diagnostic CLI.** `application/run_grid_check.py`
+    use case переиспользует `KicadCliErcRunner` (T029), фильтрует
+    violations по `type == "endpoint_off_grid"`, маппит в
+    `OffGridReport` с per-endpoint `nearest_grid` + `delta_mm` +
+    `kind` classification (pin/wire/label/pwr-flag/no-connect).
+    `MarkdownGridReportWriter` рендерит отчёт sorted by |Δ|
+    descending. CLI `efactory design check-grid [<project>]` +
+    slash `/grid-check`. Exit-codes: 0 clean / 1 has off-grid /
+    2 infrastructure. Не gate, не блокирует `/sim-run`.
+  - **Слой 3 — регенерация.** 8 buildered шаблонов (`se-amp`,
+    `nfb-se-amp`, `op-amp-inverting`, `bjt-ce-nfb`, `tube-pp-amp`,
+    `tube-line-preamp`, `tube-phono-riaa`, `active-lpf-sallen-key`)
+    регенерированы через `scripts/regenerate-templates.py` — snap
+    в facade автоматически фиксит off-grid. 3 T031 builderless
+    шаблонов (`6p13s-se-resistive`, `6zh32p-mic-preamp`,
+    `6zh38p-if-amp`) восстановлены как proper Python builder в
+    `test_pentode_se_resistive_facade.py` (parametric +
+    3 wrappers) + добавлены в `_BAKERS`. Все 11 шаблонов:
+    `endpoint_off_grid == 0`, `errors == 0`.
+  - **KB sync (T134 Уровень 1+2).** Новый KB topic
+    `design.grid-check` (origins of off-grid, exit-code contract,
+    when to use vs `design-check`, two-layer T187 fix anatomy).
+    `agent.command-routing` +1 row для grid keywords →
+    `/grid-check`. 2 deterministic L2 regression cases.
+  - **Acceptance (SC1-SC8).**
+    - SC1 ✓: ERC `endpoint_off_grid == 0` для всех 11 шаблонов.
+    - SC2 ✓: `efactory design check-grid` exit-code 0 для всех 11.
+    - SC3 ✓: T031 numerical acceptance (`tests/integration/
+      composition/test_t031_phase5_templates.py`) проходит на
+      регенерированных шаблонах (V_plate / Ia / Ig2 в bounds).
+    - SC4 ✓: coverage 87.07% (≥80% threshold).
+    - SC5 ✓: pre-push 5/5 (ruff/format/mypy/lint-imports/pytest).
+    - SC6 ✓: KB sync verified (`agent.command-routing` row + L2
+      regression cases).
+    - SC7 ✓: `uv run python scripts/regenerate-templates.py`
+      завершается без ошибок, все 11 шаблонов re-bake'ятся.
+    - SC8 ✓: 2140 passed, 7 skipped, 1 xfailed.
+
 - **T182 + T183 + T184 + T185 + T186 — Modified Koren formulations +
   Reefman + Derk pentodes + σ-weighting + denser EL34 (Tier 3+/Tier
   2/Tier 1.5 cascade, PR #117).** Расширение T031
