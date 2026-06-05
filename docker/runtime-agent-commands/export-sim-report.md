@@ -1,56 +1,82 @@
 ---
-description: Publication-grade sim-report (Markdown + plots @ 300 DPI). MVP — metadata only до T190+T191.
-argument-hint: '<PROJECT_SLUG> [--lang ru|en]'
+description: Publication-grade sim-report (Markdown + plots @ 300 DPI). Поддерживает --rerun для свежей симуляции.
+argument-hint: '<PROJECT_SLUG> [--lang ru|en] [--rerun --schematic PATH] [--tran-step Xu --tran-stop Yms] [--ac-points N --ac-fstart F0 --ac-fstop F1]'
 allowed-tools: Bash
 ---
 
 Пользователь хочет получить публикационный отчёт о симуляции
 (Markdown с подписанными графиками для вставки в статью) через
-`efactory publication export-sim-report` (T035).
+`efactory publication export-sim-report` (T035 + T191).
 
 Args от пользователя: `$ARGUMENTS` (первый позиционный — slug проекта,
-далее optional `--lang`).
+далее optional флаги).
 
-1. **Извлеки project slug.** Первый позиционный (не флаг). Если
-   отсутствует — напиши: «Передай slug проекта первым аргументом:
-   `/export-sim-report se-amp`», остановись.
+## 1. Извлеки project slug
 
-2. **Запусти:** `efactory publication export-sim-report <slug>
-   $ARGUMENTS_REST` — `$ARGUMENTS_REST` это `--lang ru|en` если
-   передан.
+Первый позиционный (не флаг). Если отсутствует — напиши: «Передай
+slug проекта первым аргументом: `/export-sim-report se-amp`»,
+остановись.
 
-3. **Покажи stdout полностью.** Команда отчитывается каскадным echo:
-   - `publication-export: <abs_path_to_<ts>_dir>` — корень публикации.
+## 2. Определи режим
 
-4. **Структура output**'а:
-   - `README.md` — описание файлов на `--lang`.
-   - `sim-report/report.md` — главный документ публикации.
-   - `sim-report/plots/*.png` — графики (300 DPI). В текущем MVP
-     отсутствуют (см. п.6).
+**Без `--rerun` (default)** — `/export-sim-report <slug>` пытается
+загрузить latest persistent TRAN/AC waveforms из
+`<project>/.efactory/sim-results/<TS>-<analysis>.waveform.json` (T190).
+Если waveforms на месте — отчёт получит полные секции с публикационными
+plot'ами @ 300 DPI. Если их нет (новый проект, не было /sim-run /
+design-to-sim) — отчёт будет metadata-only с notice про missing
+данные.
 
-5. **Exit-code:**
-   - `0` → успех. report.md создан с метаданными + magnetics
-     graceful-skip notice.
-   - `1` → проект не найден / manifest повреждён.
-   - `2` → infrastructure fail (writer error).
+**С `--rerun`** — гонит свежие симуляции через `design_to_sim`
+(потребляет ~10-60s на schematic + ngspice + parse). Требует
+`--schematic <path>` (путь к `.kicad_sch` относительно проекта) и
+хотя бы одну пару analysis-флагов:
 
-6. **⚠️ Текущее ограничение MVP (T035 Phase 4.2):**
-   - Команда формирует **только метаданные** в `report.md`:
-     проект, дата публикации, версия efactory, язык, magnetics-
-     missing notice.
-   - **TRAN/AC/parametric sweep секции отсутствуют** — заблокировано
-     T190 (raw waveform persistence) и T191 (`--rerun` integration)
-     в `BACKLOG.md`. После закрытия этих задач команда получит
-     `--rerun` флаг и сможет наполнять отчёт реальными графиками
-     симуляции @ 300 DPI с ru/en подписями.
-   - **Workaround сейчас:** для production-grade документов
-     запускай `/sim-run` отдельно, забирай terminal plot через
-     `/bridge plot` (preview @ 120 DPI), и руками вставляй в
-     статью. После T190+T191 эта команда заменит ручной workflow.
+- TRAN: `--tran-step <step>` + `--tran-stop <stop>` (SPICE notation: `1u`, `5m`).
+- AC: `--ac-points <N>` + `--ac-fstart <f0>` + `--ac-fstop <f1>` (+ optional `--ac-sweep dec|lin|oct`, default dec).
 
-7. **Когда `--lang`:**
-   - `ru` (default) — `# Отчёт о симуляции — <project>` + кириллица.
-   - `en` — `# Simulation Report — <project>` + английский.
+Можно запустить только TRAN, только AC, или обе сразу. Каждая
+симуляция автоматически persist'ится через T190 hook — следующий
+вызов без `--rerun` получит plot'ы без повторной симуляции.
 
-См. KB topic `design.export-publication` (workflow целиком; T190/T191
-roadmap; рекомендации по post-merge сборке статьи).
+## 3. Запусти
+
+`efactory publication export-sim-report <slug> $ARGUMENTS_REST`
+
+Примеры:
+
+- `/export-sim-report op-amp-inverting` — load из persistent, отчёт.
+- `/export-sim-report op-amp-inverting --rerun --schematic op-amp-inverting.kicad_sch --tran-step 1u --tran-stop 5m` — свежий TRAN, persist, отчёт.
+- `/export-sim-report se-amp --rerun --schematic se-amp.kicad_sch --tran-step 10n --tran-stop 5m --ac-points 20 --ac-fstart 1 --ac-fstop 100k` — TRAN + AC.
+
+## 4. Покажи stdout полностью
+
+Команда отчитывается каскадным echo:
+
+- `publication-export: <abs_path_to_<ts>_dir>` — корень публикации.
+
+## 5. Структура output
+
+- `README.md` — описание файлов на `--lang`.
+- `sim-report/report.md` — главный документ публикации.
+- `sim-report/plots/tran-<signal>.png`, `sim-report/plots/ac-<signal>.png` — графики (300 DPI). Появляются только когда соответствующие waveforms доступны (persistent или --rerun).
+
+## 6. Exit-code
+
+- `0` — успех. report.md создан.
+- `1` — проект/схема не найдены / SPICE failed / неверные аргументы.
+- `2` — infrastructure fail (writer error / lang invalid).
+
+## 7. `--lang`
+
+- `ru` (default) — `# Отчёт о симуляции — <project>` + кириллица.
+- `en` — `# Simulation Report — <project>` + английский.
+
+## 8. Фильтрация сигналов
+
+`--tran-signals v(out),v(in)` / `--ac-signals v(out)` — comma-separated
+trace-имена. По умолчанию рендерятся **все** traces из TRAN/AC
+результата.
+
+См. KB topic `design.export-publication` (workflow целиком + recommended
+post-merge сборка статьи).

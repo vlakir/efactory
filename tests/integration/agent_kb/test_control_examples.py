@@ -388,6 +388,12 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'design.export-publication',
         'Anti-pattern',
     ),
+    # T191: --rerun integration в /export-sim-report (publication workflow).
+    (
+        'rerun publication report 300 DPI симуляция отчёт',
+        'design.export-publication',
+        '--rerun',
+    ),
 ]
 
 

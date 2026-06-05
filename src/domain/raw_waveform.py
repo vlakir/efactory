@@ -19,6 +19,8 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from domain.simulation import AcSweep, TimeSeries
+
 RAW_WAVEFORM_SCHEMA_VERSION: Literal[1] = 1
 
 _FROZEN = ConfigDict(frozen=True, extra='forbid')
@@ -95,9 +97,48 @@ class RawWaveform(BaseModel):
         return self
 
 
+def waveform_to_time_series(waveform: RawWaveform) -> TimeSeries:
+    """
+    Convert TRAN/DC `RawWaveform` → `TimeSeries` (T191).
+
+    Raises `ValueError` if waveform is AC (use `waveform_to_ac_sweep`).
+    """
+    if waveform.analysis_type == WaveformAnalysisType.AC:
+        msg = (
+            f'waveform_to_time_series: cannot convert AC waveform '
+            f'(use waveform_to_ac_sweep); got {waveform.analysis_type.value}.'
+        )
+        raise ValueError(msg)
+    return TimeSeries(time=waveform.x_axis, traces=waveform.traces)
+
+
+def waveform_to_ac_sweep(waveform: RawWaveform) -> AcSweep:
+    """
+    Convert AC `RawWaveform` → `AcSweep` (T191).
+
+    Raises `ValueError` if waveform is not AC or `traces_imag` is None.
+    """
+    if waveform.analysis_type != WaveformAnalysisType.AC:
+        msg = (
+            f'waveform_to_ac_sweep: expected AC waveform, '
+            f'got {waveform.analysis_type.value}.'
+        )
+        raise ValueError(msg)
+    if waveform.traces_imag is None:
+        msg = 'waveform_to_ac_sweep: AC waveform with traces_imag=None (corrupt).'
+        raise ValueError(msg)
+    return AcSweep(
+        frequency=waveform.x_axis,
+        traces_real=waveform.traces,
+        traces_imag=waveform.traces_imag,
+    )
+
+
 __all__ = [
     'RAW_WAVEFORM_SCHEMA_VERSION',
     'Annotated',
     'RawWaveform',
     'WaveformAnalysisType',
+    'waveform_to_ac_sweep',
+    'waveform_to_time_series',
 ]

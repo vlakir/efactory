@@ -67,82 +67,74 @@ Sheet names и формат-агностичная информация (DPI, ф
 
 ## `/export-sim-report <PROJECT_SLUG>` — sim-report
 
-⚠️ **Текущее состояние MVP (T035 Phase 4.2):** команда формирует
-только metadata-секцию + magnetics-missing notice в `report.md`.
+После закрытия T190 + T191 команда формирует полный publication-grade
+отчёт с TRAN/AC plots @ 300 DPI. Два режима:
 
-**TRAN/AC/parametric плоты ОТСУТСТВУЮТ** — заблокировано двумя
-follow-up задачами в `BACKLOG.md`:
+### Без `--rerun` (default)
 
-- **T190** — Persistence raw SPICE waveforms. Сейчас `sim_run`
-  пишет только `SimResult` JSON snapshot (summary metadata), без
-  raw `time`/`traces` массивов. Значит TRAN/AC plot rendering от
-  existing results невозможен.
-- **T191** — `--rerun` integration. После закрытия T190, добавить
-  `--rerun` флаг + флаги для analysis params + сборка
-  `SimulationResultsBundle` из реальных результатов.
-
-### Текущий workflow до T190+T191
-
-Для production-grade статей с plots **используй существующие
-slash / CLI** efactory, не пиши свой Python.
-
-**TRAN waveform → PNG (preview-grade, 120 DPI):**
+Грузит latest TRAN/AC waveforms из persistent sidecar
+`<project>/.efactory/sim-results/<TS>-<analysis>.waveform.json` (T190).
+Бесплатно после `/sim-run <project>` / `/measure-*` / любого
+`design_to_sim` — те уже записали waveforms. Если waveforms нет —
+получится metadata-only report с magnetics-missing notice (как
+старый MVP).
 
 ```
-/plot-tran <netlist> --signal v(load) --t-step 1u --t-stop 5m --output /tmp/tran.png
+/export-sim-report op-amp-inverting
+/export-sim-report op-amp-inverting --lang en
 ```
 
-или эквивалентно `efactory bridge plot tran <netlist> --output
-<abs.png>` (T025 routes одинаково). Преврыватель stdout печатает
-`plot-render: <abs path>` — затем `eog <path> &` чтобы открыть в
-host viewer через X11.
+### С `--rerun`
 
-**AC sweep → PNG:**
+Гонит свежие симуляции через `design_to_sim` (потребляет ~10-60s).
+Требует `--schematic <path>` (внутрипроектный относительный) +
+хотя бы одну пару analysis-флагов:
+
+- TRAN: `--tran-step <step>` + `--tran-stop <stop>` (SPICE notation
+  `1u`/`5m`).
+- AC: `--ac-points <N>` + `--ac-fstart <f0>` + `--ac-fstop <f1>`
+  (+ optional `--ac-sweep dec|lin|oct`, default dec).
+
+Каждая симуляция автоматически persist'ится через T190 hook —
+следующий вызов без `--rerun` получит plot'ы без повторного запуска
+SPICE.
 
 ```
-/plot-ac <netlist> --signal v(load) --f-start 10 --f-stop 1Meg --output /tmp/ac.png
+/export-sim-report op-amp-inverting --rerun \
+  --schematic op-amp-inverting.kicad_sch \
+  --tran-step 1u --tran-stop 5m
+/export-sim-report se-amp --rerun \
+  --schematic se-amp.kicad_sch \
+  --tran-step 10n --tran-stop 5m \
+  --ac-points 20 --ac-fstart 1 --ac-fstop 100k
 ```
 
-**300 DPI gap (важно!):** существующий `/plot-{ac,tran} --output`
-выдаёт **120 DPI** (T024 preview-grade). Для **печатных
-публикаций @ 300 DPI** на момент T035 Phase 4 **нет готового
-workflow** — это и есть scope T190+T191. Пока workaround:
+### Фильтрация сигналов
 
-- Использовать 120 DPI PNG как «черновой» для structure статьи.
-- Для финальной print-version: открыть схему / симуляцию в
-  **KiCad Simulator GUI** (`eeschema` → Simulator → plot →
-  Export → PNG/SVG) и сделать manual export с нужным DPI.
-- Либо подождать T190 (raw waveform persistence) + T191
-  (`--rerun` integration) → `/export-sim-report <project>
-  --rerun` сделает всё одной командой с 300 DPI.
+`--tran-signals v(out),v(in)` / `--ac-signals v(out)` — comma-
+separated trace-имена. По умолчанию рендерятся **все** traces из
+TRAN/AC waveform.
 
-**🚫 Anti-pattern (НЕ делай так):**
+### 🚫 Anti-pattern (не делай так)
 
 - НЕ пиши custom matplotlib скрипт типа `from spicelib.raw import
   RawRead; ...; fig.savefig(dpi=300)`. Это **изобретение
-  велосипеда** — нарушает `agent.command-routing`
-  anti-patterns. `bridge plot {ac,tran} --output` уже это
-  делает. Custom script — extra dependency (`uv add matplotlib`),
-  extra path для maintenance, не интегрирован с T025 / T035
-  будущим pipeline.
-- НЕ запускай `ngspice -b -r out.raw netlist.cir` руками — у
-  тебя есть `/sim-run` + `/plot-{ac,tran}` оркестрация поверх.
+  велосипеда** — `/export-sim-report --rerun` уже делает 300 DPI
+  PNG @ ru/en labels. Custom script — extra dependency,
+  extra maintenance, не интегрирован с T025 / T035.
+- НЕ запускай `ngspice -b -r out.raw netlist.cir` руками —
+  оркестрация лежит в `/sim-run`, `/measure-*`, `/export-sim-report
+  --rerun`.
 - НЕ предлагай юзеру скачать matplotlib / spicelib — efactory
-  уже всё содержит, юзер не должен думать о dependency.
+  всё содержит, у юзера не должно быть extra setup.
 
-**После T190+T191** этот manual workflow заменится одной
-командой `/export-sim-report <project> --rerun` с автоматическим
-300 DPI publication-grade PNG.
+### Что команда делает
 
-### Что MVP всё-таки делает
-
-Команда полезна **сейчас** для:
-
-- Test placeholder в publication tree (правильная структура
-  каталогов + README ссылки).
-- Documentation проекта (metadata + версия efactory).
-- Magnetics graceful skip notice → подсказывает запустить
-  `/mag-verify` для FEM-валидации.
+- `report.md` с metadata + TRAN-секция (плоты + подписи) + AC-секция
+  + magnetics-секция (если есть FEM summary) + measurement summary.
+- `sim-report/plots/tran-<signal>.png`,
+  `sim-report/plots/ac-<signal>.png` @ 300 DPI с ru/en подписями.
+- `README.md` с описанием артефактов.
 
 ### Exit codes
 
@@ -154,9 +146,12 @@ workflow** — это и есть scope T190+T191. Пока workaround:
 
 - Финализация **схемы** для submission (vector + raster, color +
   bw) → `/export-schematic-publication`.
-- Сборка **draft статьи целиком** с графиками симуляции → пока
-  manual (см. workaround выше), после T190+T191 — `/export-sim-report
-  --rerun`.
+- Сборка **draft статьи целиком** с графиками симуляции →
+  `/export-sim-report --rerun` (T191): свежий прогон TRAN+AC +
+  300 DPI публикационные плоты с локализованными подписями.
+- Повторный экспорт без свежей симуляции → `/export-sim-report`
+  (без `--rerun`): load из persistent sidecar (T190), за секунды
+  получаем тот же report.md.
 
 ## Общие принципы
 
@@ -164,7 +159,7 @@ workflow** — это и есть scope T190+T191. Пока workaround:
   результаты симуляции.
 - **`<ts>` collision-safe** (spec W-4): если два вызова в одну
   секунду — второй получит суффикс `-1`, `-2`.
-- **Локализация label'ов осей графиков** (после T190+T191):
+- **Локализация label'ов осей графиков:**
   `--lang ru` → «частота, Гц (лог.)», «магнитуда, дБ», «время, с»;
   `--lang en` → «frequency, Hz (log)», «magnitude, dB», «time, s».
 - **OUT OF SCOPE:** PDF composing статьи (`\documentclass`,

@@ -56,6 +56,7 @@ from application.bridge_sweep import (
     SweepRun,
     bridge_sweep,
 )
+from application.compose_sim_results_bundle import compose_sim_results_bundle
 from application.create_project import create_project as create_project_use_case
 from application.create_template_from_project import (
     CreateTemplateError,
@@ -164,7 +165,6 @@ from domain.phase_margin_injection import (
 from domain.publication import (
     MultiSheetMode,
     PublicationLang,
-    SimulationResultsBundle,
 )
 from domain.simulation import (
     AcAnalysis,
@@ -4459,6 +4459,11 @@ def build_app(
 
         typer.echo(f'publication-export: {ts_root}')
 
+    def _split_signals(arg: str | None) -> tuple[str, ...]:
+        if not arg:
+            return ()
+        return tuple(s.strip() for s in arg.split(',') if s.strip())
+
     @publication_app.command('export-sim-report')
     def publication_export_sim_report(
         project: Annotated[str, typer.Argument(help='Slug проекта')],
@@ -4467,14 +4472,79 @@ def build_app(
             str,
             typer.Option('--lang', help='ru | en (default ru)'),
         ] = 'ru',
+        rerun: Annotated[
+            bool,
+            typer.Option(
+                '--rerun',
+                help='T191: запустить свежие SPICE-симуляции '
+                '(требует --schematic + хотя бы одну пару analysis-флагов).',
+            ),
+        ] = False,
+        schematic: Annotated[
+            str | None,
+            typer.Option(
+                '--schematic',
+                help='Путь к .kicad_sch (для --rerun).',
+            ),
+        ] = None,
+        tran_step: Annotated[
+            str | None,
+            typer.Option(
+                '--tran-step',
+                help='TRAN шаг (SPICE: 1u, 10n). Парный с --tran-stop.',
+            ),
+        ] = None,
+        tran_stop: Annotated[
+            str | None,
+            typer.Option(
+                '--tran-stop',
+                help='TRAN длительность (1m, 20m).',
+            ),
+        ] = None,
+        ac_sweep: Annotated[
+            str,
+            typer.Option('--ac-sweep', help='dec | lin | oct (default dec)'),
+        ] = 'dec',
+        ac_points: Annotated[
+            int | None,
+            typer.Option(
+                '--ac-points',
+                help='AC точек/декада (включает AC при тройке fstart/fstop/points).',
+            ),
+        ] = None,
+        ac_f_start: Annotated[
+            str | None,
+            typer.Option('--ac-fstart', help='AC начальная частота (1, 10).'),
+        ] = None,
+        ac_f_stop: Annotated[
+            str | None,
+            typer.Option('--ac-fstop', help='AC конечная частота (1Meg, 100k).'),
+        ] = None,
+        tran_signals: Annotated[
+            str | None,
+            typer.Option(
+                '--tran-signals',
+                help='Comma-separated trace-имена для TRAN-плотов (default — все).',
+            ),
+        ] = None,
+        ac_signals: Annotated[
+            str | None,
+            typer.Option(
+                '--ac-signals',
+                help='Comma-separated trace-имена для AC-плотов (default — все).',
+            ),
+        ] = None,
+        sim_timeout: Annotated[
+            float,
+            typer.Option('--sim-timeout', help='Таймаут одного analysis (s).'),
+        ] = 60.0,
     ) -> None:
         """
-        Publication-grade sim-report (T035 /export-sim-report) — MVP.
+        Publication-grade sim-report (T035 /export-sim-report + T191 --rerun).
 
-        T035 Phase 4.2 minimal: формирует report.md с metadata-секцией +
-        magnetics-missing notice. TRAN/AC plots блокированы T190 в
-        BACKLOG (raw waveform persistence) + T191 (--rerun integration).
-        Полноценный отчёт станет доступен после закрытия T190+T191.
+        Без `--rerun` — загружает latest TRAN/AC waveforms из T190
+        persistent sidecar. С `--rerun` — гоняет свежие симуляции через
+        `design_to_sim` use case и persist'ит их же для будущих вызовов.
         """
         try:
             pub_lang = PublicationLang(lang)
@@ -4482,13 +4552,39 @@ def build_app(
             typer.echo(f'--lang must be ru|en, got {lang!r}', err=True)
             raise typer.Exit(2) from exc
 
-        bundle_data = SimulationResultsBundle(
-            project=project,
-            efactory_version=efactory_version,
-            publication_timestamp=datetime.now(UTC),
-        )
+        tran_spec: TranAnalysis | None = None
+        if tran_step is not None and tran_stop is not None:
+            try:
+                tran_spec = _make_tran(tran_step, tran_stop, '0', uic=False)
+            except (SpiceNumberFormatError, ValidationError) as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(1) from exc
+        ac_spec: AcAnalysis | None = None
+        if ac_points is not None and ac_f_start is not None and ac_f_stop is not None:
+            try:
+                ac_spec = _make_ac(ac_sweep, ac_points, ac_f_start, ac_f_stop)
+            except (SpiceNumberFormatError, ValidationError) as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(1) from exc
 
         async def _run() -> tuple[object, Path]:
+            bundle_data = await compose_sim_results_bundle(
+                project_name=project,
+                efactory_version=efactory_version,
+                rerun=rerun,
+                schematic=Path(schematic) if schematic is not None else None,
+                tran_analysis=tran_spec,
+                ac_analysis=ac_spec,
+                tran_signals=_split_signals(tran_signals),
+                ac_signals=_split_signals(ac_signals),
+                sim_timeout_seconds=sim_timeout,
+                projects_root=projects_root,
+                manifest_repo=manifest_repository,
+                exporter=schematic_exporter,
+                simulator=simulator,
+                raw_waveform_repo=raw_waveform_repo,
+                sim_results_writer=sim_results_repo,
+            )
             return await run_export_sim_report(
                 sim_results=bundle_data,
                 lang=pub_lang,
@@ -4504,11 +4600,26 @@ def build_app(
                     session_logger,
                     'publication.export_sim_report',
                     project=project,
-                    payload={'project': project, 'lang': lang},
+                    payload={
+                        'project': project,
+                        'lang': lang,
+                        'rerun': rerun,
+                        'tran': tran_step is not None,
+                        'ac': ac_points is not None,
+                    },
                     fn=_run,
                 ),
             )
-        except (ProjectNotFoundError, ProjectManifestMissingError) as exc:
+        except (
+            ProjectNotFoundError,
+            ProjectManifestMissingError,
+            SchematicExportError,
+            SimulationFailedError,
+            SimulatorUnavailableError,
+            SpiceNumberFormatError,
+            ValidationError,
+            ValueError,
+        ) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(1) from exc
         except (SimReportWriteError, PublicationReadmeWriteError) as exc:
