@@ -63,6 +63,20 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T190** — [closed 2026-06-06, PR #124] **Persistence raw SPICE
+  waveforms (sidecar JSON).** Domain VO `RawWaveform` (schema v1:
+  `timestamp` + `analysis_type` + `source_netlist` + `x_axis_name` +
+  `x_axis` + `traces` + `traces_imag`) + `RawWaveformRepository` port +
+  `FileSystemRawWaveforms` adapter (atomic `.tmp` → `replace` write;
+  `load_latest` sortable by filename timestamp + filter by analysis_type).
+  Sidecar layout `<project>/.efactory/sim-results/<TS-safe>-
+  <analysis>.waveform.json` (parный к SimResult snapshot). Hook в
+  `sim_run` use case (optional writer для TRAN/AC; OP/FOUR skip);
+  `design_to_sim` прокидывает оба writers; CLI `bridge sim-run`
+  автоопределяет `project_root` через `.efactory/`-marker walk-up.
+  33 unit-теста (+29 от Phase 1 T035). Coverage 87.45%, pre-push 5/5 ✓.
+  Foundation для T191 (`--rerun` integration в `/export-sim-report`).
+
 - **T035** — [closed 2026-06-06, PR #123] **Publication workflow как
   slash-команды.** `/export-schematic-publication` (full) — SVG/PDF/PNG @
   300 DPI × color/bw × per-sheet/optional combined PDF, через

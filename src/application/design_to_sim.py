@@ -19,7 +19,9 @@ if TYPE_CHECKING:
     from ports.outbound.project_manifest_repository import (
         ProjectManifestRepository,
     )
+    from ports.outbound.raw_waveforms import RawWaveformRepository
     from ports.outbound.schematic_exporter import SchematicExporter
+    from ports.outbound.sim_results import SimResultsRepository
     from ports.outbound.simulator import Simulator
 
 
@@ -43,6 +45,8 @@ async def design_to_sim(
     erc_runner: ErcRunner | None = None,
     erc_report_writer: ErcReportWriter | None = None,
     erc_timeout_seconds: float = 30.0,
+    sim_results_writer: SimResultsRepository | None = None,
+    raw_waveform_writer: RawWaveformRepository | None = None,
 ) -> Simulation:
     """
     KiCad schematic → SPICE netlist → run analysis. Возвращает агрегат.
@@ -82,12 +86,19 @@ async def design_to_sim(
         msg = 'design_to_netlist did not produce netlist_path.'
         raise RuntimeError(msg)
 
+    project_root_for_persistence: Path | None = None
+    if sim_results_writer is not None or raw_waveform_writer is not None:
+        project_root_for_persistence = projects_root / project_name
+
     try:
         result = await sim_run(
             netlist=netlist_path,
             analysis=analysis,
             simulator=simulator,
             timeout_seconds=timeout_seconds,
+            sim_results_writer=sim_results_writer,
+            raw_waveform_writer=raw_waveform_writer,
+            project_root=project_root_for_persistence,
         )
     except SimulatorUnavailableError:
         # ngspice не установлен → status остаётся NETLIST_READY (netlist всё

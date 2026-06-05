@@ -1107,26 +1107,9 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
   схеме v1; `/export-sim-report <project>` подтягивает магнитный
   summary в секцию «Магнитные компоненты» с таблицей `L_self`,
   `B_peak`, `analytical vs FEM relative_difference`.
-- **T190** — [2026-06-05, discovered during T035 Phase 3 design]
-  Persistence raw SPICE waveforms (TimeSeries / AcSweep) для
-  `/export-sim-report --no-rerun` mode. Сейчас `sim_run` хранит
-  только `SimResult` JSON snapshot в `<project>/.efactory/
-  sim-results/<TS>-<analysis>.json` — это summary + metrics dict,
-  без raw `time`/`traces`. Значит `/export-sim-report` без
-  `--rerun` не может построить TRAN / AC publication plots
-  (T035 Phase 2.2 функции `render_*_publication_png` требуют
-  TimeSeries / AcSweep). Включает: (1) расширение `SimResult`
-  schema (либо отдельный sidecar JSON / parquet) для записи
-  `time` + `traces_*` массивов; (2) обновление
-  `FileSystemSimResults` adapter (writer); (3) reader порт +
-  adapter для загрузки SimulationResultsBundle из latest
-  saved результатов; (4) обновление Phase 4 CLI
-  `/export-sim-report` чтобы без `--rerun` загружать persistent
-  данные. Без T190 — `/export-sim-report` де-факто всегда требует
-  `--rerun` (либо TRAN/AC секции пустые с warning notice).
-  Acceptance: после `/sim-run <project>` raw waveforms лежат
-  на диске; `/export-sim-report <project>` (без --rerun) видит
-  их, формирует полный TRAN+AC отчёт за <30s.
+<!-- T190 (raw waveform persistence) — moved to BOARD.md → Done
+     2026-06-06, PR #124. -->
+
 - **T191** — [2026-06-05, T035 Phase 4.2 MVP follow-up]
   `--rerun` integration для `/export-sim-report`. Сейчас CLI команда
   билдит минимальный `SimulationResultsBundle` (только metadata),
