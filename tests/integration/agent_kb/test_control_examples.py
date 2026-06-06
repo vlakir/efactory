@@ -400,6 +400,12 @@ _CONTROL_EXAMPLES: list[tuple[str, str, str]] = [
         'design.export-publication',
         '--dc-source',
     ),
+    # T192: multi-sheet facade + combined PDF.
+    (
+        'multi-sheet hierarchical sub-sheet combined PDF publication',
+        'design.export-publication',
+        'add_sub_sheet',
+    ),
 ]
 
 

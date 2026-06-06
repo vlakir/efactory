@@ -63,6 +63,23 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T192** — [closed 2026-06-06, PR #128] **Multi-sheet schematic
+  facade + SC-6 acceptance.** Закрывает T035 SC-6. Domain
+  `SubSheetSpec` + `SchematicSpec.sub_sheets`. Facade
+  `Schematic.add_sub_sheet(sheet_name, sheet_file, at, width_mm=30,
+  height_mm=20)` API (grid-snap-on-write через `_to_position`).
+  `KicadSchematicWriter` эмитит `(sheet ...)` блок с
+  fields_autoplaced + stroke + fill + uuid + `(property "Sheetname"
+  ...)`, `(property "Sheetfile" ...)`, `(instances (project ...)`
+  — совместимо с KiCad 10 GUI. SC-6 acceptance test
+  `test_sc6_multi_sheet_combined_pdf` synthesizes 2-sheet проект
+  (parent + child через facade.save), запускает
+  `/export-schematic-publication --multi-sheet-mode combined`,
+  проверяет combined PDF + per-sheet count = 2 + README warning text.
+  Skipped без kicad-cli + rsvg-convert (полная проверка в
+  efactory:linux container). 6 unit tests + 1 e2e + 1 L2
+  regression case. 2518 passed, coverage 87.33%, pre-push 5/5 ✓.
+
 - **T189** — [closed 2026-06-06, PR #127] **Persistence FEM + magnetics
   summary JSON для `/export-sim-report`.** Закрывает M-thin gap
   (T035 SC-9): магнитная секция отчёта подтягивается автоматически
