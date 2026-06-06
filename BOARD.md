@@ -61,6 +61,50 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
+- **T036** — [2026-05-15, refactored 2026-06-06] **`efactory doctor` /
+  `efactory-up --doctor` — диагностика тулчейна в образе.**
+  Re-scope T036 после Phase 0.9 closing (ADR 2026-05-19): из трёх
+  изначальных флагов остаётся только `--doctor`. `--update` покрыт
+  `efactory-up --pull` (заработает после T115/GHCR); `--update-models`
+  — `/spice-import-url` (T030); массовый refresh каталога не
+  запрашивался.
+
+  Архитектура: Python CLI subcommand `efactory doctor` (hexagonal-
+  clean: outbound port `SystemProbe` + subprocess adapter, application
+  use case `run_doctor`, inbound CLI handler); bash wrapper
+  `efactory-up --doctor` делает host preflight + делегирует внутрь
+  контейнера через `docker run`.
+
+  Acceptance:
+  - `efactory doctor` (in-image) — human-readable отчёт с ✓/⚠/✗:
+    - **Toolchain versions:** kicad-cli, ngspice, ElmerSolver, getdp,
+      gmsh, freecad/freecadcmd, rsvg-convert, python, uv, git + key
+      Python libs (PyOpenMagnetics, femmt, scipy).
+    - **GUI passthrough** (skip если `--no-gui`): `$DISPLAY`,
+      `xset q` reachable, `/dev/dri/*`.
+    - **Mounts:** `/workspace`, `/efactory/.claude`, `/libs/{symbols,
+      footprints}` — exist+writable где применимо;
+      `/efactory/.claude/.credentials.json` exists.
+    - **Runtime:** cgroup memory limit, `ulimit -n`, disk free на
+      `/workspace`.
+  - `efactory-up --doctor` (host) добавляет:
+    - `docker info`, `docker version`, `docker buildx ls`.
+    - X11 на хосте, `$DISPLAY`.
+    - `efactory:linux` image exists + age (WARN если >30 дней).
+    - Делегирует `docker run --rm efactory:linux efactory doctor`,
+      проксирует output.
+  - **Exit code:** `0` — OK или только WARN; `1` — есть хотя бы один
+    FAIL.
+  - **Out of scope (явно):** `--json` output, auto-fix/self-heal,
+    `--update-models`, slash `/doctor`.
+  - **Тесты (TDD):** domain VOs (`DoctorCheck` / `DoctorReport` /
+    `CheckStatus`) + unit; `run_doctor` use case со stub
+    `SystemProbe`; CLI handler; `SystemProbeSubprocess` adapter —
+    integration (где доступны probe-цели: `python --version`, `git
+    --version`). Coverage ≥ 80% на src/.
+  - **KB sync:** не требуется (CLI-only, без slash; Уровни 1+2
+    пропускаем с явным проговором в PR description).
+
 ## Done
 
 - **T192** — [closed 2026-06-06, PR #128] **Multi-sheet schematic
