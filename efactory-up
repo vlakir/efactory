@@ -55,6 +55,12 @@
 #                       появляются.
 #     --reset-claude-settings  (deprecated alias of --reset-claude-state;
 #                       будет удалён в следующем минорном релизе)
+#     --doctor          Диагностика тулчейна (T036). Host preflight
+#                       (docker version / buildx / X11 / image age) +
+#                       делегация `efactory doctor` внутрь контейнера.
+#                       Exit 0 — OK или только WARN; 1 — есть FAIL.
+#                       Если $DISPLAY не выставлен на хосте, в контейнер
+#                       автоматически прокидывается `--no-gui`.
 #     -h, --help        Показать help и выйти.
 #
 # Env:
@@ -123,13 +129,14 @@ DEMO_FREECAD_MODE=0
 AGENT_MODE=0
 AGENT_PROJECT=""
 RESET_CLAUDE_STATE=0
+DOCTOR_MODE=0
 PASS_ARGS=()
 
 log() { printf '[efactory-up] %s\n' "$*" >&2; }
 fail() { log "FAIL: $*"; exit 1; }
 
 usage() {
-    sed -n '2,65p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,71p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
 }
 
@@ -160,6 +167,7 @@ while (( $# )); do
             # Deprecated alias (T014 rename). Удалим в следующем minor релизе.
             log "WARNING: --reset-claude-settings deprecated, use --reset-claude-state"
             RESET_CLAUDE_STATE=1; shift ;;
+        --doctor)        DOCTOR_MODE=1; shift ;;
         -h|--help)       usage ;;
         --)              shift; PASS_ARGS+=("$@"); break ;;
         *)               PASS_ARGS+=("$1"); shift ;;
@@ -186,6 +194,10 @@ if (( RESET_CLAUDE_STATE && HEADLESS )); then
     fail "--reset-claude-state и --headless несовместимы"
 fi
 
+if (( DOCTOR_MODE && ( DEMO_MODE || DEMO_FREECAD_MODE || AGENT_MODE || HEADLESS || RESET_CLAUDE_STATE ) )); then
+    fail "--doctor — standalone режим; несовместим с --demo/--demo-freecad/--agent/--headless/--reset-claude-state"
+fi
+
 # `--dangerously-skip-permissions` (Claude Code CLI) отказывается работать
 # под root. Контейнер запускается под `ubuntu` (uid=1000) — но если кто-то
 # запустит этот скрипт через sudo с root-HOME / env, эвристически предупредим.
@@ -203,6 +215,96 @@ LIBS_IMAGE="${EFACTORY_LIBS_IMAGE:-$LIBS_IMAGE_DEFAULT}"
 # ── Pre-flight ─────────────────────────────────────────────────────────────
 command -v docker >/dev/null || fail "docker не найден в PATH"
 docker info >/dev/null 2>&1 || fail "docker daemon не отвечает"
+
+# T036 — `--doctor`: host preflight + delegation в контейнер. Запускается
+# ДО image-inspect-pre-flight чтобы report'ить missing image, а не падать.
+run_doctor_host() {
+    local fail_count=0
+    local check
+    local doctor_args=()
+
+    printf '## Host environment\n'
+
+    check=$(docker version --format '{{.Client.Version}}' 2>/dev/null || true)
+    if [[ -n "$check" ]]; then
+        printf '  [OK]   docker client       %s\n' "$check"
+    else
+        printf '  [FAIL] docker client       cannot read version\n'
+        ((fail_count++))
+    fi
+
+    check=$(docker version --format '{{.Server.Version}}' 2>/dev/null || true)
+    if [[ -n "$check" ]]; then
+        printf '  [OK]   docker server       %s\n' "$check"
+    else
+        printf '  [FAIL] docker server       not reachable\n'
+        ((fail_count++))
+    fi
+
+    if docker buildx ls >/dev/null 2>&1; then
+        printf '  [OK]   docker buildx       available\n'
+    else
+        printf '  [WARN] docker buildx       not installed (T141 dev cache disabled)\n'
+    fi
+
+    if [[ -n "${DISPLAY:-}" ]]; then
+        printf '  [OK]   $DISPLAY            %s\n' "$DISPLAY"
+    else
+        printf '  [WARN] $DISPLAY            not set (GUI passthrough disabled)\n'
+    fi
+
+    if command -v xhost >/dev/null 2>&1; then
+        printf '  [OK]   xhost (host)        available\n'
+    else
+        printf '  [WARN] xhost (host)        not installed (X11 auth bootstrap blocked)\n'
+    fi
+
+    if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+        local created_iso days
+        created_iso=$(docker image inspect "$IMAGE" --format '{{.Created}}' 2>/dev/null || true)
+        if [[ -n "$created_iso" ]]; then
+            days=$(( ( $(date +%s) - $(date -d "$created_iso" +%s) ) / 86400 ))
+            if (( days > 30 )); then
+                printf '  [WARN] image %-14s %s days old (consider rebuild)\n' "$IMAGE" "$days"
+            else
+                printf '  [OK]   image %-14s %s days old\n' "$IMAGE" "$days"
+            fi
+        else
+            printf '  [WARN] image %-14s cannot read Created timestamp\n' "$IMAGE"
+        fi
+    else
+        printf '  [FAIL] image %-14s not found locally — build via `docker build -t %s .`\n' "$IMAGE" "$IMAGE"
+        ((fail_count++))
+    fi
+
+    printf '\n'
+
+    if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+        if [[ -z "${DISPLAY:-}" ]]; then
+            doctor_args+=(--no-gui)
+        fi
+        if ! docker run --rm "$IMAGE" efactory doctor "${doctor_args[@]}"; then
+            ((fail_count++))
+        fi
+    else
+        printf '## In-image diagnostics: skipped (image missing)\n'
+    fi
+
+    if (( fail_count > 0 )); then
+        printf '\n[efactory-up --doctor] %d FAIL(s) — see above.\n' "$fail_count"
+        return 1
+    fi
+    printf '\n[efactory-up --doctor] all host + in-image checks pass (WARN-only OK).\n'
+    return 0
+}
+
+if (( DOCTOR_MODE )); then
+    if run_doctor_host; then
+        exit 0
+    fi
+    exit 1
+fi
+
 docker image inspect "$IMAGE" >/dev/null 2>&1 \
     || fail "Образ $IMAGE не найден; собери: docker build -t $IMAGE ."
 
