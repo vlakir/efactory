@@ -1,4 +1,5 @@
-"""SystemProbe — outbound port для `efactory doctor` (T036).
+"""
+SystemProbe — outbound port для `efactory doctor` (T036).
 
 Абстрагирует subprocess / FS / env probe-операции, чтобы use case
 `run_doctor` оставался TDD-friendly (stub probe в тестах) и не зависел

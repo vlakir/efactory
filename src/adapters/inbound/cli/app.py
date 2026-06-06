@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 from pydantic import ValidationError
 
+from adapters.inbound.cli.doctor_command import register_doctor_command
 from adapters.inbound.cli.edit_and_resim_renderer import (
     render_edit_and_resim_json,
     render_edit_and_resim_text,
@@ -264,6 +265,7 @@ if TYPE_CHECKING:
         LockDetector,
         PendingStagedScanner,
     )
+    from ports.outbound.system_probe import SystemProbe
     from ports.outbound.tube_iv_repository import TubeIVRepository
     from ports.outbound.tube_lib_writer import TubeLibWriter
 
@@ -521,9 +523,11 @@ def build_app(
     publication_renderer: SchematicPublicationRenderer,
     publication_readme_writer: PublicationReadmeWriter,
     sim_report_writer: SimReportWriter,
+    system_probe: SystemProbe,
     efactory_version: str,
 ) -> typer.Typer:
     app = typer.Typer(no_args_is_help=True, add_completion=False)
+    register_doctor_command(app, system_probe=system_probe)
     project_app = typer.Typer(no_args_is_help=True, add_completion=False)
     app.add_typer(project_app, name='project')
     schematic_app = typer.Typer(no_args_is_help=True, add_completion=False)

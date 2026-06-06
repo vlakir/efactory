@@ -1,4 +1,5 @@
-"""`run_doctor` use case — сборка `DoctorReport` через `SystemProbe` (T036).
+"""
+`run_doctor` use case — сборка `DoctorReport` через `SystemProbe` (T036).
 
 Data-driven: списки `TOOLCHAIN_COMMANDS` / `TOOLCHAIN_PYTHON_LIBS` /
 `MOUNT_POINTS` — единственная точка правки для добавления / удаления
@@ -7,7 +8,6 @@ Data-driven: списки `TOOLCHAIN_COMMANDS` / `TOOLCHAIN_PYTHON_LIBS` /
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -23,6 +23,8 @@ from domain.doctor import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from ports.outbound.system_probe import (
         CommandProbeResult,
         PathProbeResult,
@@ -109,8 +111,10 @@ def run_doctor(
     *,
     include_gui: bool = True,
 ) -> DoctorReport:
-    """Собрать `DoctorReport` через `SystemProbe`. `include_gui=False`
-    пропускает GUI-блок (для `--no-gui` / headless контекста)."""
+    """
+    Собрать `DoctorReport` через `SystemProbe`. `include_gui=False`
+    пропускает GUI-блок (для `--no-gui` / headless контекста).
+    """
     checks: list[DoctorCheck] = []
     checks.extend(_toolchain_checks(probe))
     if include_gui:
@@ -122,12 +126,12 @@ def run_doctor(
 
 def _toolchain_checks(probe: SystemProbe) -> Iterable[DoctorCheck]:
     yield _efactory_version_check(probe)
-    for spec in TOOLCHAIN_COMMANDS:
-        yield _command_check(spec, probe.probe_command(spec.argv))
-    for spec in TOOLCHAIN_PYTHON_LIBS:
+    for cmd_spec in TOOLCHAIN_COMMANDS:
+        yield _command_check(cmd_spec, probe.probe_command(cmd_spec.argv))
+    for lib_spec in TOOLCHAIN_PYTHON_LIBS:
         yield _python_lib_check(
-            spec,
-            probe.probe_python_package_version(spec.package),
+            lib_spec,
+            probe.probe_python_package_version(lib_spec.package),
         )
 
 
@@ -246,9 +250,7 @@ def _xset_check(result: CommandProbeResult) -> DoctorCheck:
             detail='xset binary not found in image',
             category=CATEGORY_GUI,
         )
-    if result.timed_out or (
-        result.exit_code is not None and result.exit_code != 0
-    ):
+    if result.timed_out or (result.exit_code is not None and result.exit_code != 0):
         return DoctorCheck(
             name='xset q',
             status=CheckStatus.WARN,

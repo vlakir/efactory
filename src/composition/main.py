@@ -81,6 +81,9 @@ from adapters.outbound.spice_models.tube_lib_writer import FilesystemTubeLibWrit
 from adapters.outbound.subprocess_apps.app_manager import (
     SubprocessAppManager,
 )
+from adapters.outbound.system_probe_subprocess.adapter import (
+    SystemProbeSubprocess,
+)
 from composition.settings import Settings
 
 if TYPE_CHECKING:
@@ -164,6 +167,7 @@ def build_cli_app() -> typer.Typer:
         publication_renderer=KicadCliSchematicPublicationRenderer(app_manager),
         publication_readme_writer=MarkdownPublicationReadmeWriter(),
         sim_report_writer=MarkdownSimReportWriter(),
+        system_probe=SystemProbeSubprocess(),
         efactory_version=_resolve_efactory_version(),
     )
 

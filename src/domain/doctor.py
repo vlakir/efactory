@@ -1,4 +1,5 @@
-"""Doctor — domain VOs для диагностики тулчейна (T036).
+"""
+Doctor — domain VOs для диагностики тулчейна (T036).
 
 `efactory doctor` собирает отчёт о состоянии тулчейна в образе:
 versions внешних бинарей, доступность mount-точек, GUI passthrough,
@@ -7,14 +8,14 @@ runtime-лимиты. Domain-уровень — без знания о subproces
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
 _FROZEN = ConfigDict(frozen=True, extra='forbid')
 
 
-class CheckStatus(str, Enum):
+class CheckStatus(StrEnum):
     """Статус единичной проверки. Сортировка по `.severity`."""
 
     OK = 'OK'
@@ -75,19 +76,18 @@ class DoctorReport(BaseModel):
     def iter_categories(
         self,
     ) -> list[tuple[str, tuple[DoctorCheck, ...]]]:
-        """Группировка по категориям. Canonical-категории первыми, прочие — по
-        первому появлению."""
+        """
+        Группировка по категориям. Canonical-категории первыми, прочие — по
+        первому появлению.
+        """
         groups: dict[str, list[DoctorCheck]] = {}
         for check in self.checks:
             groups.setdefault(check.category, []).append(check)
 
-        ordered_keys: list[str] = []
-        for canonical in CANONICAL_CATEGORY_ORDER:
-            if canonical in groups:
-                ordered_keys.append(canonical)
-        for key in groups:
-            if key not in ordered_keys:
-                ordered_keys.append(key)
+        ordered_keys: list[str] = [
+            canonical for canonical in CANONICAL_CATEGORY_ORDER if canonical in groups
+        ]
+        ordered_keys.extend(key for key in groups if key not in ordered_keys)
 
         return [(key, tuple(groups[key])) for key in ordered_keys]
 
