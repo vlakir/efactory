@@ -1079,24 +1079,9 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- T191 (--rerun integration в /export-sim-report) — moved to
      BOARD.md → Done 2026-06-06, PR #125. -->
 
-- **T192** — [2026-06-06, T035 Phase 5 deferred — multi-sheet support]
-  Multi-sheet hierarchical `.kicad_sch` support в `Schematic` facade
-  (T100) + acceptance SC-6 для T035 `/export-schematic-publication
-  --multi-sheet-mode combined`. Сейчас facade (`add_v_dc`, `add_resistor`,
-  ...) знает только single-sheet; все 11 templates в `data/templates/`
-  — one-sheet. T035 W-3 предсказал: SC-6 unverifiable без синтетического
-  multi-sheet проекта. Включает: (1) `add_sub_sheet(name, pos)` API в
-  Schematic facade (создаёт hierarchical sheet child); (2) sub-sheet
-  s-expr block (`(sheet (at ...) (size ...) (uuid ...) ...)`) +
-  child `.kicad_sch` файл с правильным parent reference; (3) e2e тест
-  `test_sc6_multi_sheet_combined_pdf` — программно генерирует 2-sheet
-  проект, запускает `/export-schematic-publication --multi-sheet-mode
-  combined`, проверяет: single combined PDF в `combined/<project>.pdf`,
-  per-sheet PDF count = N, README с warning про SVG/PNG combined
-  unavailable, page-to-sheet-name mapping корректный для hierarchical
-  ordering. Acceptance: SC-6 strict (один combined PDF; per-sheet svg/
-  pdf/png × N sheets; README warning text присутствует). Не блокер
-  T035 — single-sheet проекты работают сейчас.
+<!-- T192 (multi-sheet schematic facade + SC-6) — moved to BOARD.md →
+     Done 2026-06-06, PR #128. -->
+
 - **T036** — [2026-05-15, re-evaluate 2026-05-19 после Phase 0.9]
   Стратегия обновлений: флаги `--update`, `--update-models`,
   `--doctor` в bootstrap + CLI.
