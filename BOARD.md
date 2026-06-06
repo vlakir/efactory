@@ -63,6 +63,29 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T036** — [closed 2026-06-07, PR #129] **`efactory doctor` /
+  `efactory-up --doctor` — диагностика тулчейна в образе.** Re-scope
+  T036 после Phase 0.9 closing (ADR 2026-05-19): из трёх изначальных
+  флагов остался только `--doctor` (`--update` → `efactory-up --pull`
+  + T115/GHCR, `--update-models` → T030 `/spice-import-url`).
+  Hexagonal-clean: domain `CheckStatus`/`DoctorCheck`/`DoctorReport`
+  с canonical-category ordering (toolchain → gui → mounts → runtime
+  → host), port `SystemProbe` + `CommandProbeResult`/`PathProbeResult`,
+  data-driven use case `run_doctor` через `TOOLCHAIN_COMMANDS`/
+  `TOOLCHAIN_PYTHON_LIBS`/`MOUNT_POINTS` константы, `SystemProbeSub-
+  process` adapter (subprocess.run + stdlib), CLI `efactory doctor
+  [--no-gui]` с exit 0/1 по worst_status. `efactory-up --doctor`
+  standalone-режим — host preflight (docker client/server/buildx,
+  $DISPLAY, xhost, image age WARN @ >30 дней) + делегация
+  `docker run --rm efactory:linux efactory doctor` с auto-`--no-gui`
+  при пустом $DISPLAY. Acceptance — 6 канонических групп
+  (toolchain/gui/mounts/runtime + host для wrapper), Exit 0 при
+  OK|WARN / 1 при FAIL. **Out of scope (явно):** `--json`, auto-fix,
+  `--update-models`, slash `/doctor`. **KB sync** пропущен (CLI-only,
+  без surprise-семантики). 64 новых теста (15 domain + 22 application
+  + 5 renderer + 5 CLI + 17 integration adapter), 2582 passed,
+  coverage 87.35%, pre-push 5/5 ✓.
+
 - **T192** — [closed 2026-06-06, PR #128] **Multi-sheet schematic
   facade + SC-6 acceptance.** Закрывает T035 SC-6. Domain
   `SubSheetSpec` + `SchematicSpec.sub_sheets`. Facade

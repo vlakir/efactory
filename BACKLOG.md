@@ -1082,15 +1082,10 @@ BACKLOG.md, BOARD.md и CHANGELOG.md) + 1`. ID не переиспользует
 <!-- T192 (multi-sheet schematic facade + SC-6) — moved to BOARD.md →
      Done 2026-06-06, PR #128. -->
 
-- **T036** — [2026-05-15, re-evaluate 2026-05-19 после Phase 0.9]
-  Стратегия обновлений: флаги `--update`, `--update-models`,
-  `--doctor` в bootstrap + CLI.
-  **Re-evaluate:** после Phase 0.9 Containerization большая часть
-  заменяется на `docker pull efactory:linux-latest`. Что
-  остаётся актуальным — `--doctor` внутри образа (диагностика
-  тулчейна, проверка GPU/X11 passthrough) и `--update-models`
-  для пользовательских SPICE-моделей вне образа. Acceptance
-  переоценить при взятии в работу.
+<!-- T036 (`efactory doctor` / `efactory-up --doctor`) — re-scoped
+     2026-06-06 (только `--doctor` остаётся; `--update` покрыт
+     `efactory-up --pull` + T115/GHCR, `--update-models` — T030
+     `/spice-import-url`). Перенесён в BOARD.md → Doing 2026-06-06. -->
 
 ### Фаза 4 — PCB-модуль (+3–4 недели)
 
