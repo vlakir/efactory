@@ -36,6 +36,63 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Added
 
+- **T036 — `efactory doctor` / `efactory-up --doctor` (PR #129).**
+  Re-scope задачи после Phase 0.9 closing (ADR 2026-05-19): из трёх
+  изначальных флагов (`--update`, `--update-models`, `--doctor`)
+  остаётся только `--doctor`. `--update` покрыт `efactory-up --pull`
+  (заработает с T115/GHCR); `--update-models` — T030
+  `/spice-import-url`. Диагностика тулчейна efactory:linux:
+  - **Domain** (`src/domain/doctor.py`) — `CheckStatus` StrEnum
+    (OK/WARN/FAIL с `.severity`-ordering), `DoctorCheck` Pydantic
+    VO (name/status/detail/category), `DoctorReport` с
+    `worst_status` property и `iter_categories()` для canonical
+    grouping (toolchain → gui → mounts → runtime → host →
+    unknown).
+  - **Port** (`src/ports/outbound/system_probe.py`) — `SystemProbe`
+    Protocol с methods `probe_command` / `probe_path` /
+    `probe_env` / `probe_python_package_version` /
+    `probe_disk_free_bytes` / `probe_ulimit_nofile` /
+    `probe_cgroup_memory_max_bytes` / `probe_dri_devices` +
+    frozen `CommandProbeResult`/`PathProbeResult` dataclass'ы.
+  - **Use case** (`src/application/run_doctor.py`) data-driven через
+    `TOOLCHAIN_COMMANDS` (11 binaries: kicad-cli, ngspice,
+    ElmerSolver, getdp, gmsh, freecad, freecadcmd, rsvg-convert,
+    python, uv, git), `TOOLCHAIN_PYTHON_LIBS` (PyOpenMagnetics,
+    femmt, scipy), `MOUNT_POINTS` (`/workspace`, `/efactory/
+    .claude`, `/libs/symbols`, `/libs/footprints`). Required vs
+    optional split: required missing → FAIL, optional missing →
+    WARN. `include_gui=False` пропускает GUI блок.
+  - **Adapter**
+    (`src/adapters/outbound/system_probe_subprocess/adapter.py`)
+    — `SystemProbeSubprocess`: `shutil.which` + `subprocess.run`
+    для команд, `Path.exists`/`os.access` для FS,
+    `importlib.metadata.version` для py-libs, `shutil.disk_usage`,
+    `resource.getrlimit(RLIMIT_NOFILE)`, чтение cgroup v2
+    (`/sys/fs/cgroup/memory.max`) + v1 (`memory.limit_in_bytes`)
+    fallback, `iterdir(/dev/dri)`.
+  - **CLI** (`src/adapters/inbound/cli/doctor_command.py` +
+    `doctor_renderer.py`) — `efactory doctor [--no-gui]`. Exit
+    0 при `worst_status` OK или WARN; 1 при FAIL. Renderer —
+    pure-function, canonical-ordered categories с `[OK]`/
+    `[WARN]`/`[FAIL]` markers + summary-строкой.
+  - **Wrapper** (`efactory-up --doctor`) — standalone-режим
+    (mutex с `--demo`/`--agent`/`--headless`/`--reset-claude-state`).
+    Host preflight: docker client/server version, docker buildx,
+    `$DISPLAY`, xhost availability, `efactory:linux` image
+    existence + age (WARN >30 дней). Делегация
+    `docker run --rm efactory:linux efactory doctor`, авто-
+    `--no-gui` при пустом `$DISPLAY` на хосте. Exit code
+    aggregation: 0 если все checks OK|WARN, 1 если хоть один
+    FAIL.
+  - **Out of scope (явно):** `--json` output, auto-fix/self-heal,
+    `--update-models`, slash `/doctor`.
+  - **KB sync** пропущен сознательно (CLI-only, без surprise-
+    семантики).
+  - 64 новых теста (15 domain + 22 application unit + 5 renderer +
+    5 CLI + 17 integration adapter). 2582 passed (+64), coverage
+    87.35%, pre-push 5/5 ✓ (ruff check + format + mypy +
+    importlinter 3/3 + pytest). (T036)
+
 - **T035 — Publication workflow как slash-команды (PR #123).**
   `/export-schematic-publication` + `/export-sim-report`,
   ADR-T035a в `DECISIONS.md`. 6 фаз × 10 коммитов; hexagonal-clean
