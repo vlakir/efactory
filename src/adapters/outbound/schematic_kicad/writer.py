@@ -59,6 +59,7 @@ if TYPE_CHECKING:
         NoConnectSpec,
         Position,
         SchematicSpec,
+        SubSheetSpec,
         TextSpec,
         WireSpec,
     )
@@ -354,6 +355,50 @@ def _symbol_block(
     return lines
 
 
+def _sub_sheet_block(depth: int, sub: SubSheetSpec, parent_name: str) -> list[str]:
+    """T192: emit hierarchical (sheet ...) block для parent-schematic."""
+    sheet_uuid = _new_uuid()
+    return [
+        _t(depth) + '(sheet',
+        _t(depth + 1) + f'(at {_fmt(sub.position.x_mm)} {_fmt(sub.position.y_mm)})',
+        _t(depth + 1) + f'(size {_fmt(sub.width_mm)} {_fmt(sub.height_mm)})',
+        _t(depth + 1) + '(fields_autoplaced yes)',
+        _t(depth + 1) + '(stroke',
+        _t(depth + 2) + '(width 0.1524)',
+        _t(depth + 2) + '(type solid)',
+        _t(depth + 1) + ')',
+        _t(depth + 1) + '(fill',
+        _t(depth + 2) + '(color 0 0 0 0.0000)',
+        _t(depth + 1) + ')',
+        _t(depth + 1) + f'(uuid "{sheet_uuid}")',
+        _t(depth + 1) + f'(property "Sheetname" "{sub.sheet_name}"',
+        _t(depth + 2)
+        + f'(at {_fmt(sub.position.x_mm)} {_fmt(sub.position.y_mm - 0.7144)} 0)',
+        _t(depth + 2) + '(effects',
+        _t(depth + 3) + '(font (size 1.27 1.27))',
+        _t(depth + 3) + '(justify left bottom)',
+        _t(depth + 2) + ')',
+        _t(depth + 1) + ')',
+        _t(depth + 1) + f'(property "Sheetfile" "{sub.sheet_file}"',
+        _t(depth + 2)
+        + f'(at {_fmt(sub.position.x_mm)} '
+        + f'{_fmt(sub.position.y_mm + sub.height_mm + 0.7144)} 0)',
+        _t(depth + 2) + '(effects',
+        _t(depth + 3) + '(font (size 1.27 1.27))',
+        _t(depth + 3) + '(justify left top)',
+        _t(depth + 2) + ')',
+        _t(depth + 1) + ')',
+        _t(depth + 1) + '(instances',
+        _t(depth + 2) + f'(project "{parent_name}"',
+        _t(depth + 3) + f'(path "/{sheet_uuid}"',
+        _t(depth + 4) + '(page "1")',
+        _t(depth + 3) + ')',
+        _t(depth + 2) + ')',
+        _t(depth + 1) + ')',
+        _t(depth) + ')',
+    ]
+
+
 def _sheet_instances(depth: int) -> list[str]:
     return [
         _t(depth) + '(sheet_instances',
@@ -451,6 +496,8 @@ class KicadSchematicWriter:
             lines.extend(_text_block(1, text))
         for component in spec.components:
             lines.extend(_symbol_block(1, component, sheet_uuid, spec.name))
+        for sub_sheet in spec.sub_sheets:
+            lines.extend(_sub_sheet_block(1, sub_sheet, spec.name))
         lines.extend(_sheet_instances(1))
         # `(embedded_fonts no)` — обязательное root-поле KiCad 10.
         lines.append(_t(1) + '(embedded_fonts no)')

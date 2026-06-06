@@ -329,6 +329,71 @@ def test_sc1_combined_mode_creates_combined_pdf(
     assert (combined_bw / 'my-amp.pdf').is_file()
 
 
+@needs_kicad_cli
+@needs_rsvg
+def test_sc6_multi_sheet_combined_pdf(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    SC-6 (T192): на synthetic 2-sheet проекте `--multi-sheet-mode combined`
+    создаёт combined PDF + per-sheet PDF для каждого листа.
+
+    Synthesizes multi-sheet проект через `Schematic` facade
+    (`add_sub_sheet` API, T192), затем гонит `/export-schematic-publication
+    --multi-sheet-mode combined` через CLI runner. Acceptance:
+    - 1 combined PDF в `color/combined/<project>.pdf` (+ bw);
+    - per-sheet PDF count = 2 (parent + child) в `color/per-sheet/`;
+    - README.md содержит warning text про SVG/PNG combined;
+    - exit 0.
+
+    Skip на host без kicad-cli / rsvg-convert.
+    """
+    from adapters.outbound.schematic_kicad.facade import Schematic
+
+    _setup_env(tmp_path, monkeypatch)
+    _create_project('multi-sch')
+
+    # Synthesize multi-sheet проект: parent с одним sub-sheet ссылкой,
+    # plus child schematic file.
+    project_root = tmp_path / 'projects' / 'multi-sch'
+    child = Schematic(name='psu')
+    child.add_resistor(value='10k', at=(10.16, 10.16))
+    child.save(project_root / 'psu.kicad_sch')
+
+    parent = Schematic(name='multi-sch')
+    parent.add_sub_sheet(
+        sheet_name='psu',
+        sheet_file='psu.kicad_sch',
+        at=(50.8, 60.96),
+    )
+    parent.save(project_root / 'multi-sch.kicad_sch')
+
+    runner = CliRunner()
+    result = runner.invoke(
+        build_cli_app(),
+        [
+            'publication', 'export-schematic', 'multi-sch',
+            '--multi-sheet-mode', 'combined',
+            '--schematic', 'multi-sch.kicad_sch',
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    pub_root = project_root / 'out' / 'publications'
+    ts_root = next(pub_root.iterdir())
+    # Combined PDF на месте.
+    assert (ts_root / 'schematic' / 'color' / 'combined' / 'multi-sch.pdf').is_file()
+    assert (ts_root / 'schematic' / 'bw' / 'combined' / 'multi-sch.pdf').is_file()
+    # Per-sheet PDF count = 2 (parent + child).
+    color_per_sheet = ts_root / 'schematic' / 'color' / 'per-sheet'
+    pdfs = sorted(p.name for p in color_per_sheet.iterdir() if p.suffix == '.pdf')
+    assert len(pdfs) == 2, pdfs
+    # README warning text.
+    readme = (ts_root / 'README.md').read_text(encoding='utf-8')
+    assert 'combined' in readme.lower()
+
+
 @pytest.mark.parametrize('template', _ALL_TEMPLATES)
 def test_sc7_sim_report_smoke_per_template(
     template: str,

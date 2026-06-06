@@ -167,6 +167,13 @@ TRAN/AC waveform.
 - **OUT OF SCOPE:** PDF composing статьи (`\documentclass`,
   abstract, references) — это работа автора, не efactory. Команды
   дают только **building blocks**.
+- **Multi-sheet проекты (T192):** parent-`.kicad_sch` с
+  hierarchical sub-sheets через `Schematic.add_sub_sheet(sheet_name,
+  sheet_file, at, width_mm, height_mm)` API. Child schematics
+  пишутся отдельно (`Schematic(name=...).save(parent_dir / child_file)`).
+  `--multi-sheet-mode combined` собирает все листы в один PDF +
+  per-sheet PDF для каждого; SC-6 в `test_sc6_multi_sheet_combined_pdf`
+  acceptance gate (e2e, требует kicad-cli + rsvg-convert).
 - **`--multi-sheet-mode=combined`** не зависит от количества
   листов в проекте (single-sheet → combined PDF == per-sheet PDF
   по содержанию, но разные filenames + dirs).

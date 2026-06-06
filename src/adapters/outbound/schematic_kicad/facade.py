@@ -32,6 +32,7 @@ from domain.schematic import (
     NoConnectSpec,
     Position,
     SchematicSpec,
+    SubSheetSpec,
     TextSpec,
     WireSpec,
 )
@@ -786,6 +787,7 @@ class Schematic:
     _no_connects: list[NoConnectSpec] = field(default_factory=list)
     _labels: list[LabelSpec] = field(default_factory=list)
     _texts: list[TextSpec] = field(default_factory=list)
+    _sub_sheets: list[SubSheetSpec] = field(default_factory=list)
     _pwr_counter: int = 0
     _flg_counter: int = 0
 
@@ -1575,6 +1577,33 @@ class Schematic:
             TextSpec(text=text, position=_to_position(at, name=f'spice:{text}')),
         )
 
+    def add_sub_sheet(
+        self,
+        *,
+        sheet_name: str,
+        sheet_file: str,
+        at: tuple[float, float] | Position,
+        width_mm: float = 30.0,
+        height_mm: float = 20.0,
+    ) -> None:
+        """
+        T192: hierarchical sub-sheet block в parent-листе.
+
+        Эмитит `(sheet ...)` block + сохраняет ссылку на `sheet_file`
+        (имя child `.kicad_sch`). Сам child-файл создаётся отдельно
+        (например, новым `Schematic(name=...).save(parent_dir/sheet_file)`).
+        Закрывает T192 / SC-6 (multi-sheet combined PDF export).
+        """
+        self._sub_sheets.append(
+            SubSheetSpec(
+                sheet_name=sheet_name,
+                sheet_file=sheet_file,
+                position=_to_position(at, name=f'sheet:{sheet_name}'),
+                width_mm=width_mm,
+                height_mm=height_mm,
+            ),
+        )
+
     def to_spec(self) -> SchematicSpec:
         return SchematicSpec(
             name=self.name,
@@ -1584,6 +1613,7 @@ class Schematic:
             no_connects=tuple(self._no_connects),
             labels=tuple(self._labels),
             texts=tuple(self._texts),
+            sub_sheets=tuple(self._sub_sheets),
         )
 
     def save(self, path: Path) -> Path:

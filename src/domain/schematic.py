@@ -144,12 +144,36 @@ class TextSpec(BaseModel):
     position: Position
 
 
+class SubSheetSpec(BaseModel):
+    """
+    Hierarchical sub-sheet `(sheet ...)` блок parent-листа (T192).
+
+    `sheet_name` — отображается в KiCad GUI как заголовок sub-sheet.
+    `sheet_file` — относительное имя файла child `.kicad_sch` (создаётся
+    отдельно). `position` — верхний-левый угол sheet symbol на parent
+    канвасе; `size_mm` — ширина/высота прямоугольника.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    sheet_name: str = Field(min_length=1)
+    sheet_file: str = Field(min_length=1)
+    position: Position
+    width_mm: float = Field(gt=0.0)
+    height_mm: float = Field(gt=0.0)
+
+
 class SchematicSpec(BaseModel):
     """
     Полное содержимое одного листа `.kicad_sch`.
 
     `name` идёт в `(instances (project "<name>" ...))` блок каждого
     symbol — KiCad связывает root project с UUID листа.
+
+    `sub_sheets` (T192) — hierarchical sub-sheets, каждый ссылается на
+    child `.kicad_sch` файл. Используется multi-sheet проектами,
+    где parent листает фабрикой подсхем; child schematics создаются
+    отдельно через `KicadSchematicWriter.write(child_spec, child_path)`.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -161,3 +185,4 @@ class SchematicSpec(BaseModel):
     no_connects: tuple[NoConnectSpec, ...] = ()
     labels: tuple[LabelSpec, ...] = ()
     texts: tuple[TextSpec, ...] = ()
+    sub_sheets: tuple[SubSheetSpec, ...] = ()
