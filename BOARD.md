@@ -61,51 +61,30 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->
 
-- **T036** — [2026-05-15, refactored 2026-06-06] **`efactory doctor` /
-  `efactory-up --doctor` — диагностика тулчейна в образе.**
-  Re-scope T036 после Phase 0.9 closing (ADR 2026-05-19): из трёх
-  изначальных флагов остаётся только `--doctor`. `--update` покрыт
-  `efactory-up --pull` (заработает после T115/GHCR); `--update-models`
-  — `/spice-import-url` (T030); массовый refresh каталога не
-  запрашивался.
-
-  Архитектура: Python CLI subcommand `efactory doctor` (hexagonal-
-  clean: outbound port `SystemProbe` + subprocess adapter, application
-  use case `run_doctor`, inbound CLI handler); bash wrapper
-  `efactory-up --doctor` делает host preflight + делегирует внутрь
-  контейнера через `docker run`.
-
-  Acceptance:
-  - `efactory doctor` (in-image) — human-readable отчёт с ✓/⚠/✗:
-    - **Toolchain versions:** kicad-cli, ngspice, ElmerSolver, getdp,
-      gmsh, freecad/freecadcmd, rsvg-convert, python, uv, git + key
-      Python libs (PyOpenMagnetics, femmt, scipy).
-    - **GUI passthrough** (skip если `--no-gui`): `$DISPLAY`,
-      `xset q` reachable, `/dev/dri/*`.
-    - **Mounts:** `/workspace`, `/efactory/.claude`, `/libs/{symbols,
-      footprints}` — exist+writable где применимо;
-      `/efactory/.claude/.credentials.json` exists.
-    - **Runtime:** cgroup memory limit, `ulimit -n`, disk free на
-      `/workspace`.
-  - `efactory-up --doctor` (host) добавляет:
-    - `docker info`, `docker version`, `docker buildx ls`.
-    - X11 на хосте, `$DISPLAY`.
-    - `efactory:linux` image exists + age (WARN если >30 дней).
-    - Делегирует `docker run --rm efactory:linux efactory doctor`,
-      проксирует output.
-  - **Exit code:** `0` — OK или только WARN; `1` — есть хотя бы один
-    FAIL.
-  - **Out of scope (явно):** `--json` output, auto-fix/self-heal,
-    `--update-models`, slash `/doctor`.
-  - **Тесты (TDD):** domain VOs (`DoctorCheck` / `DoctorReport` /
-    `CheckStatus`) + unit; `run_doctor` use case со stub
-    `SystemProbe`; CLI handler; `SystemProbeSubprocess` adapter —
-    integration (где доступны probe-цели: `python --version`, `git
-    --version`). Coverage ≥ 80% на src/.
-  - **KB sync:** не требуется (CLI-only, без slash; Уровни 1+2
-    пропускаем с явным проговором в PR description).
-
 ## Done
+
+- **T036** — [closed 2026-06-07, PR #129] **`efactory doctor` /
+  `efactory-up --doctor` — диагностика тулчейна в образе.** Re-scope
+  T036 после Phase 0.9 closing (ADR 2026-05-19): из трёх изначальных
+  флагов остался только `--doctor` (`--update` → `efactory-up --pull`
+  + T115/GHCR, `--update-models` → T030 `/spice-import-url`).
+  Hexagonal-clean: domain `CheckStatus`/`DoctorCheck`/`DoctorReport`
+  с canonical-category ordering (toolchain → gui → mounts → runtime
+  → host), port `SystemProbe` + `CommandProbeResult`/`PathProbeResult`,
+  data-driven use case `run_doctor` через `TOOLCHAIN_COMMANDS`/
+  `TOOLCHAIN_PYTHON_LIBS`/`MOUNT_POINTS` константы, `SystemProbeSub-
+  process` adapter (subprocess.run + stdlib), CLI `efactory doctor
+  [--no-gui]` с exit 0/1 по worst_status. `efactory-up --doctor`
+  standalone-режим — host preflight (docker client/server/buildx,
+  $DISPLAY, xhost, image age WARN @ >30 дней) + делегация
+  `docker run --rm efactory:linux efactory doctor` с auto-`--no-gui`
+  при пустом $DISPLAY. Acceptance — 6 канонических групп
+  (toolchain/gui/mounts/runtime + host для wrapper), Exit 0 при
+  OK|WARN / 1 при FAIL. **Out of scope (явно):** `--json`, auto-fix,
+  `--update-models`, slash `/doctor`. **KB sync** пропущен (CLI-only,
+  без surprise-семантики). 64 новых теста (15 domain + 22 application
+  + 5 renderer + 5 CLI + 17 integration adapter), 2582 passed,
+  coverage 87.35%, pre-push 5/5 ✓.
 
 - **T192** — [closed 2026-06-06, PR #128] **Multi-sheet schematic
   facade + SC-6 acceptance.** Закрывает T035 SC-6. Domain
