@@ -32,6 +32,11 @@ def _setup_env(
     projects_root = tmp_path / 'projects'
     db_file = tmp_path / 'efactory.sqlite'
     session_root = tmp_path / 'sessions'
+    # Проверочные `git -C <проект>` ниже наследуют окружение: GIT_DIR/GIT_WORK_TREE,
+    # выставленные хуком git или рабочей папкой задачи, увели бы их в чужой репозиторий
+    # (адаптер их сам чистит — T169). Тест не должен зависеть от того, откуда он запущен.
+    for name in ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv('EFACTORY_PROJECTS_ROOT', str(projects_root))
     monkeypatch.setenv('EFACTORY_SESSION_ROOT', str(session_root))
     monkeypatch.setenv('EFACTORY_SESSION_ID', session_id)
