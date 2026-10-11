@@ -108,6 +108,11 @@ fail незаметно проскочит в `git commit`.
   feature-ветку и PR/MR.
 - **Один PR — один коммит.** На feature-ветке можно коммитить как
   удобно для работы, перед merge — squash.
+- **Параллельные задачи — в `git worktree` внутри проекта:**
+  `git worktree add .worktrees/T<NNN>-<slug> -b T<NNN>-<slug>`.
+  Каталог `.worktrees/` в `.gitignore`, `.dockerignore` и в `exclude`
+  ruff; mypy и pytest смотрят только в `src` / `tests`. Прежний вариант
+  `../<repo>-T<NNN>` — история, старые папки не переносить.
 - **Каждый PR проходит code review** перед merge. По умолчанию —
   Claude (self-review с чеклистом: scope / архитектура / код /
   линтеры / документация / соглашения / безопасность). Иногда —

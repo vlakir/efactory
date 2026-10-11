@@ -6,6 +6,9 @@
 .~*
 *.kate-swp
 
+# Рабочие папки задач (git worktree) — внутри проекта, не в репозитории
+/.worktrees/
+
 # Claude Code — служебные runtime-файлы (не для шаринга)
 .claude/*.lock
 .claude/settings.local.json

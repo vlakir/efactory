@@ -22,6 +22,9 @@ tests/fixtures/output/
 # (build падает с EACCES даже на stat).
 pilot-out/
 
+# Рабочие папки задач (git worktree) — не в build context
+.worktrees/
+
 # Git история — внутри образа не нужна (hatch_build T095 видит .git
 # отсутствие и silently skips pre-push hook auto-install).
 .git/
