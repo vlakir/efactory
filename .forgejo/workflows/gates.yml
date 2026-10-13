@@ -2,86 +2,35 @@ name: gates
 
 # Гейты проекта на srv: тот же `scripts/gates.sh`, что у разработчика перед push, —
 # ruff check, ruff format --check, mypy, pytest с порогом покрытия ≥80% на src/.
-# Файл создан из шаблона репозитория CI srv (`templates/python-project`, `tools/new-project`).
-#
-# Задание `image` собирает образ окружения из `ci/forgejo/Dockerfile` в Docker раннера,
-# если образа с таким тегом там ещё нет; тег — хэш Dockerfile. Задание `gates` идёт в
-# этом образе. Кэш `uv` — общий том `srv-uv-cache` runner'а плюс `actions/cache`
-# (кэш-сервер раннера) с ключом по хэшу `uv.lock`: колёса не качаются заново по
-# медленному каналу srv.
-#
-# Потолок памяти задания — `--memory=4g` Docker. Тестам с базами во временных каталогах
-# (много fsync) помогает `/tmp` в памяти: добавить в `options` `--tmpfs /tmp:rw,exec,size=2g`.
-
+# Идут в одноразовом клоне (srv-ci T026): диспетчер запускает `srv-gates-run`, образ из
+# `ci/forgejo/Dockerfile` и снимок кэша uv по `uv.lock` хранятся на общем каталоге srv.
+# Прежние Docker-задания — в ручном `gates-docker.yml`.
 on:
   push:
   workflow_dispatch:
 
-env:
-  IMAGE_NAME: efactory-gates
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  image:
-    runs-on: docker
-    container:
-      image: docker.io/library/docker:28-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
-    outputs:
-      tag: ${{ steps.build.outputs.tag }}
-    steps:
-      - name: Собрать образ окружения (если его ещё нет)
-        id: build
-        shell: sh
-        env:
-          TOKEN: ${{ github.token }}
-          SERVER: ${{ github.server_url }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-        run: |
-          set -eu
-          git init -q src
-          cd src
-          host=${SERVER#https://}
-          git fetch -q --depth 1 "https://x-access-token:${TOKEN}@${host}/${REPO}.git" "$SHA"
-          git checkout -q FETCH_HEAD
-          tag=$(sha256sum ci/forgejo/Dockerfile | cut -c1-16)
-          image="${IMAGE_NAME}:${tag}"
-          if docker image inspect "$image" >/dev/null 2>&1; then
-            echo "Образ ${image} уже есть."
-          else
-            docker build -t "$image" -f ci/forgejo/Dockerfile ci/forgejo
-          fi
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-
   gates:
-    needs: image
-    runs-on: docker
-    # Первый прогон без кэша качает колёса по медленному каналу srv (~300 КБ/с).
+    runs-on: clone
     timeout-minutes: 60
-    container:
-      image: efactory-gates:${{ needs.image.outputs.tag }}
-      options: --memory=4g --memory-swap=4g
-      # Общий том кэша uv всех Python-проектов (valid_volumes runner'а на VM 120): первый
-      # прогон нового проекта не качает колёса заново по медленному каналу srv; uv сам
-      # держит блокировки кэша, параллельные задания безопасны.
-      volumes:
-        - srv-uv-cache:/root/.cache/uv
-    env:
-      # Общий том кэша uv: параллельное задание может долго качать тот же пакет
-      # и держать блокировку дольше умолчания uv (300 с).
-      UV_LOCK_TIMEOUT: "3600"
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/cache@v4
         with:
-          path: /root/.cache/uv
-          key: uv-${{ hashFiles('uv.lock') }}
-          restore-keys: uv-
+          persist-credentials: false   # токен задания не должен попасть в src.tgz
 
-      - name: uv sync
-        run: uv sync --locked
+      # Клон 4 vCPU / 8 ГБ, контейнеру гейтов — прежние 4 ГБ без swap.
+      - name: Гейты в клоне
+        run: |
+          srv-gates-run run --project efactory \
+            --clone-cores 4 --clone-memory 8192 --timeout 3300 \
+            --job-memory 4g --job-cpus 4
 
-      - name: Гейты
-        run: scripts/gates.sh
+      - uses: forgejo/upload-artifact@v4
+        if: always()
+        with:
+          name: gates-out
+          path: gates-out/
