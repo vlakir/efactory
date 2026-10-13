@@ -63,6 +63,11 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T193** — [closed 2026-10-13, PR #132] **Гейты Forgejo в одноразовых
+  клонах srv (srv-ci T026).** `gates.yml` запускает прежние `uv sync --locked`
+  и `scripts/gates.sh` через `srv-gates-run`; прежние Docker-задания — в ручном
+  `gates-docker.yml`. Код, Dockerfile и состав проверок не менялись.
+
 - **T192** — [closed 2026-06-06, PR #128] **Multi-sheet schematic
   facade + SC-6 acceptance.** Закрывает T035 SC-6. Domain
   `SubSheetSpec` + `SchematicSpec.sub_sheets`. Facade

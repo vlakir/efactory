@@ -1465,6 +1465,10 @@ T-ID между релизами — `CHANGELOG.md` единственное per
 
 ### Changed
 
+- **T193 — гейты srv в одноразовом клоне.** `gates.yml` запускает прежние
+  `uv sync --locked` и `scripts/gates.sh` в одноразовом клоне через `srv-gates-run`
+  (srv-ci T026); прежние Docker-задания — в ручном `gates-docker.yml`.
+
 - **T110 ADR — Distribution efactory переходит на Linux Docker image
   как primary.** Один образ с полным стеком (KiCad из официального
   apt-репозитория, ngspice, FreeCAD, Linux-native FEM-solver,
