@@ -4,7 +4,6 @@ name: gates
 # ruff check, ruff format --check, mypy, pytest с порогом покрытия ≥80% на src/.
 # Идут в одноразовом клоне (srv-ci T026): диспетчер запускает `srv-gates-run`, образ из
 # `ci/forgejo/Dockerfile` и снимок кэша uv по `uv.lock` хранятся на общем каталоге srv.
-# Прежние Docker-задания — в ручном `gates-docker.yml`.
 on:
   push:
   workflow_dispatch:

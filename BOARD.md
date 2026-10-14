@@ -63,6 +63,9 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Done
 
+- **T194** — [closed 2026-10-14, PR #133] **Удалён мёртвый ручной `gates-docker.yml`.**
+  Docker-раннер srv (VM 120) удалён 14.10.2026; гейты — только `gates.yml` в клоне.
+
 - **T193** — [closed 2026-10-13, PR #132] **Гейты Forgejo в одноразовых
   клонах srv (srv-ci T026).** `gates.yml` запускает прежние `uv sync --locked`
   и `scripts/gates.sh` через `srv-gates-run`; прежние Docker-задания — в ручном
