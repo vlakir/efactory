@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "@hueyexe/opencode-ensemble@0.18.0"
+  ],
+  "instructions": [
+    ".opencode/team-roles.md"
+  ],
+  "autoupdate": false,
+  "share": "disabled",
+  "default_agent": "tech-lead"
+}

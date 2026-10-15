@@ -58,3 +58,13 @@ pilot-out/
 **/*.tmp_*.cir
 **/*.tmp_*.raw
 **/*.tmp_*.wrapper.cir
+
+# OpenCode local runtime and private legacy migration files
+.opencode/node_modules/
+.opencode/package.json
+.opencode/package-lock.json
+.opencode/bun.lock*
+.opencode/settings.local.json
+.claude/settings.local.json
+.claude/*.lock
+.worktrees/
