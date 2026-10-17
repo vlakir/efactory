@@ -22,6 +22,41 @@ ADR-Lite: компактный лог архитектурных решений 
 
 ## Решения проекта
 
+### 2026-10-17 — T195: development-методика dreamteam 2.0.0, FULL MANUAL
+
+- **Контекст.** Точная source база `ff11572f0308dcb7ddfe158a2222f2fe318647e1`
+  сохраняет развитие T036; её исторический Done/PR129 не означает приёмку
+  текущего snapshot. Main `5afd093e388d5f508e9ef4d84093f7aaa4716792` —
+  только comparison, без rebase/merge. Initial ordinary CLI2.0.0 dryrun rc1
+  отказал legacy input; это не CLI migration success и не выполнение AC10
+  какого-либо автоматического мигратора.
+- **Решение.** Согласованный migration-only scope перенесён FULL MANUAL:
+  actual28 inventory через штатный ephemeral render, source custom knowledge
+  в активном AGENTS/native9roles/brief, opaque originals ДО изменений в новом
+  durable private archive. Путь/хеши/modes/decisions — manifest; проверку bytes
+  выполнил writer, не приписывать её лиду. Reviewer независимо прочитал actual
+  native map/controls до provenance/deactivation и снял prebarrier HIGH.
+  `.copier-answers.yml` указывает compatible template2.0.0; manual provenance
+  явно хранится в manifest и этой записи, не скрывается за версией. После повторного
+  независимого review уникальной информации root `CLAUDE.md` деактивирован
+  и удалён, включая временный compatibility marker; все правила активны
+  в AGENTS. Контейнерный runtime CLAUDE не затронут.
+- **Альтернативы.** Автоматический успех при rc1, force/fakebase и перенос
+  generic business seeds отвергнуты как потеря честности/нарушение scope.
+  Source Python3.13 scientific exception, five-gate precommit, business/runtime,
+  CI, lock и immutable CONCEPT не заменяются generic template defaults.
+- **Последствия.** Сервер4096 не рестартуется; обновление config не доказывает
+  live activation. Reviewer runtime read-only наблюдён непосредственно;
+  architect runtime и новый primary question path требуют отдельной проверки,
+  если их не наблюдали. Остаточный ordinary plan и failing baseline gates
+  показываются честно; checkpoint не равен принятию/merge/закрытию T195.
+  Уточнение delivery: более новая глобальная srv-policy efactory действует
+  и для старой source базы без YAML. Локальный baseline — диагностика среды;
+  финальная приёмка требует full exact lead SHA на srv после light checks и
+  штатной sandbox-доставки. Supported dispatcher `--checkout`/`--gates`
+  позволяет проверить старый source без импорта main CI/business; факты и
+  ограничения target10 coverage — `docs/T195-migration/DIAGNOSIS.md`.
+
 <!-- Реальные решения добавляются сюда, новые сверху. При совпадении
      дат — от фундаментального к инструментальному. -->
 

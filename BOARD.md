@@ -57,6 +57,16 @@ ID уже даёт идентификацию). Имя PR: `T<NNN>: <title>`. С
 
 ## Doing
 
+- **T195** — [2026-10-17] Migration-only методики dreamteam 2.0.0 в
+  native OpenCode/Ensemble с сохранением source snapshot `ff11572`.
+  Исполнение: `task_mvcj1a6p_014l_3p9qnw`, writer `devops-t195-r1`;
+  независимый reviewer, интеграция и финальная приёмка — лид.
+  Acceptance: actual28+custom inventory и private byte-originals; meaningful
+  native map и проверенные controls; независимый review до deactivation/
+  provenance; честный ordinary plan/repeat и baseline/post пять source gates;
+  business/deps/CI/CONCEPT неизменны. Route FULL MANUAL, не CLI success.
+  Evidence: `docs/T195-migration/`. Doing до настоящего PR и приёмки.
+
 <!-- В работе прямо сейчас. Держим короткой: максимум 1-2 задачи на
      разработчика, иначе теряется фокус (классическое WIP-limit
      правило из Kanban). -->

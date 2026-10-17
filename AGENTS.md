@@ -1,6 +1,6 @@
-# Project rules for Claude
+# Project rules for OpenCode
 
-Этот файл — проектные правила для Claude (OpenCode). Глобальные
+Этот файл — проектные правила для OpenCode. Глобальные
 правила (`~/.config/opencode/AGENTS.md`) применяются всегда; здесь — только то,
 что специфично для конкретного проекта.
 
@@ -15,12 +15,12 @@
 
 ## Ритуал составления `CONCEPT.md` (для нового проекта)
 
-В начале нового проекта Claude помогает Разработчику составить
+В начале нового проекта OpenCode помогает Разработчику составить
 `CONCEPT.md` — immutable документ начального видения. Это ритуал
 встречных вопросов, аналогичный `clarify` для спеки:
 
 1. Разработчик пишет первый набросок (или формулирует идею).
-2. Claude задаёт встречные вопросы по слепым зонам:
+2. OpenCode задаёт встречные вопросы по слепым зонам:
    - **Цель:** какую боль / задачу проект решает?
    - **Пользователь:** кто, в каком контексте?
    - **Ключевая функциональность:** MVP-минимум vs nice-to-have?
@@ -35,7 +35,7 @@
    `v3-...md` (ADR-pattern, но для концепций).
 
 Заполнение `CONCEPT.md` — на этапе создания проекта через
-`dreamteam init` (Claude задаёт встречные вопросы) или позже,
+`dreamteam init` (OpenCode задаёт встречные вопросы) или позже,
 вручную.
 
 ## Описание проекта
@@ -246,7 +246,7 @@ production-агенту в `efactory:linux`. Если KB отстаёт от
 **Уровень 1 — system prompt + KB sync (обязательно, секунды).**
 
 - **Новая slash-команда** →
-  - (a) Добавить bullet в **`docker/runtime-agent-AGENTS.md`** —
+  - (a) Добавить bullet в **`docker/runtime-agent-CLAUDE.md`** —
     секция «Custom slash-команды efactory». Это system prompt
     baked'ится в `efactory:linux` образ и видна агенту с первой
     строки разговора; без этого agent в running-контейнере не знает
@@ -319,10 +319,47 @@ semantics) — явно проговаривать в PR description: «KB sync 
 Правила этого проекта сохранены при переходе. Нативные роли и методика команды
 загружаются через opencode.json и .opencode/team-roles.md. Стандарт — девять ролей;
 аналитик и архитектор объединены. Команда работает через постоянный сервер
-на devbox; терминальные клиенты attach к нему. Прежние файлы .claude оставлены
-как исходники миграции и не являются активной конфигурацией OpenCode.
+на devbox; терминальные клиенты attach к нему. В точной исходной базе T195
+tracked дерево `.claude/` отсутствует. Untracked legacy inputs автоматически
+не копируются и не считаются перенесёнными; отдельный runtime в docker — не
+development-конфигурация OpenCode.
 
 Активные командные роли и инструменты определяются OpenCode/Ensemble.
 Старые названия клиентских инструментов в перенесённом тексте соотносить с
 доступными нативными средствами; не запускать Claude Code или Codex.
 Дизайнер — нативная роль, без обязательного внешнего Design-сервиса.
+
+## Native-методика 2.0.0: проектные исключения
+
+Существующий CONCEPT.md — содержательное immutable ТЗ v5.1. Принимать его
+как есть: шаблонные разделы — leading questions для пустого документа,
+не требование переформатировать существующий концепт. Clarify не пропускать.
+
+Durable-знание живёт внутри репозитория (AGENTS/DECISIONS/docs/specs/BOARD/
+BACKLOG). Внешняя память — опциональный дубль, не условие работы.
+
+Следующее уточнение приоритетно над историческим списком четырёх проверок выше.
+Канонический source gate из `.pre-commit-config.yaml`: `uv run ruff check .`,
+`uv run ruff format --check .`, `uv run mypy src`, `uv run lint-imports`,
+`uv run pytest` с исходным coverage>=80%. Это пять проверок, не generic четыре.
+Python 3.13 scientific exception сохраняется; миграция методики не обновляет
+dependencies, lock, CI behavior и контейнерный runtime-агент.
+
+Полный локальный pytest сериализовать per-user мьютексом между worktree;
+окружение только своё (`VIRTUAL_ENV=<own>/.venv`, `uv run --active`).
+Для локального запуска использовать `scripts/pytest-guard.sh`, сохраняющий
+исходные pytest arguments/coverage и exit code; template native wrapper
+добавлен как отдельный инструмент, без подмены source precommit/CI entry.
+Не менять pytest addopts/coverage и hooks ради миграции. Более новое глобальное
+правило srv применяется к efactory независимо от отсутствия workflow в старой
+source базе: локально лёгкие проверки, затем штатная sandbox-доставка и полный
+прогон итогового exact SHA на srv ДО merge. Локальные source five-gates до/после
+здесь — диагностика среды, не замена srv-приёмки и не автоматическое основание
+блокировать штатную sandbox-доставку. Supported dispatcher exact-checkout/
+gate-command overrides согласуются с лидом без импорта main business/CI в source.
+
+Командные роли, owner/acceptance, точная база каждого раунда, review/shutdown
+и recovery — `.opencode/team-roles.md` и primary `.opencode/agents/tech-lead.md`.
+Нельзя подменять текущий snapshot исторической Done-записью исходной T036.
+Для T195 comparison main не означает rebase/merge; source business сохраняется.
+Обновление config не доказывает runtime activation: сервер 4096 не рестартовать.

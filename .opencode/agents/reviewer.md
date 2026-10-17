@@ -3,6 +3,7 @@ description: "Independently reviews correctness, risks, tests and methodology co
 mode: subagent
 permission:
   "*": deny
+  question: deny
   read: allow
   glob: allow
   grep: allow

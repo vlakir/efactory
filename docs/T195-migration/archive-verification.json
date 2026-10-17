@@ -1,0 +1,20 @@
+{
+  "verifier": "devops-t195-r1 writer",
+  "base_commit": "ff11572f0308dcb7ddfe158a2222f2fe318647e1",
+  "private_path": "/home/vlakir/.local/share/dreamteam/migration-20261016/efactory-T195-devops-r1-_pbzpz35",
+  "original_count": 38,
+  "sha256_matches_manifest_all": true,
+  "files0600_all": true,
+  "directories0700_all": true,
+  "artifact_root0700": true,
+  "raw_contents_disclosed": false,
+  "untracked_copied": false,
+  "reviewer_scope": "independent native mapping/control file review; no independent opaque-original byte verification claimed",
+  "lead_scope": "manifest/proposal read; private archive native read denied, no lead byte verification claimed",
+  "hook_metadata": {
+    "current_sha256": "05b547ada2f67edb9270fcee03e1f506219112de7f3835d6a91c16d7bbab2f33",
+    "before_bootstrap": "not captured; no fabricated before/after proof",
+    "bootstrap": "HATCH_BUILD_HOOKS_ENABLE=false uv sync --locked --active --python 3.13",
+    "source_hook_behavior": "not changed; no-install-project first, own editable bootstrap with build hooks disabled"
+  }
+}

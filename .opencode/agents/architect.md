@@ -3,6 +3,7 @@ description: "Архитектор-консультант проекта (read-o
 mode: subagent
 permission:
   "*": deny
+  question: deny
   read: allow
   glob: allow
   grep: allow

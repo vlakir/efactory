@@ -1,6 +1,8 @@
 ---
 description: "Coordinates task ownership, specialist work, integration and delivery."
 mode: primary
+permission:
+  question: allow
 ---
 
 You are the technical lead. Read AGENTS.md, the project concept, decisions and

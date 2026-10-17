@@ -1,0 +1,824 @@
+{
+  "task": "T195",
+  "continuation_base": "eee8473fdeba83a4c21380187585d37c92447ebd",
+  "baseline_preserved": "Original72fail before/post logs retained unchanged in own.venv; no PATH masking/version replacement or test suppression",
+  "classification_counts": {
+    "schematic-load-parse-failure": 71,
+    "empty-schematic-no-sheets-publication": 1
+  },
+  "cases": [
+    {
+      "nodeid": "tests/acceptance/test_saturable_thd_se_amp.py::test_se_amp_6p14p_saturable_thd_pilot",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "se_amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/e2e/spice_acceptance/test_rc_filter.py::test_rc_filter_op_yields_unit_voltage_on_input_and_output",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "rc_filter.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/e2e/spice_acceptance/test_rc_filter.py::test_rc_filter_tran_holds_dc_steady_across_time",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "rc_filter.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/e2e/spice_acceptance/test_rc_filter.py::test_rc_filter_ac_yields_minus_three_db_at_cutoff",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "rc_filter.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/e2e/spice_acceptance/test_rc_filter.py::test_rc_filter_ac_yields_unity_gain_far_below_cutoff",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "rc_filter.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/e2e/walking_skeleton/test_bridge_design_to_sim.py::test_design_to_sim_rc_filter_exports_netlist",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "rc_filter.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/e2e/walking_skeleton/test_bridge_edit_and_resim.py::test_bridge_edit_and_resim_rc_filter_bandwidth_changes",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "rc_filter.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/e2e/walking_skeleton/test_design_check.py::test_design_check_passes_on_clean_template",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/e2e/walking_skeleton/test_design_check.py::test_design_check_auto_detect_in_cwd",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/e2e/walking_skeleton/test_project_create_render.py::test_project_create_with_template_renders_or_fails_soft",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "render-test.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/e2e/walking_skeleton/test_publication_export.py::test_publication_export_schematic_succeeds_on_clean_template",
+      "category": "empty-schematic-no-sheets-publication",
+      "cause_scope": "Distinct source test fixture is empty version20231120/lib_symbols with no drawn sheets; cannot attribute this case to future schema; target10 confirmation pending",
+      "fixture_basenames_from_failure": [
+        "demo.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/e2e/walking_skeleton/test_publication_export.py::test_sc1_se_amp_template_full_acceptance",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "my-amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/e2e/walking_skeleton/test_publication_export.py::test_sc1_combined_mode_creates_combined_pdf",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "my-amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/e2e/walking_skeleton/test_publication_export.py::test_sc6_multi_sheet_combined_pdf",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "multi-sch.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/erc_kicad_cli/test_runner.py::test_runner_returns_clean_report_on_se_amp",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/kicad_cli/test_schematic_publication_renderer.py::test_render_real_rc_filter_per_sheet",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "rc_filter.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/kicad_cli/test_schematic_publication_renderer.py::test_render_real_rc_filter_combined",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "rc_filter.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/kicad_cli/test_schematic_renderer.py::test_render_real_rc_filter",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "rc_filter.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_active_lpf_sallen_key_facade.py::test_facade_active_lpf_sallen_key_writes_includes",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "lpf.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_active_lpf_sallen_key_facade.py::test_facade_active_lpf_sallen_key_topology",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "lpf.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_bjt_ce_nfb_facade.py::test_facade_bjt_ce_nfb_writes_model_include",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "bjt_ce_nfb.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_bjt_ce_nfb_facade.py::test_facade_bjt_ce_nfb_topology",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "bjt_ce_nfb.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_bjt_ce_nfb_facade.py::test_facade_bjt_ce_nfb_op_point_in_active_region",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "bjt_ce_nfb.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_common_emitter_facade.py::test_facade_common_emitter_writes_q1_instance_and_model",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "ce.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_common_emitter_facade.py::test_facade_common_emitter_amplifies_signal",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "ce.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_dual_triode_facade.py::test_dual_triode_netlist_has_two_subckt_instances",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "cascade.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_dual_triode_facade.py::test_dual_triode_tran_two_stage_amplifies",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "cascade.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_nfb_se_amp_facade.py::test_facade_nfb_se_amp_writes_three_subckt_includes",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "nfb_se_amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_nfb_se_amp_facade.py::test_facade_nfb_se_amp_tran_settles_and_amplifies",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "nfb_se_amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_op_amp_inverting_facade.py::test_facade_op_amp_inverting_writes_subckt_include",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "op_amp_inverting.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_op_amp_inverting_facade.py::test_facade_op_amp_inverting_topology",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "op_amp_inverting.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_pentode_se_resistive_facade.py::test_pentode_se_resistive_kicad_cli_netlist_succeeds[6p13s]",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "6p13s.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_pentode_se_resistive_facade.py::test_pentode_se_resistive_kicad_cli_netlist_succeeds[6zh32p]",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "6zh32p.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_pentode_se_resistive_facade.py::test_pentode_se_resistive_kicad_cli_netlist_succeeds[6zh38p]",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "6zh38p.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_rc_facade.py::test_facade_rc_op_yields_unit_voltage",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "rc_filter.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_rc_facade.py::test_facade_rc_tran_holds_dc_steady",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "rc_filter.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_rc_facade.py::test_facade_rc_ac_yields_minus_three_db_at_cutoff",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "rc_filter.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_rc_facade.py::test_facade_rc_ac_unity_gain_far_below_cutoff",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "rc_filter.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_rectifier_facade.py::test_facade_rectifier_tran_yields_positive_half_cycles",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "half_wave_rectifier.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_se_amp_facade.py::test_facade_se_amp_writes_subckt_instances_and_includes",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "se_amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_se_amp_facade.py::test_facade_se_amp_tran_shows_amplification",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "se_amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_soviet_tubes_facade.py::test_gu50_pentode_amp_amplifies",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "gu50.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_soviet_tubes_facade.py::test_6p45s_beam_tetrode_amp_amplifies",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "6p45s.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_soviet_tubes_facade.py::test_6n6p_triode_amp_amplifies",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "6n6p.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_triode_6n2p_facade.py::test_facade_6n2p_netlist_includes_subckt_with_x_prefix",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_triode_6n2p_facade.py::test_facade_6n2p_tran_shows_amplification",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_triode_amp_facade.py::test_facade_triode_amp_netlist_includes_tube_subckt",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "triode_amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_triode_amp_facade.py::test_facade_triode_amp_tran_shows_amplification",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "triode_amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_tube_6922_facade.py::test_facade_6922_netlist_includes_subckt",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_tube_6922_facade.py::test_facade_6922_op_point_active_region",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_tube_6922_facade.py::test_facade_6922_tran_shows_amplification",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_tube_6n30p_eb_facade.py::test_facade_6n30p_eb_netlist_includes_subckt",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_tube_6n30p_eb_facade.py::test_facade_6n30p_eb_op_point_active_region",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_tube_6n30p_eb_facade.py::test_facade_6n30p_eb_tran_shows_amplification",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_tube_line_preamp_facade.py::test_facade_tube_line_preamp_writes_model_includes",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "tube_line_preamp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_tube_line_preamp_facade.py::test_facade_tube_line_preamp_topology",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "tube_line_preamp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_tube_line_preamp_facade.py::test_facade_tube_line_preamp_op_point_active",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "tube_line_preamp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_tube_phono_riaa_facade.py::test_facade_tube_phono_riaa_writes_model_includes",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "tube_phono_riaa.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_tube_phono_riaa_facade.py::test_facade_tube_phono_riaa_topology",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "tube_phono_riaa.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_tube_phono_riaa_facade.py::test_facade_tube_phono_riaa_op_point_active",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "tube_phono_riaa.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_tube_pp_amp_facade.py::test_facade_tube_pp_amp_writes_model_includes",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "tube_pp_amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_tube_pp_amp_facade.py::test_facade_tube_pp_amp_topology",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "tube_pp_amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/adapters/schematic_kicad/test_tube_pp_amp_facade.py::test_facade_tube_pp_amp_op_point_balanced_pp",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "tube_pp_amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/application/test_measure_gain_calibration_active_lpf_sallen_key.py::test_measure_gain_calibration_sallen_key_passband_unity",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "lpf.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/application/test_measure_gain_calibration_active_lpf_sallen_key.py::test_measure_gain_calibration_sallen_key_minus_3db_at_fc",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "lpf.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/application/test_measure_gain_calibration_active_lpf_sallen_key.py::test_measure_gain_calibration_sallen_key_butterworth_monotonic",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "lpf.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/application/test_measure_gain_calibration_tube_line_preamp.py::test_measure_gain_calibration_tube_line_preamp_mid_band",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "tube_line_preamp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/application/test_measure_gain_calibration_tube_phono_riaa.py::test_measure_gain_calibration_tube_phono_riaa_compliance",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "tube_phono_riaa.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/application/test_measure_gain_calibration_tube_pp_amp.py::test_measure_gain_calibration_tube_pp_amp_mid_band",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "tube_pp_amp.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/composition/test_t031_phase5_templates.py::test_6zh38p_if_amp_op_point",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "p_6zh38p.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/composition/test_t031_phase5_templates.py::test_6p13s_se_resistive_op_point",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "p_6p13s.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    },
+    {
+      "nodeid": "tests/integration/composition/test_t031_phase5_templates.py::test_6zh32p_mic_preamp_op_point",
+      "category": "schematic-load-parse-failure",
+      "cause_scope": "Installed KiCad9 versus source required KiCad10/schema20260306; environment incompatibility, exact target10 resolution not yet executed",
+      "fixture_basenames_from_failure": [
+        "p_6zh32p.kicad_sch"
+      ],
+      "missing_executable_indicated": false,
+      "missing_asset_or_config_indicated": false
+    }
+  ],
+  "missing_executable_cases": 0,
+  "missing_asset_config_cases_indicated_by_traceback": 0,
+  "executables": {
+    "kicad-cli": "/usr/bin/kicad-cli",
+    "ngspice": "/usr/bin/ngspice",
+    "rsvg-convert": "/usr/bin/rsvg-convert",
+    "efactory": "/home/vlakir/.local/share/opencode/worktree/d3025b5e61832f4342d6c3efca3096db0847421d/ensemble-efactory-project-dt200-wip-dcd44p-devops-t195-r1/.venv/bin/efactory"
+  },
+  "host_kicad_version": "9.0.8",
+  "source_kicad_requirement": "Dockerfile32-92 Ubuntu24.04 + official kicad/kicad-10.0-releases PPA; writer.py70 schema20260306",
+  "source_skip_contract": "KiCad tests mostly shutil.which/availability-based, not major-version validation; installed9 is discovered but cannot serve as source10 environment",
+  "source_fixture_locations": {
+    "generated_RC": "tests/conftest.py21-48 (facade generator)",
+    "empty_publication": "tests/e2e/walking_skeleton/test_publication_export.py68-78"
+  },
+  "locked_environment_check_rc": 0,
+  "locked_environment_check_category": "would make no changes",
+  "probes": [
+    {
+      "kind": "unaltered-source-conftest-RC",
+      "schema_version": "20260306",
+      "sha256": "b4156a429db4d9c93fde03f539355979a35b5c64dd244ef1c48d197a5c9c9699",
+      "fixture_exists": true,
+      "rc": 3,
+      "diagnostic_categories": {
+        "failed to load schematic": false,
+        "no sheets to plot": false,
+        "not found": false,
+        "permission": false,
+        "unsupported": false,
+        "schematic-load-failure-en-or-ru": false,
+        "empty-sheets-en-or-ru": false
+      },
+      "raw_output_persisted": false
+    },
+    {
+      "kind": "unaltered-source-empty-publication-fixture",
+      "schema_version": "20231120",
+      "sha256": "00b29ecee02d34cda6f0502d3b7e6bcf046d82eeaf99a2fbda181ed545a243d3",
+      "fixture_exists": true,
+      "rc": 0,
+      "diagnostic_categories": {
+        "failed to load schematic": false,
+        "no sheets to plot": false,
+        "not found": false,
+        "permission": false,
+        "unsupported": false,
+        "schematic-load-failure-en-or-ru": false,
+        "empty-sheets-en-or-ru": false
+      },
+      "raw_output_persisted": false
+    },
+    {
+      "kind": "unaltered-source-empty-publication-page1-PDF",
+      "schema_version": "20231120",
+      "sha256": "00b29ecee02d34cda6f0502d3b7e6bcf046d82eeaf99a2fbda181ed545a243d3",
+      "fixture_exists": true,
+      "rc": 2,
+      "diagnostic_categories": {
+        "failed to load schematic": false,
+        "no sheets to plot": false,
+        "not found": false,
+        "permission": false,
+        "unsupported": false,
+        "schematic-load-failure-en-or-ru": false,
+        "empty-sheets-en-or-ru": false
+      },
+      "raw_output_persisted": false
+    }
+  ],
+  "not_claimed": [
+    "all71guaranteed-fixed-by-KiCad10 without target10 run",
+    "empty fixture guaranteed-fixed-by-KiCad10",
+    "new code regression",
+    "positiveKiCad10coverage from missingtool skips"
+  ],
+  "srv_policy": {
+    "applies_to_efactory": true,
+    "source_has_workflow": false,
+    "absence_is_not_exemption": true,
+    "delivery_contract": "local light gates -> ordinary unique sandbox branch push if supported -> full gates finalexactSHA on srv before merge",
+    "main_compare_only": "5afd093e388d5f508e9ef4d84093f7aaa4716792",
+    "main_helper_not_executed": "push helper changes remote and usesforce/noverify; not invoked",
+    "supported_dispatcher": "/usr/local/bin/srv-gates-run run on CT121",
+    "help_rc": 0,
+    "supported_source_override": [
+      "--checkout exact checkout including.git",
+      "--dockerfile current canonical CI recipe outside source commit",
+      "--prepare existing uv sync --locked",
+      "--gates exactsource5gatechain",
+      "--job unique",
+      "--out privateunique"
+    ],
+    "canonical_oldsource_gates_override": "uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run lint-imports && uv run pytest",
+    "main_ci_environment": "Debiantrixieslim Python3.13 git/node/procps/util-linux, noKiCad; existing testskip semantics retained, not positiveKiCad10coverage",
+    "job_status": "not started; lead integrates metadata then authorizes exact finalleadSHA/queue/resource/cache checks",
+    "no_source_ci_import": true,
+    "no_system_or_infrastructure_changes": true
+  }
+}

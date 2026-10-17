@@ -1,0 +1,472 @@
+{
+  "task": "T195",
+  "execution_task": "task_mvcj1a6p_014l_3p9qnw",
+  "agent": "devops-t195-r1",
+  "role": "devops",
+  "base_commit": "ff11572f0308dcb7ddfe158a2222f2fe318647e1",
+  "comparison_only_main": "5afd093e388d5f508e9ef4d84093f7aaa4716792",
+  "route": "FULL MANUAL implemented after independent pre-deactivation and final root-marker review; not CLI migration success",
+  "cli_version": "2.0.0",
+  "initial_dry_run": {
+    "rc": 1,
+    "stdout_lines": 0,
+    "stderr_lines": 1,
+    "categories": [
+      "unsupported",
+      "legacy",
+      "claude"
+    ]
+  },
+  "render": {
+    "rc": 0,
+    "managed_count": 28,
+    "path": "/tmp/opencode/efactory-t195-render-99jua02n"
+  },
+  "private_originals": "/home/vlakir/.local/share/dreamteam/migration-20261016/efactory-T195-devops-r1-_pbzpz35",
+  "tracked_legacy_claude_tree_count": 0,
+  "untracked_policy": "not automatically copied; no secret/settings/env/MCP values inspected",
+  "path_decisions": {
+    ".coderabbit.yaml": "preserve same path: project disabled-bot review policy, not template defaults",
+    ".copier-answers.yml": "compatible native template2.0.0 after review; source semantic answers and original1.5.1archive preserved; manual method/provenance in this manifest+DECISIONS, not CLI success; custom redundant metadata removed to avoid ordinary plan stripping it",
+    ".dockerignore": "preserve same path: existing Docker distribution boundary, no CI/build behavior changes",
+    ".github/workflows/build-push-ghcr.yml": "preserve same path: actual source image publish workflow, no srv workflow imported from comparison main",
+    ".github/workflows/template-snapshot-check.yml": "preserve same path: actual source snapshot workflow and behavior unchanged",
+    ".gitignore": "preserve same path: source secret/local-runtime/worktrees protections retained; no lint ignores added",
+    ".opencode/agents/architect.md": "merge same path: preserve full custom consultant contract; explicit question deny, deny default and read/search/team allowlist",
+    ".opencode/agents/backend.md": "merge same path: native backend contract retained, question deny; product decisions via lead",
+    ".opencode/agents/designer.md": "merge same path: native design contract + meaningful brief template reference, question deny",
+    ".opencode/agents/devops.md": "merge same path: native delivery contract retained, question deny",
+    ".opencode/agents/frontend.md": "merge same path: native frontend contract retained, question deny",
+    ".opencode/agents/mobile.md": "merge same path: native mobile contract retained, question deny",
+    ".opencode/agents/reviewer.md": "merge same path: independent reviewer contract retained, question deny with deny-by-default read-only controls",
+    ".opencode/agents/tech-lead.md": "merge same path: canonical primary role orchestration/recovery retained, explicit native question allow",
+    ".opencode/agents/tester.md": "merge same path: native tester contract retained, question deny",
+    ".opencode/ensemble.json": "preserve same path: mergeOnCleanup false, no implicit cleanup integration",
+    ".opencode/team-roles.md": "merge same path: source9roles kept; question routing + no server4096 restart + honest activation pending + designer brief",
+    ".pr_agent.toml": "preserve same path: disabled automatic review policy retained",
+    ".pre-commit-config.yaml": "preserve same path: actual5gates ruff/format/mypy src/lint-imports/pytest cov80, not generic4",
+    ".python-version": "preserve same path: Python3.13 scientific exception ADR2026-05-20",
+    "AGENTS.md": "merge same path: preserve unique project rules; native memory/CONCEPT/worktree controls; actual runtime KB prompt reference and5gates override",
+    "BACKLOG.md": "preserve same path: single project backlog, no mass replacement of business task context/history",
+    "BOARD.md": "merge same path: only ownT195 Doing+acceptance/execution mapping; historical T036Done not current acceptance",
+    "CHANGELOG.md": "preserve same path: source historical milestones retained, no invented release/Done",
+    "CLAUDE.md": "root legacy development file and temporary compatibility marker deleted after independent uniqueinfo review; all unique rules active AGENTS; source bytes archived first; runtime CLAUDE untouched",
+    "CONCEPT.md": "preserve byte-identical same path: immutable existing TZv5.1, no placeholder replacement/reformatting",
+    "DECISIONS.md": "merge same path: onlyT195 actual manual method/provenance decision; preserve historical ADRs",
+    "Dockerfile": "preserve same path: product runtime/build behavior out of migration scope",
+    "Dockerfile.libs": "preserve same path: library image business behavior unchanged",
+    "README.md": "merge same path: only dev canon ref/T195status; product runtime historical commands retained honestly",
+    "efactory-up": "preserve same path: sourceT036doctor host wrapper retained, no comparison-main feature merge",
+    "hatch_build.py": "preserve same path: build hook business behavior; own bootstrap used no-install-project to avoid shared hook writes",
+    "hooks/pre-push": "preserve same path: protected branch source policy intact; do not weaken with generic initial-push exception or silently replace canonical precommit5gates",
+    "opencode.json": "preserve byte-identical same path: canonical2.0render already matches source schema/plugin/instructions/default agent; no models/providers/MCP values",
+    "pilot.Dockerfile": "preserve same path: scientific pilot runtime not methodology migration",
+    "pyproject.toml": "preserve byte-identical same path: deps/lock/Python3.13/coverage defaults/importcontracts unchanged",
+    "scripts/pytest-guard.sh": "created native template wrapper with actual per-user mutex; only comment adapted to truthful source coverage default; executable behavior byte-equivalent to template, source precommit/CI unchanged; optional memorycap/no-flock semantics retained",
+    "specs/design-brief-template.md": "create active native brief: all7sections incl actual content/states/a11y/outscope/result iterations; platform-appropriate prototype instead of mandatory web-only stack; referenced by designer+team-roles",
+    "specs/spec-template.md": "preserve same path: existing project spec/clarify/analyze workflow retained; generic prose not allowed to discard existing contracts",
+    "src/main.py": "not-created: generic business seed would add fake app to existing hexagonal src; no methodology semantics lost",
+    "tests/test_main.py": "not-created: generic placeholder seed not source regression test; existing tests untouched and fully run",
+    "uv.lock": "preserve byte-identical same path: installed exact locked deps in own environment only"
+  },
+  "entries": [
+    {
+      "path": ".coderabbit.yaml",
+      "tracked_at_base": true,
+      "render_managed": false,
+      "custom_input": false,
+      "before_sha256": "61a49c3544ec22249789c43b119bc2bd91098f4eb9541e2c0626a598639302db",
+      "archive_verified": true,
+      "archive_mode": "0o600"
+    },
+    {
+      "path": ".copier-answers.yml",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "4b0eddf1d1ce6a8b977150d3eebc195eaa452f6cb56c15fdec3ad3ef74608507",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "e9f2bfc8d4d891fd50f8af086809c5800535c72d2233f2122e54c19687c60055"
+    },
+    {
+      "path": ".dockerignore",
+      "tracked_at_base": true,
+      "render_managed": false,
+      "custom_input": false,
+      "before_sha256": "527bc4165abce442660f09e68d20f2317b8f9d739ffe4be09889464e213aecdd",
+      "archive_verified": true,
+      "archive_mode": "0o600"
+    },
+    {
+      "path": ".github/workflows/build-push-ghcr.yml",
+      "tracked_at_base": true,
+      "render_managed": false,
+      "custom_input": true,
+      "before_sha256": "ee7a02ff8f5f8d7c7fde5ef9ccbf994869b9b43c5519f337f2025d6a3be1cc99",
+      "archive_verified": true,
+      "archive_mode": "0o600"
+    },
+    {
+      "path": ".github/workflows/template-snapshot-check.yml",
+      "tracked_at_base": true,
+      "render_managed": false,
+      "custom_input": true,
+      "before_sha256": "5501bb9763fb3c9775a6cd2cdb9b98919e7698fea91aa0d812c01b28419eb573",
+      "archive_verified": true,
+      "archive_mode": "0o600"
+    },
+    {
+      "path": ".gitignore",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "1a9c37d87d52a8ff237fb1ef73df45202be78e6a9afdb02f3d74772213046e6a",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "74e7e370134af439d867e55be6736adcaef105f8903aa23eaa4c4fae4387ce5c"
+    },
+    {
+      "path": ".opencode/agents/architect.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "36b2a1a628a928576a2b9a7e9baf54913bdc681c48475c8f2842f68a3b76256f",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "36b2a1a628a928576a2b9a7e9baf54913bdc681c48475c8f2842f68a3b76256f"
+    },
+    {
+      "path": ".opencode/agents/backend.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "181c4a154a8a07eb0555e56e2e978cf4d1c31b26e41804f92b9764aea9f499ac",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "181c4a154a8a07eb0555e56e2e978cf4d1c31b26e41804f92b9764aea9f499ac"
+    },
+    {
+      "path": ".opencode/agents/designer.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "e0e7cf76b81c8f09e6919fa3ee2a9cfdd67d3c0ada73ddb6e2a411cd3b44857d",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "e0e7cf76b81c8f09e6919fa3ee2a9cfdd67d3c0ada73ddb6e2a411cd3b44857d"
+    },
+    {
+      "path": ".opencode/agents/devops.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "ee6859725ca5f8c9c4eff437642d6247a89573e444dee14486be2151aa44938a",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "ee6859725ca5f8c9c4eff437642d6247a89573e444dee14486be2151aa44938a"
+    },
+    {
+      "path": ".opencode/agents/frontend.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "e5f777ef65db472aae4d6f3f1296018e9736a547da47f729f064071286835219",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "e5f777ef65db472aae4d6f3f1296018e9736a547da47f729f064071286835219"
+    },
+    {
+      "path": ".opencode/agents/mobile.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "f803ee0b0cefb72f6cb6253a61c973448cf2e30b117284596ee40038bd554570",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "f803ee0b0cefb72f6cb6253a61c973448cf2e30b117284596ee40038bd554570"
+    },
+    {
+      "path": ".opencode/agents/reviewer.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "b4cdcc6f676c175f59b8f409dd328194ffe44f93b0449742dc21c192af7735d6",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "b4cdcc6f676c175f59b8f409dd328194ffe44f93b0449742dc21c192af7735d6"
+    },
+    {
+      "path": ".opencode/agents/tech-lead.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "03b4b638745018f5e7aafcc08ede711dc402f80294635cab22896cf722ca6c03",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "b569cb9f51ad405bb56c146c25b72dbb4ab501ba95324468822d5c2c35753270"
+    },
+    {
+      "path": ".opencode/agents/tester.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "148c51363741a5c7fc51250768e1b211336a8db59da6abb96c0cd615fb83b86f",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "148c51363741a5c7fc51250768e1b211336a8db59da6abb96c0cd615fb83b86f"
+    },
+    {
+      "path": ".opencode/ensemble.json",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "daa87257367bee5013956c94a716137cb32c16995f9bc338593ea4f0a372fadb",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "daa87257367bee5013956c94a716137cb32c16995f9bc338593ea4f0a372fadb"
+    },
+    {
+      "path": ".opencode/team-roles.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "313acfd4f704304f9d838f7cd2ca1b2a82eb9e6e0c8f1fef11aab5702f103e54",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "313acfd4f704304f9d838f7cd2ca1b2a82eb9e6e0c8f1fef11aab5702f103e54"
+    },
+    {
+      "path": ".pr_agent.toml",
+      "tracked_at_base": true,
+      "render_managed": false,
+      "custom_input": false,
+      "before_sha256": "d7cb22684ea24aa05d2fec081026a148f83c54424c8a5fcae38d67ad4c37e6eb",
+      "archive_verified": true,
+      "archive_mode": "0o600"
+    },
+    {
+      "path": ".pre-commit-config.yaml",
+      "tracked_at_base": true,
+      "render_managed": false,
+      "custom_input": true,
+      "before_sha256": "3728f1a4bcf5bed519da0e722bdf35c68f5d3bf96c83a2d8afae751914a949f0",
+      "archive_verified": true,
+      "archive_mode": "0o600"
+    },
+    {
+      "path": ".python-version",
+      "tracked_at_base": true,
+      "render_managed": false,
+      "custom_input": true,
+      "before_sha256": "02e735b3dfe1c32833eb550b7ff8ffa17f5f2bc3fa1e7bae61a8f5a3883ce398",
+      "archive_verified": true,
+      "archive_mode": "0o600"
+    },
+    {
+      "path": "AGENTS.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "18b3440ffbe49d0390d7a2f8ab50400f3cee950ab6ab63dd04d944430371d00a",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "3345537ce54d919c1643b02c9187a09989965a8098f3d6c72b40de0b7b8912b7"
+    },
+    {
+      "path": "BACKLOG.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "2263011b6f4bdd3ae8d217c99c89fe1794c8ce48369355b5196e171de61cd63a",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "2e77b47e3292371b7529bc9a2d494a48383d41053bf845384b2b16bb6f81e065"
+    },
+    {
+      "path": "BOARD.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "00eb9b7f773be7761377f1bc1e0e26244e5c5d1adee11c30903895b01de08bf1",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "a34bdadb4bacaae4c37715eff6d323c0c0552189b61a1c1d266c8c75927febb0"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "c10d69ee13ac8c200443ff15ee7be9a82cc88702c3dd7c6c969e6c5c7d5d25c5",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "9603c2db69beaa80086b295ec164548ef70ff41595b593d94d148a862d798cd2"
+    },
+    {
+      "path": "CLAUDE.md",
+      "tracked_at_base": true,
+      "render_managed": false,
+      "custom_input": true,
+      "before_sha256": "9989caa41887a97243e75f41fc4b1fb244848f7c31f1973841e219338116a1f8",
+      "archive_verified": true,
+      "archive_mode": "0o600"
+    },
+    {
+      "path": "CONCEPT.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "5f2355d52ccb9a90ec3790d7b7f39ab807bb6fa414832c882983d4bbd38fa0ec",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "241d1756ad12fa696c305acc5df71aacdd445d43f89e7fb6cf498b8bb5228b25"
+    },
+    {
+      "path": "DECISIONS.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "f5bf46ee0f37d1ec91e4a3df144c6a3df089fbbb80a45ed5ff3825a5d9779f60",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "ecf297efe8b7b96e7620a8533b03d12e0c7764ae4384d909ee35bd39c56d160c"
+    },
+    {
+      "path": "Dockerfile",
+      "tracked_at_base": true,
+      "render_managed": false,
+      "custom_input": false,
+      "before_sha256": "ee8c52f10bf813b204d4f606aa2fbfbd9ea6256b27899365aa61cd4ae744ce8a",
+      "archive_verified": true,
+      "archive_mode": "0o600"
+    },
+    {
+      "path": "Dockerfile.libs",
+      "tracked_at_base": true,
+      "render_managed": false,
+      "custom_input": false,
+      "before_sha256": "7519c44323f68d737d0b76324c200ed41af8b6e7a21ea274ff4cac550c2cbea9",
+      "archive_verified": true,
+      "archive_mode": "0o600"
+    },
+    {
+      "path": "README.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "af6f8d17170dcfa4b807088e12dfd7916a5dc8f59f9088c0666c767e63ade041",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "d9b74b4773c45987ed89af95992ce797321fc6b7c7e70c9036da43a5cd201974"
+    },
+    {
+      "path": "efactory-up",
+      "tracked_at_base": true,
+      "render_managed": false,
+      "custom_input": false,
+      "before_sha256": "a27a20ee3893e118230652374466e3f8f5308e220032afc97fc3721680866743",
+      "archive_verified": true,
+      "archive_mode": "0o600"
+    },
+    {
+      "path": "hatch_build.py",
+      "tracked_at_base": true,
+      "render_managed": false,
+      "custom_input": false,
+      "before_sha256": "f198e368859985aaad458acfd95f8e5cf1954e7e8cd539ce7df5973c97e9803b",
+      "archive_verified": true,
+      "archive_mode": "0o600"
+    },
+    {
+      "path": "hooks/pre-push",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "86cf55f7091a4977101d64fd422dada8ec3ab62af8e1464ff24b6fa0f43f905d",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "c6eae6809d29a6b46db21b8a05a5454bc7bd2bda75323e6025ae7ebc93c38786"
+    },
+    {
+      "path": "opencode.json",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "25220cab4ee3fc5ca3ec921a6dc689599e3b052c69d6b89fec6d4961f1a9713c",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "25220cab4ee3fc5ca3ec921a6dc689599e3b052c69d6b89fec6d4961f1a9713c"
+    },
+    {
+      "path": "pilot.Dockerfile",
+      "tracked_at_base": true,
+      "render_managed": false,
+      "custom_input": false,
+      "before_sha256": "a09e7d74aaae887740ac31fbe1847560ff75eeddec67082aa899a0d5c856fbaf",
+      "archive_verified": true,
+      "archive_mode": "0o600"
+    },
+    {
+      "path": "pyproject.toml",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "d687c2d7dc640ccfbfdf4f093d5fe66d84cb9ebd7c0814278fad597ea84e6654",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "5316e97b0854d778aaea34a50576d716828446cbdad1e5df87f714a6ccb0c893"
+    },
+    {
+      "path": "scripts/pytest-guard.sh",
+      "tracked_at_base": false,
+      "render_managed": true,
+      "custom_input": false,
+      "decision": "created native methodology wrapper, one comment adapted to source cov80 default; source precommit/CI behavior unchanged",
+      "render_sha256": "4eaf58131b35ac145cc699d7e3afb16c299fa08c5b44051343465c89f2debfc2"
+    },
+    {
+      "path": "specs/design-brief-template.md",
+      "tracked_at_base": false,
+      "render_managed": true,
+      "custom_input": false,
+      "decision": "created native methodology brief and referenced from designer+team-roles; all7sections and result retained",
+      "render_sha256": "1665957fc291b289b590b2af28467294b6328a5b71fe8e97e6e0fcd7753901f0"
+    },
+    {
+      "path": "specs/spec-template.md",
+      "tracked_at_base": true,
+      "render_managed": true,
+      "custom_input": false,
+      "before_sha256": "0f45d2d1435c67a85ab50b0aa1d9f10e3c089615ee91c53712e6b80a55e4513c",
+      "archive_verified": true,
+      "archive_mode": "0o600",
+      "render_sha256": "4887f0f72fb9ecb93fed045dcccb4a5943203ee18f8deb67752544e34aff0da4"
+    },
+    {
+      "path": "src/main.py",
+      "tracked_at_base": false,
+      "render_managed": true,
+      "custom_input": false,
+      "decision": "not-created: preserve source layout; no generic business seeds or CI changes",
+      "render_sha256": "f2f1623fa88f59ce635a61fd0e26525b808780be2645fe88b5c7be334bb024e3"
+    },
+    {
+      "path": "tests/test_main.py",
+      "tracked_at_base": false,
+      "render_managed": true,
+      "custom_input": false,
+      "decision": "not-created: preserve source layout; no generic business seeds or CI changes",
+      "render_sha256": "2b8c45372d2596059b6dcc62ee35a3a35af7c1158eae0e9bce659cb1f7d6cfe5"
+    },
+    {
+      "path": "uv.lock",
+      "tracked_at_base": true,
+      "render_managed": false,
+      "custom_input": false,
+      "before_sha256": "8686df2e103851b2d091394623bb74b985e9b4b224c342888bbb184dee548d20",
+      "archive_verified": true,
+      "archive_mode": "0o600"
+    }
+  ]
+}

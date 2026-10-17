@@ -476,9 +476,21 @@ git push --no-verify   # пропускает все pre-push hooks
   bootstrap также содержит roadmap-задачи декомпозиции концепта.
 - `CHANGELOG.md` — журнал заметных изменений.
 - `specs/` — спецификации крупных фич.
-- `CLAUDE.md` — проектные правила для Claude (Claude Code).
+- `AGENTS.md` — текущие правила разработки для OpenCode; root `CLAUDE.md`
+  деактивирован и удалён после T195 review. Контейнерный runtime-агент
+  (`docker/runtime-agent-CLAUDE.md`) — отдельный контур, T195 его не меняет.
 
 ## Методика работы
+
+T195: переход development-методики на dreamteam 2.0.0, route FULL MANUAL.
+Нативные девять ролей и их controls — `.opencode/agents/`, командный процесс —
+`.opencode/team-roles.md`. Первый ordinary update --dry-run установленного CLI
+отклонил legacy input (rc1); это не автоматический migration success.
+Inventory/proposal/evidence — `docs/T195-migration/`. Сохраняются Python3.13,
+пять существующих gates, immutable CONCEPT, source T036 и runtime продукта.
+Сервер 4096 не перезапускать; активация новых controls проверяется отдельно
+на безопасной границе новой сессии. Исторические команды продукта выше не
+переписываются как будто контейнер уже мигрирован.
 
 Проект создан из шаблона
 [vlakir/dreamteam](https://github.com/vlakir/dreamteam). Подробное
